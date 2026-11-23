@@ -59,7 +59,6 @@ const DIMS: Record<Level, Dims> = {
 /** A sub-goal's loose tasks (no line in or out but to the goal) stand at most this many high, then side by side. */
 const STACK = 3;
 const FOOT = 46; // the canvas's foot, where the zoom's buttons and the legend sit: the plan can always be clear of it
-const NEED_H = 46; // and its head, where the chip for what needs you stands: a plan whose cards it would cover is kept under it
 const AWAY_W = 264, AWAY_GAP = 20; // the region for what leaves this machine, right of the plan: never narrower than its label, the longest of which is "asks you first"
 const AWAY_PAD = 44; // a step past the line sits this far inside the region, so the gate on the line is clear of it
 const AWAY_TOP = 48; // and under the region's label
@@ -373,7 +372,7 @@ function render() {
 let asking = false; // the card of the plan's open question is out, under its chip
 let answered = false; // a question was answered from that card: the keyboard is put somewhere once the card is gone, once
 
-/** At the canvas's top right, what needs you: how many tasks, a click showing the next; and the plan's open
+/** In the header, right of the stages, what needs you: how many tasks, a click showing the next; and the plan's open
  *  questions, a click opening the first under its chip, to answer there. A question about the whole plan is on
  *  no card, so this is where the graph shows it. A replay is watched: neither. */
 function chips(s: StateX) {
@@ -433,9 +432,12 @@ const START_WAIT = 15000; // nor longer: a run refused at its start says why in 
 
 function header(s: StateX, blank: boolean) {
   const first = topLine(s); // a replay, or a live race against the stand-in: said before anything else
-  $("replay").textContent = $("replay").title = first; // a pill cut to the header's room: its hover says it whole
+  $("replay").textContent = first.split(" · ")[0]!; // `practice run`, `replay`: a pill never cut, its hover says it whole
+  $("replay").title = first;
+  $("replay").setAttribute("role", "note"); // and a screen reader reads it whole: no model ran is the point of it
+  $("replay").setAttribute("aria-label", first);
   $("replay").hidden = !first;
-  const h = headerFor(s); // each number once: the stages and Run's cost here, what needs you in the canvas's chip
+  const h = headerFor(s); // each number once: the stages and Run's cost here, what needs you in its chip
   $("goal").textContent = $("goal").title = h.goal; // cut to its row: the hover says it whole
   $("auto").textContent = $("auto").title = h.auto;
   $("auto").hidden = !h.auto;
@@ -492,7 +494,6 @@ let fitSize = ""; // the drawing's size when the zoom was last set for it
 let fitRoom = ""; // and the window's size then, whatever the pane took of it; "": the plan is fitted again at the next drawing
 let paneMoved = false; // the pane opened or closed in this render: a plan fitted now glides to its new fit
 let closedOn: string | null = null; // and the card whose pane it was, when it closed: the view stays on it
-let head = 0; // the canvas's head the plan is kept under, clear of the chip for what needs you (`opening`)
 let sticky: { g: SVGGElement; x: number; room: number }[] = []; // each sub-goal's header, its band's left and how far it may slide right in it
 
 type Placed = { lay: Layout; g: ReturnType<typeof boxes>; here: number; awayW: number };
@@ -563,50 +564,27 @@ const margin = (full: Placed) => (l: Level, size: Size) => {
  *  chat) opens on the card that matters, the chosen one, else the first that wants you, else the first at work.
  *  Asked for (`fitAll`: `f`, the fit button, a double click on the canvas), it is the whole plan however small.
  *  Laid downward it is whole cards: all of them where they fit at a size they read at, else at their own size from
- *  the top, on the card that matters.
- *  The chip for what needs you stands at the canvas's top right. Where a card would stand under it, now or once a
- *  pane opens beside the canvas (which moves it left), the plan is fitted under it: the canvas's head is kept
- *  (`head`), by every pan too (`clamp`), whether the chip shows or not, so its coming and going moves nothing. Where
- *  that would cost the plan its whole cards, or its whole height, it keeps the canvas's height and stands as low as
- *  its room lets it. */
+ *  the top, on the card that matters. */
 function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zoom; whole: boolean } {
   const full = place(s, down, "full", 1), pane = paneSize(), f = foot();
   const matters = (l: Layout) => [selected, ...wantYou(), ...s.tasks.filter((t) => t.state === "running").map((t) => t.id)].find((x) => x && l.boxes[x]);
   let rows: Placed | undefined;
   const keep = fitted && !$("details").hidden ? level : "compact"; // a pane open beside whole cards keeps them whole a little further
-  const open = (top: number): { level: Level; at: Placed; zoom: Zoom; whole: boolean } => { // fitted under ``top`` px of the canvas's head
-    const canvas = { w: pane.w, h: pane.h - top }, room = { w: canvas.w, h: canvas.h - f }, under = (z: Zoom) => ({ ...z, ty: z.ty + top });
-    if (down) {
-      const size = sizeOf(full.lay), z = fitView(canvas, size, f, 1, fitAll ? ZOOM_MIN : FULL_FROM), id = matters(full.lay);
-      if (z.whole) return { level: "full", at: full, zoom: under(z), whole: true };
-      const start = { k: 1, tx: (room.w - size.w) / 2, ty: 0 }, p = id ? full.lay.boxes[id] : undefined, at = p ? onto(start, room, size, p) : hold(start, room, size);
-      // from its top, the rest a scroll down; scrolled to the card that matters, so that the canvas's top and foot
-      // cut no card through its words, as a plan wider than its canvas is moved across (zoom.ts `settle`, turned),
-      // and that card under the head
-      const turn = (b: { x: number; y: number; w: number; h: number }) => ({ x: b.y, y: b.x, w: b.h, h: b.w });
-      const ty = at.ty < 0 ? settle({ k: 1, tx: at.ty + top, ty: at.tx }, { w: pane.h - f, h: room.w }, { w: size.h, h: size.w }, Object.values(full.lay.boxes).map(turn),
-                                    p && turn({ ...p, y: p.y - top, h: p.h + top })).tx : at.ty + top;
-      return { level: "full", at: full, zoom: { ...at, ty }, whole: false };
-    }
-    const fit = fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows ??= place(s, down, "compact")).lay), f, keep, margin(full), fitAll ? ZOOM_MIN : ROWS_FROM);
-    const at = fit.level === "compact" && rows ? rows : full, z = { k: fit.k, tx: fit.tx, ty: fit.ty };
-    const id = fit.whole ? undefined : matters(at.lay), p = id ? at.lay.boxes[id] : undefined;
-    return { level: fit.level, at, zoom: under(fit.whole ? z : settled(p ? onto(z, room, sizeOf(at.lay), p) : z, at.lay, id)), whole: fit.whole };
-  };
-  const free = open(0), tall = (o: typeof free, top: number) => o.at.lay.height * o.zoom.k > pane.h - f - top + 0.5;
-  head = 0;
-  if (!s.tasks.length || !underChip(free.at.lay, free.zoom)) return free;
-  const kept = open(NEED_H);
-  if (kept.level === free.level && kept.whole === free.whole && (tall(free, 0) || !tall(kept, NEED_H))) { head = NEED_H; return kept; }
-  return { ...free, zoom: { ...free.zoom, ty: Math.max(free.zoom.ty, Math.min(NEED_H, pane.h - f - free.at.lay.height * free.zoom.k)) } };
-}
-
-/** A box of a plan placed at ``z`` would stand under the chip for what needs you: where it is, or where a pane
- *  opening beside the canvas would move it, at its widest (graph.css `#details`). Shown or not: what it will say
- *  is not known, so a hidden one is as wide as it mostly is. */
-function underChip(l: Layout, z: Zoom): boolean {
-  const right = paneSize().w - 16, shift = narrow() || !$("details").hidden ? 0 : 340, x0 = right - shift - ($("need").hidden ? 240 : $("need").offsetWidth);
-  return Object.values(l.boxes).some((b) => b.x * z.k + z.tx < right && (b.x + b.w) * z.k + z.tx > x0 && b.y * z.k + z.ty < NEED_H && (b.y + b.h) * z.k + z.ty > 12);
+  const room = { w: pane.w, h: pane.h - f };
+  if (down) {
+    const size = sizeOf(full.lay), z = fitView(pane, size, f, 1, fitAll ? ZOOM_MIN : FULL_FROM), id = matters(full.lay);
+    if (z.whole) return { level: "full", at: full, zoom: z, whole: true };
+    const start = { k: 1, tx: (room.w - size.w) / 2, ty: 0 }, p = id ? full.lay.boxes[id] : undefined, at = p ? onto(start, room, size, p) : hold(start, room, size);
+    // from its top, the rest a scroll down; scrolled to the card that matters, so that the canvas's top and foot
+    // cut no card through its words, as a plan wider than its canvas is moved across (zoom.ts `settle`, turned)
+    const turn = (b: { x: number; y: number; w: number; h: number }) => ({ x: b.y, y: b.x, w: b.h, h: b.w });
+    const ty = at.ty < 0 ? settle({ k: 1, tx: at.ty, ty: at.tx }, { w: pane.h - f, h: room.w }, { w: size.h, h: size.w }, Object.values(full.lay.boxes).map(turn), p && turn(p)).tx : at.ty;
+    return { level: "full", at: full, zoom: { ...at, ty }, whole: false };
+  }
+  const fit = fitPlan(pane, sizeOf(full.lay), () => sizeOf((rows ??= place(s, down, "compact")).lay), f, keep, margin(full), fitAll ? ZOOM_MIN : ROWS_FROM);
+  const at = fit.level === "compact" && rows ? rows : full, z = { k: fit.k, tx: fit.tx, ty: fit.ty };
+  const id = fit.whole ? undefined : matters(at.lay), p = id ? at.lay.boxes[id] : undefined;
+  return { level: fit.level, at, zoom: fit.whole ? z : settled(p ? onto(z, room, sizeOf(at.lay), p) : z, at.lay, id), whole: fit.whole };
 }
 
 function graph(s: StateX, dir: "across" | "down") {
@@ -1489,7 +1467,7 @@ function legendRow(s: StateX) {
   root.hidden = !rows.length || root.offsetWidth > $("canvas").clientWidth - $("zoom").offsetWidth - 56;
 }
 
-/** The steps to act on, in the plan's order: what the chip at the canvas's top right counts, and `n` walks.
+/** The steps to act on, in the plan's order: what the header's chip counts, and `n` walks.
  *  None in a replay, which is watched. */
 const wantYou = (): string[] => (state && !replaying() ? wanting(state.tasks) : []);
 
@@ -1500,12 +1478,9 @@ function showNext() {
 }
 
 /** A pan never loses the graph (zoom.ts `hold`). The canvas's foot is the buttons': the plan's last row can
- *  always be brought above it, and a plan smaller than the canvas stays above it; and under its head, where the
- *  plan was fitted under the chip for what needs you (`opening`). */
+ *  always be brought above it, and a plan smaller than the canvas stays above it. */
 function clamp(z: Zoom): Zoom {
-  if (!lay) return z;
-  const held = hold({ ...z, ty: z.ty - head }, { w: paneSize().w, h: paneSize().h - foot() - head }, sizeOf(lay));
-  return { ...held, ty: held.ty + head };
+  return lay ? hold(z, { w: paneSize().w, h: paneSize().h - foot() }, sizeOf(lay)) : z;
 }
 
 let placed = ""; // the transform last applied: what says the plan moved since
@@ -1561,10 +1536,7 @@ function reveal(id: string, own = false) {
   const y0 = p.y * zoom.k + zoom.ty, y1 = (p.y + p.h) * zoom.k + zoom.ty;
   let { tx, ty } = zoom;
   if (x0 < 0) tx -= x0 - 12; else if (x1 > w) tx -= x1 - w + 12;
-  // under the chip for what needs you, or the zoom's buttons, it is not on screen
-  const chip = $("need").hidden ? null : $("need").getBoundingClientRect(), at = canvas.getBoundingClientRect();
-  const top = chip && x0 + tx - zoom.tx < chip.right - at.left && x1 + tx - zoom.tx > chip.left - at.left ? chip.bottom - at.top : 0;
-  if (y0 < top) ty += top + (top ? 8 : 12) - y0; else if (y1 > h) ty -= y1 - h + 12;
+  if (y0 < 0) ty += 12 - y0; else if (y1 > h) ty -= y1 - h + 12; // under the zoom's buttons it is not on screen
   if (tx === zoom.tx && ty === zoom.ty) return;
   zoom = clamp({ ...zoom, tx, ty });
   if (!own) moved = true;
@@ -2457,19 +2429,19 @@ function wire() {
   window.addEventListener("pointercancel", released);
   window.addEventListener("pointermove", (e) => { if (e.buttons === 0) released(); }); // let go outside the page
   // what the canvas gains over the shell (the preview's is the same shell): the regions under the drawing, the
-  // zoom's buttons at its foot, the legend, and the chip for what needs you
+  // zoom's buttons at its foot, and the legend
   $("view").prepend(el("g", { id: "regions" }));
   $("edges").after(el("g", { id: "gates" }), el("g", { id: "heads" })); // on the line, over the edges that cross it; and the sub-goals' headers
   const zooms = div("", undefined, canvas);
   zooms.id = "zoom";
-  for (const [id, label, sign, title, on] of [["zoom-fit", "fit the graph", "⤢", "fit the whole plan in the pane (f)", refit],
+  for (const [id, label, sign, title, on] of [["zoom-fit", "fit the graph", icon("screen-full"), "fit the whole plan in the pane (f)", refit],
                                               ["zoom-out", "zoom out", "−", "zoom out (-, or ⌘ or Ctrl with the wheel)", () => nudge(0.8)],
                                               ["zoom-pct", "", "100%", "how big a card is drawn: click for 100%, whole cards at their own size (0)", actual],
                                               ["zoom-in", "zoom in", "+", "zoom in (=, or ⌘ or Ctrl with the wheel)", () => nudge(1.25)]] as const) {
     const b = document.createElement("button");
     b.id = id;
     b.className = "quiet";
-    b.textContent = sign;
+    b.append(sign);
     b.title = title;
     if (label) b.setAttribute("aria-label", label);
     b.addEventListener("click", on);
@@ -2498,9 +2470,10 @@ function wire() {
   const key = div("", undefined, canvas); // filled by `legendRow`
   key.id = "legend";
   key.setAttribute("aria-hidden", "true"); // each card says its state in words
-  const need = div("", undefined, canvas); // what needs you (`chips`): the tasks, then the plan's questions and the card of the first
+  // what needs you (`chips`): the tasks, then the plan's questions and the card of the first. The header's, at the
+  // right of the stages (graph.css): over the canvas it stood on cards whenever the canvas was short or a pane open
+  const need = div("", undefined, document.querySelector("header")!);
   need.id = "need";
-  canvas.prepend(need); // first: over the lanes, which scroll, it stays at their head (graph.css)
   need.hidden = true;
   const chip = (id: string, title: string, on: () => void) => {
     const b = need.appendChild(document.createElement("button"));
@@ -2526,8 +2499,9 @@ function wire() {
   card.setAttribute("aria-label", "the plan's question");
   // a press anywhere else puts the card away, as a menu goes
   window.addEventListener("pointerdown", (e) => { if (asking && !need.contains(e.target as Node)) { asking = false; render(); } });
-  // the header's buttons: the rare ones an icon each (their hover names them), Add task, and last the one act on
-  // the whole plan (`header` says which); none bordered but that one, which fills when it starts something
+  // the header's buttons: the rare ones an icon each (their hover names them), Save as workflow (an icon too in a
+  // narrower tab), Add task, and last the one act on the whole plan (`header` says which); none bordered but that
+  // one, which fills when it starts something
   const actions = $("actions");
   const top = (id: string, label: string, ico: string, title: string, on: () => void) => {
     const b = actions.appendChild(document.createElement("button"));
@@ -2537,14 +2511,14 @@ function wire() {
     if (label) b.appendChild(document.createElement("span")).append(label); // a tab too narrow for it shows the icon alone (graph.css)
     b.title = title;
     b.addEventListener("click", on);
-    // a name where no words show: an icon, or Add task in a tab too narrow for its words. The main act is named
-    // by its words, which `header` changes (Start, Run, Stop)
-    if (!label || id === "b-add") b.setAttribute("aria-label", label || title.replace(/:.*| \(.*/, ""));
+    // a name where no words show: an icon, or words a tab too narrow for them hides. The main act is named by
+    // its words, which `header` changes (Start, Run, Stop)
+    if (id !== "b-run") b.setAttribute("aria-label", label || title.replace(/:.*| \(.*/, ""));
     if (!label) b.classList.add("icon");
   };
-  top("b-save", "", "save", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "", "list-flat", "Lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "Keys and mouse (?)", () => help($("help").hidden));
+  top("b-save", "Save as workflow", "bookmark", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-run", "Run", "play", "", () => {
     const a = state && mainAct(state, exact);

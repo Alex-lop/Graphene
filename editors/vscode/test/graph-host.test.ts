@@ -429,6 +429,21 @@ test("the run's terminal: one for the run, not shown; a second click while it st
   }
 });
 
+test("a run stopped in its first seconds is a stop: its terminal stays in the list, and the graph only drops its Starting…", async () => {
+  const { Session } = await import("../src/session.ts");
+  const ui = await import("vscode") as unknown as { window: { terminals: { shown: number }[]; ended: (e: unknown) => void } };
+  const { EventEmitter } = await import("vscode") as unknown as { EventEmitter: new () => { event: (l: (v: string) => void) => void; fire(v: string): void } };
+  ui.window.terminals.length = 0;
+  const refused: string[] = [], at = new EventEmitter();
+  at.event((n) => refused.push(n));
+  const s = { hear: Session.prototype["hear" as never], sent: new Map(), busy: new Set(), shells: [], refusedAt: at, path: "graphene", folder: undefined, stopAt: 0,
+              changing: 0, held: null, run: async () => ({ code: 0, stdout: "", stderr: "" }), readContracts: async () => true, refresh: async () => {} };
+  const t = Session.prototype.terminal.call(s as never, "graphene run", ["run"]) as unknown as { shown: number };
+  await Session.prototype.change.call(s as never, ["run", "--stop"]); // the header's Stop, or Home's
+  ui.window.ended({ terminal: t, exitCode: 1 });
+  assert.deepEqual([t.shown, refused], [0, ["graphene run"]]);
+});
+
 test("what was asked titles the plan through its run, and not a plan suggested after it with no ask or goal of its own", async () => {
   const { Session } = await import("../src/session.ts");
   const { headline } = await import("../src/state.ts");

@@ -234,6 +234,7 @@ export class Session {
   /** A change made on the graph, which shows the answer beside what was changed: whether graphene took it,
    *  the refusal's lines whole (or the first line it answered), and what it printed. */
   async change(argv: string[]): Promise<{ ok: boolean; line: string; stdout: string }> {
+    if (argv.join(" ") === C.stop().join(" ")) this.stopAt = Date.now(); // the run ends now because it was asked to (`hear`)
     this.changing++;
     let out: { code: number; stdout: string; stderr: string };
     try {
@@ -279,8 +280,9 @@ export class Session {
   private sent = new Map<vscode.Terminal, { line: string; at: number }>(); // the terminals of ours, and what each was last sent
   private busy = new Set<vscode.Terminal>(); // those whose command has not ended
   private shells: vscode.Disposable[] = []; // what the shells say of our terminals, heard from the first one on
+  private stopAt = 0; // when a Stop was last asked: a run that ends after it was stopped, not refused
   private refusedAt = new vscode.EventEmitter<string>();
-  /** A command sent to a terminal of ours failed in its first seconds: the terminal's name. */
+  /** A command sent to a terminal of ours failed in its first seconds, refused or stopped: the terminal's name. */
   readonly onDidRefuse = this.refusedAt.event;
 
   private hear() {
@@ -291,8 +293,8 @@ export class Session {
         if (!sent) return;
         this.busy.delete(e.terminal);
         if (!e.exitCode || Date.now() - sent.at > 15000) return;
-        e.terminal.show(true); // refused at its start: the terminal says why, and the graph stops saying Starting…
-        this.refusedAt.fire(e.terminal.name);
+        if (!(this.stopAt >= sent.at)) e.terminal.show(true); // refused at its start: the terminal says why (a Stop is no refusal to show)
+        this.refusedAt.fire(e.terminal.name); // either way the graph stops saying Starting…
       }),
       vscode.window.onDidCloseTerminal((t) => { this.sent.delete(t); this.busy.delete(t); }),
     ];

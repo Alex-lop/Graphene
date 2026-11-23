@@ -33,7 +33,7 @@ body {
   font-family: var(--font); font-size: var(--vscode-font-size, 13px); overflow: hidden;
 }
 /* the header, two rows at any width: the goal and its buttons; then the stages, and auto's line while it works.
-   Each number is said once: the cost is in Run's note, and what needs you is the canvas's chip */
+   Each number is said once: the cost is in Run's note, and what needs you is its chip */
 header {
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 10px 16px 8px;
   border-bottom: 1px solid var(--divider);
@@ -41,13 +41,12 @@ header {
 header::after { content: ""; order: 4; flex-basis: 100%; } /* where the second row starts */
 header:has(#pipe[hidden])::after { display: none; }
 /* a basis of 10em (or its own width, if less): a long goal is cut to the room its buttons leave; a tab that leaves
-   it less than that (narrow, beside an agent's chat) gives the goal its own row and the buttons the next. It takes
-   the room before the pill beside it does (1000 to 1): the pill is cut first */
+   it less than that (narrow, beside an agent's chat) gives the goal its own row and the buttons the next */
 #goal { order: 1; flex: 1000 1 10em; max-width: max-content; min-width: 0; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* a replay, or a live race against the stand-in: a pill beside the goal, whole where there is room and else cut
-   (its hover says it whole), never the goal */
+/* a replay, or a live race against the stand-in: a pill beside the goal, its first words only (its hover says the
+   rest), so the goal is cut before it is: a pill cut to `a …` read as a broken page */
 #replay {
-  order: 2; flex: 1 1 6em; max-width: max-content; min-width: 0; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; color: var(--review);
+  order: 2; flex: none; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; color: var(--review);
   background: color-mix(in srgb, var(--review) 13%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #replay[hidden] { display: none; }
@@ -59,6 +58,13 @@ header:has(#pipe[hidden])::after { display: none; }
 #actions button.quiet:hover:not(:disabled) { background: var(--hover); }
 #actions .icon { width: 28px; padding: 0; justify-content: center; color: var(--dim); }
 #actions .icon:hover { color: var(--fg); }
+/* a wide tab says Save as workflow (the READMEs name it) and what the next chip does. Narrower, the goal and auto's
+   line keep that room: Save as workflow is its icon beside the others, the chip its count (the hovers say the rest) */
+@media (max-width: 1279px) {
+  #b-save span, #b-next span { display: none; }
+  #actions #b-save { width: 28px; padding: 0; justify-content: center; color: var(--dim); }
+  #actions #b-save:hover { color: var(--fg); }
+}
 #b-run { margin-left: 6px; }
 #actions #b-run.quiet { border-color: var(--line-2); } /* Stop, or Run with nothing ready: a hairline, never a fill */
 #actions #b-run[aria-busy="true"] { cursor: progress; background: none; } /* Starting…: read whole, and no click to give */
@@ -67,7 +73,7 @@ header:has(#pipe[hidden])::after { display: none; }
 #pipe[hidden] { display: none; }
 #stages { order: 5; display: flex; align-items: center; margin-right: 10px; } /* a margin, not auto's: wrapped, auto's line starts under Plan */
 #auto { /* what auto is at: a line, its dot amber */
-  order: 7; flex: 1 1 0; min-width: 160px; /* it takes the row's room and is cut to it before it wraps */
+  order: 7; flex: 1 1 auto; min-width: 160px; /* it takes the row's room; the chips after it wrap before it is cut (a narrow tab: below) */
   color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #auto::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--running); }
@@ -91,7 +97,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #svg { user-select: none; -webkit-user-select: none; } /* a drag pans the plan: it selects no card's words on the way (a title being typed is an input, its own) */
 #canvas.lanes { cursor: default; overflow: auto; background-image: none; }
 /* what floats over the canvas is one family: a card's ground (a card may pass under it), a hairline ring and a
-   soft shadow (tokens.css `--pop`): the zoom, the legend, the minimap, the notice, and the chip for what needs you */
+   soft shadow (tokens.css `--pop`): the zoom, the legend, the minimap and the notice */
 #zoom, #legend, #minimap, #notice { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--pop); }
 /* the zoom, at the canvas's foot: one segmented control */
 #zoom { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 2px; z-index: 2; padding: 2px; }
@@ -117,7 +123,7 @@ main { flex: 1; display: flex; min-height: 0; }
 #legend b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
 #legend svg, #need svg { flex: none; overflow: visible; }
 #legend .spin, .band-head .mk .spin { animation: none; } /* a mark in a count is not the work: only a card's own ring turns (over `.mk .spin`, which comes later) */
-#canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning, #canvas.lanes #minimap, #canvas.lanes #b-next { display: none; } /* the lanes list each task: the question stays */
+#canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning, #canvas.lanes #minimap { display: none; }
 /* while a planner writes the plan: how many steps it has drawn so far, beside the zoom's buttons */
 #planning { position: absolute; left: 16px; bottom: 50px; z-index: 2; font-size: 12px; color: var(--proposed); display: flex; gap: 8px; align-items: center; pointer-events: none; }
 #planning[hidden] { display: none; }
@@ -134,20 +140,24 @@ main { flex: 1; display: flex; min-height: 0; }
 #notice[hidden] { display: none; }
 .notice-head { color: var(--fg); font-weight: 600; }
 .notice-aside { font-size: 12px; margin-top: 6px; opacity: 0.8; } /* in Cursor: its own Agent is not one Graphene reaches */
-/* what needs you, at the canvas's top right: the tasks (a click shows the next), then the plan's questions (a
-   click opens the first under its chip, to answer there), purple as the person's marks are */
-#need { position: absolute; right: 16px; top: 12px; z-index: 3; display: flex; gap: 8px; }
+/* what needs you, at the right of the stages' row (its own row when there is no room beside them): the tasks (a
+   click shows the next), then the plan's questions (a click opens the first under its chip, to answer there),
+   purple as the person's marks are. In the header, so no card can stand under it */
+#need { order: 8; margin-left: auto; position: relative; z-index: 4; display: flex; gap: 8px; }
 #need[hidden] { display: none; }
-#canvas.lanes #need { position: sticky; top: 6px; height: 0; width: max-content; margin: 0 16px 0 auto; } /* the lanes scroll: it stays at their head */
-#need > button { height: 28px; font-size: 12px; white-space: nowrap; color: var(--fg); border-color: color-mix(in srgb, var(--review) 55%, transparent); border-radius: var(--r-lg);
-                 background: color-mix(in srgb, var(--review) 12%, var(--card)); box-shadow: 0 8px 24px -6px var(--shadow); }
-#need > button:hover, #b-ask[aria-expanded="true"] { background: color-mix(in srgb, var(--review) 20%, var(--card)); }
+header:has(#pipe[hidden]) #need { margin-left: 0; } /* no stages (a question before the first task): after the buttons */
+body[data-mode="lanes"] #b-next { display: none; } /* the lanes list each task: the question stays */
+#need > button { height: 24px; /* a stage's height: a chip that comes or goes does not move the plan */ font-size: 12px; white-space: nowrap; color: var(--fg); border-color: color-mix(in srgb, var(--review) 55%, transparent); border-radius: var(--r-lg);
+                 background: color-mix(in srgb, var(--review) 12%, var(--bg)); }
+#need > button:hover, #b-ask[aria-expanded="true"] { background: color-mix(in srgb, var(--review) 20%, var(--bg)); }
 #need b { font-weight: 600; }
 #b-ask .ico { color: var(--review); }
 /* the question's card, under its chip: what it asks and about what, its answers, and what happens unanswered */
-#asked { position: absolute; right: 0; top: 36px; width: min(340px, calc(100vw - 48px)); box-sizing: border-box; padding: 12px 14px;
+#asked { position: absolute; right: 0; top: 34px; width: min(340px, calc(100vw - 48px)); box-sizing: border-box; padding: 12px 14px;
          background: var(--card); border-radius: var(--r-lg); box-shadow: var(--pop); border-top: 2px solid var(--review); white-space: normal; }
 #asked[hidden] { display: none; }
+/* beside an open pane, over the canvas: it ends at the pane's edge (#details' width), not over its title */
+@media (min-width: 701px) { body:has(#details:not([hidden])) #asked { right: calc(clamp(280px, 26vw, 340px) - 4px); } }
 .q-on { color: var(--dim); font-size: 11.5px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-text { line-height: 1.45; margin-bottom: 10px; }
 .q-opts { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -187,11 +197,12 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
   footer#hint.linking .hint-text { white-space: normal; } /* the ways out read whole: the line wraps */
   /* under 700 px the graph keeps its zoom buttons (a graph laid downward too); only under 560 px, lanes or a
      graph laid downward, do the keys and the wheel zoom it alone (below) */
-  #legend, #b-next span { display: none; }
+  #legend { display: none; }
   /* the question's chip keeps what Start or Run picks for it unanswered, cut to its room: no answer is taken unseen */
   #b-ask span { min-width: 0; max-width: calc(100vw - 320px); overflow: hidden; text-overflow: ellipsis; }
   /* the stages keep their row: only the stage the work is at says its note, cut to the room there is */
   #stages, .stage.now, .stage.now small { min-width: 0; }
+  #auto { flex-basis: 0; } /* the chips wrap here anyway: auto's line keeps the stages' row, cut to it */
   .stage:not(.now) small { display: none; }
   .stage.now small { overflow: hidden; text-overflow: ellipsis; }
   .stage .n { flex: none; }
@@ -210,7 +221,6 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
    between them, so the three names still fit whole */
 @media (max-width: 320px) {
   #b-add span { display: none; }
-  #canvas.lanes #need { position: static; height: auto; margin: 6px 16px 0 auto; } /* over the first lane's head it would cover it */
   #b-add { width: 28px; padding: 0; justify-content: center; }
   .stage { padding: 3px 6px 3px 2px; gap: 4px; }
   .stage + .stage { margin-left: 4px; }
