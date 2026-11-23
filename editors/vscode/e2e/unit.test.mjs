@@ -21,7 +21,7 @@ test("moves.py's table is the build it measures: every command it names is in th
   assert.deepEqual([...named].filter((c) => !commands.includes(c)), [], "the table names commands this build lacks");
   // the night's moves are in its table, not left as the cockpit's alone
   for (const c of ["answer", "handBack", "pickFork", "openDiff", "signOff", "editPlan"]) assert.ok(named.has(c), `${c} is not in the table`);
-  assert.match(out.stdout, /cockpit moves: 17\. The editor \(0\.9\.\d+\) covers 9 whole and 5 in part; 3 not at all\./);
+  assert.match(out.stdout, /cockpit moves: 17\. The editor \(0\.10\.\d+\) covers 9 whole and 5 in part; 3 not at all\./);
 });
 
 test("moves.py keeps the before's table for the before's manifest (0.8.0's: 4, 6 and 7)", { skip: !existsSync(PYTHON) && "no venv python (uv sync)" }, () => {
