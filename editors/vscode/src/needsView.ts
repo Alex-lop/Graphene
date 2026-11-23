@@ -26,7 +26,7 @@ export function item(n: Need, s: State): vscode.TreeItem {
     it.description = n.why;
     md.appendMarkdown(`**auto waits for you**\n\n${mdText(n.why)}\n\n${n.key ? "Set Key runs `graphene key set` in a terminal." : "Answer the question below, or change the plan."}`);
     if (n.key) it.command = { command: "graphene.setKey", title: "Set Key", arguments: [n.endpoint] };
-    else if (s.questions[0]) it.command = { command: "graphene.answer", title: "Answer", arguments: [{ id: s.questions[0].id }] };
+    else if (s.questions[0]) it.command = { command: "graphene.answer", title: "Answer", arguments: [s.questions[0].id] };
   } else if (n.kind === "question") {
     it.id = `need:q:${n.q.id}`;
     it.label = n.q.text;
@@ -37,7 +37,7 @@ export function item(n: Need, s: State): vscode.TreeItem {
     if (n.q.default) md.appendMarkdown(`default: ${mdText(n.q.default)}\n\n`);
     for (const o of n.q.options) md.appendMarkdown(`- ${mdText(o)}\n`);
     md.appendMarkdown("\nClick to answer: its default, one of its options, or your own words.");
-    it.command = { command: "graphene.answer", title: "Answer", arguments: [{ id: n.q.id }] };
+    it.command = { command: "graphene.answer", title: "Answer", arguments: [n.q.id] }; // by its id alone: the pick (graphene.answer)
   } else {
     const t = n.t;
     it.id = `need:t:${t.id}`;
@@ -97,7 +97,7 @@ export class NeedsTree implements vscode.TreeDataProvider<Need> {
   }
 }
 
-type Arg = string | { id?: string; option?: string } | undefined;
+type Arg = string | { id?: string; option?: string; kind?: string } | undefined;
 const idOf = (arg: Arg) => (typeof arg === "string" ? arg : arg?.id);
 
 export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
@@ -119,13 +119,17 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     }
     const given = typeof arg === "object" ? arg?.option?.trim() : undefined; // the graph's pane sent the option: no pick
     if (given) return session.act(answerWith(q, given));
+    // a page (the graph, Home) sends `{ id }` with no option only from its "In your own words…", beside the options it
+    // shows: the box for the words at once. The Needs view's row names the question by its id, and its inline icon
+    // passes the row's element (a Need, with its `kind`), and the palette nothing: the pick.
+    const own = typeof arg === "object" && arg !== null && !arg.kind;
     // the model's words as text: a quick pick's label reads `$(name)` as an icon (needs.ts answerPicks)
-    const chosen = await vscode.window.showQuickPick(answerPicks(q), { placeHolder: C.plain(q.text), ignoreFocusOut: true });
-    if (!chosen) return;
-    if (chosen.own) {
+    const chosen = own ? undefined : await vscode.window.showQuickPick(answerPicks(q), { placeHolder: C.plain(q.text), ignoreFocusOut: true });
+    if (!own && !chosen) return;
+    if (own || chosen?.own) {
       const words = await vscode.window.showInputBox({ prompt: q.text, placeHolder: "your answer", ignoreFocusOut: true });
       if (words?.trim()) await session.act(answerWords(q.id, words.trim()));
-    } else if (chosen.argv) {
+    } else if (chosen?.argv) {
       await session.act(chosen.argv);
     }
   });

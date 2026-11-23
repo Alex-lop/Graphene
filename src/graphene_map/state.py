@@ -220,6 +220,7 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         "stand_in": stand_in(rows),
         "cursor": cursor(store),
         "goal": P.goal(store) or store.meta("goal:proposed") or "",
+        "asked": asked(rows),
         "first": m.first,
         "planner": chosen(store, "planner"),
         "executor": m.executor,
@@ -249,7 +250,7 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
             if kids.get(n.id)
         ],
         "tasks": [
-            task(m, t, by.get(t.id, []), by_id.get(t.id), root)
+            task(m, t, by.get(t.id, []), by_id.get(t.id), root, store)
             | pane(t, by.get(t.id, []), by_id.get(t.id), files, m.executor, hooks)
             for t in m.tasks.values()
         ],
@@ -257,6 +258,13 @@ def snapshot(store, root: Path, now: float | None = None) -> dict:
         + [[a, b, kind] for a, b, kind in m.extra_edges],
         "news": news(store, m),
     }
+
+
+def asked(rows: list[dict]) -> str:
+    """The newest ask, whole, on one line: the news cuts it to leave room for the rest (`narrate.words`), so
+    an editor whose header has the room says all of it. "" with nothing asked."""
+    said = next(((r.get("detail") or {}).get("note") for r in reversed(rows) if r.get("kind") == "asked"), "")
+    return " ".join(str(said or "").split())
 
 
 def _draft(store) -> dict | None:
@@ -323,13 +331,14 @@ def passes_before(log: list[dict], node: P.Node | None) -> bool:
     return last.get("verdict") == "passes" and last.get("rev") == node.rev and last.get("check") == node.check
 
 
-def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = None) -> dict:
+def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = None, store=None) -> dict:
     """One task as the brief's schema has it. Its model and spend are the cockpit's once the race lane adds
     them to Task and Fork (`model`, `usd`); until then, and where it says nothing, the meter's: the attempt
     going now names the model, the task's usage rows its dollars, and a fork's own attempts both of its.
     The editor night's keys (siblings, schema 1): `why`, the reason it came back; `checkout`, the directory
     its agent works in while it runs or after it came back; `base`, the commit its work starts from;
-    `attempts`, the last hold's own, or a fork's each; a running fork's `idle` and `checkout`."""
+    `attempts`, the last hold's own, or a fork's each; a running fork's `idle` and `checkout`. `note`, on a
+    task the person sent back, is their last note (`plan.notes`), what its next agent is told."""
     from . import meter as M
     from . import node_record as NR
     from .cockpit.model import needs_you
@@ -356,6 +365,10 @@ def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = 
                       "checkout": str(copy) if runs and copy and copy.is_dir() else None})  # fmt: skip
     own = [a for a in tries if not a.get("fork")]  # a forked hold's attempts are its forks': the most of one
     where = (node.checkout or "") if node and t.state in ("running", "came back") else ""
+    note = t.note
+    sent_back = node and node.state == P.OPEN and any(r["kind"] == "reopened" for r in log)
+    if not note and sent_back and store is not None:
+        note = " ".join(next(reversed(P.notes(store, t.id)), "").split())
     return {
         "id": t.id,
         "title": t.title,
@@ -371,7 +384,7 @@ def task(m, t, log: list[dict], node: P.Node | None = None, root: Path | None = 
         "idle": round(m.quiet(t), 1) if t.state == "running" else None,
         "needs_you": needs_you(t),
         "tail": m.tail(t),
-        "note": t.note,
+        "note": note,
         "offers": dict(t.offers),  # a came-back task: the cockpit's key -> the command that takes it up
         "changed": list(t.changed),
         "stopped": [path for path, _ in t.stopped],

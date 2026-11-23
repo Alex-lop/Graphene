@@ -318,9 +318,9 @@ export class HomeHost implements vscode.WebviewViewProvider {
       prompt: C.plain(`What is wrong with “${t.title}”? The next agent on it reads this.`), placeHolder: "the test only covers one word",
       ignoreFocusOut: true, validateInput: (v) => (v.trim() ? undefined : "say what is wrong"),
     });
-    if (!note?.trim() || !(await this.session.act(C.reopen(t.id, note.trim())))) return;
-    const again = await vscode.window.showInformationMessage(C.plain(`“${t.title}” goes back to an agent with your note.`), "Run It Now");
-    if (again) this.session.terminal("graphene run", tryAgain(t.id));
+    // no Run of its own: the graph's header and Home already offer Run, and two filled Runs ask for one click. So it
+    // says what is so now, not that an agent takes it: with auto off and nothing running, none does until Run
+    if (note?.trim() && (await this.session.act(C.reopen(t.id, note.trim())))) void vscode.window.showInformationMessage(C.plain(`“${t.title}” is open again: the next agent on it reads your note.`));
   }
 
   private html(webview: vscode.Webview): string {

@@ -177,7 +177,7 @@ export class Session {
     if (!was.asked) return s;
     if (!was.ids.length) keep({ ...was, ids: s.tasks.map((t) => t.id) });
     else if (s.tasks.some((t) => t.state === "proposed" && !was.ids.includes(t.id))) { keep({ asked: "", ids: [] }); return s; }
-    return { ...s, asked: was.asked };
+    return { ...s, kept: was.asked };
   }
   private asked: Kept = { asked: "", ids: [] }; // a replay's, which has no workspace state
 

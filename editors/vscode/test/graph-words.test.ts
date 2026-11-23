@@ -416,14 +416,14 @@ test("May change is a tree: its folder opened to its files, the written ones mar
 test("May run, Held by, Stopped, Done when and Tokens say what is known, and no more", () => {
   // Graphene's own two are not the repository's commands: left out, and the check the agent cannot run is named, with where that is set
   assert.deepEqual(mayRun(scoped, step("rows")), { commands: [], words: "no shell command", outside: OUTSIDE,
-    note: "It cannot run pytest, so it never runs its own check. What it may run is set by the executor's `--allowedTools`." });
+    note: "It cannot run pytest: Graphene runs its check for it, after the work. What it may run is set by the executor's `--allowedTools`." });
   assert.equal(OUTSIDE, "none");
   const npm = { ...scoped, allows: ["graphene node *", "npm test *"] };
   assert.deepEqual(mayRun(npm, { ...step("rows"), check: "npm test table" }), { commands: ["npm test *"], words: "", note: "", outside: OUTSIDE }, "a check it may run: nothing to say");
   assert.equal(mayRun(npm, { ...step("rows"), check: null }).note, "", "no check: nothing it cannot run");
   assert.match(mayRun(npm, { ...step("rows"), check: "cd app && npm test table" }).note, /^$/, "the command a check runs, not the cd before it");
-  assert.match(mayRun(scoped, { ...step("rows"), check: "cd app && ./gradlew test" }).note, /^It cannot run \.\/gradlew, so it never runs its own check\./);
-  assert.match(mayRun(scoped, { ...step("rows"), check: "PYTHONPATH=. pytest -q" }).note, /^It cannot run pytest,/, "the command, not the setting before it");
+  assert.match(mayRun(scoped, { ...step("rows"), check: "cd app && ./gradlew test" }).note, /^It cannot run \.\/gradlew: Graphene runs its check for it, after the work\./);
+  assert.match(mayRun(scoped, { ...step("rows"), check: "PYTHONPATH=. pytest -q" }).note, /^It cannot run pytest:/, "the command, not the setting before it");
   assert.match(mayRun({ allows: null, executor: "claude" }, step("rows")).words, /^any command: what a command writes is still held/);
   // the list is the repository's executor's: a step Codex holds, or one that is yours, is not under it
   assert.deepEqual(mayRun(scoped, step("button")), { commands: [], words: "any command: what a command writes is still held to its files", note: "", outside: OUTSIDE_OWN });

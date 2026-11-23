@@ -170,8 +170,10 @@ export interface State {
   stand_in: boolean; // the run is against the scripted stand-in, no model
   cursor: number;
   goal: string;
-  /** What the person last asked for, as the editor keeps it (session.ts) once the news no longer says it. */
+  /** The newest ask, whole: the news cuts it at 60 characters. "" from an older CLI, which does not say it. */
   asked?: string;
+  /** What the person last asked for, as the editor keeps it (session.ts) once the news no longer says it. */
+  kept?: string;
   first: string;
   planner: string;
   executor: string;
@@ -296,7 +298,7 @@ export function parseState(text: string): State {
     schema: int(r.schema, 1), graphene: str(r.graphene), repo: str(r.repo), cursor: int(r.cursor, 0),
     replay: str(replay.shown) ? { shown: str(replay.shown), day: str(replay.day), repository: str(replay.repository) } : null,
     stand_in: bool(r.stand_in),
-    goal: str(r.goal), first: str(r.first), planner: str(r.planner), executor: str(r.executor),
+    goal: str(r.goal), asked: str(r.asked), first: str(r.first), planner: str(r.planner), executor: str(r.executor),
     envelope: {
       auto: str(env.auto, "off"), budget: num(env.budget), tasks: num(env.tasks), rounds: num(env.rounds),
       forks: num(env.forks), review: str(env.review, "off"), protected: strs(env.protected),
@@ -337,10 +339,13 @@ export function usd(n: number | null | undefined): string {
 
 /** What the plan is for: its goal, else what the person last asked for (`graphene ask` sets no goal), from the
  *  news or, once it scrolled out of them, as the editor kept it; "" when nobody knows. */
-export function headline(s: Pick<State, "goal" | "news" | "asked">): string {
+export function headline(s: Pick<State, "goal" | "news" | "asked" | "kept">): string {
   if (s.goal) return s.goal;
-  const asked = [...s.news].reverse().find((l) => l.startsWith("you asked: "));
-  return asked ? asked.slice("you asked: ".length) : s.asked ?? "";
+  const line = [...s.news].reverse().find((l) => l.startsWith("you asked: "))?.slice("you asked: ".length);
+  if (!line) return s.kept ?? "";
+  // the news line is cut (`…`); the snapshot's `asked` is that same ask whole, and the header has the room
+  const whole = s.asked ?? "";
+  return whole && (whole === line || (line.endsWith("…") && whole.startsWith(line.slice(0, -1)))) ? whole : line;
 }
 
 /** The plan's words for a Markdown hover, as text: an agent writes some of them (a title it proposed, a command

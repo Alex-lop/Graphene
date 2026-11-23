@@ -243,7 +243,19 @@ test("what was asked stays the title once the news no longer says it: the goal f
   const s = parseState(fixture("running"));
   const ask = { ...s, goal: "", news: ["you asked: a --json flag", "top started"] };
   assert.equal(headline(ask), "a --json flag");
-  assert.equal(headline({ ...ask, news: ["top started"], asked: "a --json flag" }), "a --json flag", "scrolled out of the news, kept by the session");
-  assert.equal(headline({ ...ask, asked: "an older ask" }), "a --json flag", "a new ask in the news is the one");
-  assert.equal(headline({ ...ask, goal: "the goal", asked: "an ask" }), "the goal");
+  assert.equal(headline({ ...ask, news: ["top started"], kept: "a --json flag" }), "a --json flag", "scrolled out of the news, kept by the session");
+  assert.equal(headline({ ...ask, kept: "an older ask" }), "a --json flag", "a new ask in the news is the one");
+  assert.equal(headline({ ...ask, goal: "the goal", kept: "an ask" }), "the goal");
+});
+
+test("the title is the ask whole: the news cuts it at 60 characters, the snapshot's `asked` does not", () => {
+  const whole = "wordkit grows three things: a --top N option, a reading time in minutes, and a --json flag";
+  const s = parseState(JSON.stringify({ schema: 1, asked: whole, news: ["you asked: wordkit grows three things: a --top N option, a reading tim…", "top started"] }));
+  assert.equal(s.asked, whole);
+  assert.equal(headline(s), whole);
+  assert.equal(headline({ ...s, asked: "" }), "wordkit grows three things: a --top N option, a reading tim…", "an older CLI says no `asked`: the news line, cut");
+  assert.equal(headline({ ...s, asked: "an ask after it" }), "wordkit grows three things: a --top N option, a reading tim…", "another ask's words never title this one");
+  assert.equal(headline({ ...s, news: ["you asked: a --json flag"], asked: "a --json flag" }), "a --json flag", "short: the same words");
+  assert.equal(headline({ ...s, news: [] }), "", "out of the news, and nothing kept: the session's, not the snapshot's, keeps it (session.ts kept)");
+  assert.equal(parseState(JSON.stringify({ schema: 1 })).asked, "", "an older snapshot: none");
 });

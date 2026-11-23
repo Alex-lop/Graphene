@@ -190,7 +190,7 @@ export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "h
     const check = commandChip((t.check ?? "").trim()), first = check.split(/\s+/).find((w) => !/^\w+=/.test(w)) ?? "";
     const can = !first || commands.some((c) => check.startsWith(c.replace(/:?\*$/, "").trim())); // `npm test *`, `npm run test:*`
     return { commands, words: commands.length ? "" : "no shell command", outside: OUTSIDE,
-             note: can ? "" : `It cannot run ${first}, so it never runs its own check. What it may run is set by the executor's \`--allowedTools\`.` };
+             note: can ? "" : `It cannot run ${first}: Graphene runs its check for it, after the work. What it may run is set by the executor's \`--allowedTools\`.` };
   }
   const held = t.held.state === "refused" || t.held.state === "caught";
   return { commands: [], words: held ? "any command: what a command writes is still held to its files" : "any command", note: "", outside: OUTSIDE_OWN };
@@ -255,7 +255,8 @@ export function whatFor(t: Pick<TaskX, "title" | "full">): string {
 /** Activity's line for a task open again after an agent was on it (sent back, tried again, or stopped): what the
  *  snapshot keeps of that try, its agent and its check's last verdict, which the card does not wear, as it no longer
  *  stands (marks.ts `standing`). Work that passed is open again only by a person's send back, whose note the next
- *  agent is given (plan.reopen); its moves, its files and that note are not in the snapshot. Nothing for any other task. */
+ *  agent is given (plan.reopen): Activity's Note row says it (state.py `note`); its moves and its files are not in the
+ *  snapshot. Nothing for any other task. */
 export function earlier(t: Pick<TaskX, "state" | "agent" | "checked">): string {
   if (!t.agent || (t.state !== "ready" && t.state !== "waiting")) return "";
   if (t.checked.after === "passed") return `agent ${t.agent}'s work passed its check and was sent back: your note goes to the agent that takes it next`;
