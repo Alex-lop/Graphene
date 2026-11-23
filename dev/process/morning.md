@@ -5,11 +5,14 @@ reviews and the critics' findings are summed up in the pull request.*
 
 ## Your 15 minutes
 
-1. **It is already in your Cursor.** The night's build was installed there at about 03:17 and again at 05:00;
-   to load the second I disabled and re-enabled the extension, which leaves Home's side bar blank until the window
-   reloads. So reload once (palette: **Developer: Reload Window**), then click Graphene in the activity bar: the
-   graph opens in the editor, whole. Your real plan (the fa26 group repo) is
-   six whole cards in two sub-goals, the goal readable, a **1 question** chip, and **Start** the one filled button.
+1. **It is already in your Cursor.** The last build was installed there at 08:27, over the 05:00 one (the
+   earlier install was loaded by disabling and re-enabling the extension, which leaves Home's side bar blank until
+   the window reloads). So reload the window once (palette: **Developer: Reload Window**), then click Graphene in
+   the activity bar: the graph opens in the editor, whole. Your real plan (the fa26 group repo) is six whole cards
+   in two sub-goals, the goal readable, the question's chip in the header saying what Start picks, and **Start** the
+   one filled button. Home also says your `graphene` (0.9.0, installed from `~/Desktop/graphene-main`) is older,
+   with Upgrade Graphene: that is true until 0.10.0 is out. Your CLI was not touched; after the merge,
+   `git -C ~/Desktop/graphene-main pull && uv tool install --force ~/Desktop/graphene-main` makes it 0.10.0.
 2. **Click a card.** Its pane is an inspector: the state and who in its head, May change and Done when first, the
    one act at its foot, the rest under **…**. Nothing was started, accepted or answered on your plan tonight.
 3. **Home** (the side bar) has no box to type in: a card for the plan, what needs you, the suggested plan with
@@ -36,11 +39,16 @@ reviews and the critics' findings are summed up in the pull request.*
   header with one main act (Start a suggested plan, Run, Stop), whole cards with two-line titles and their files
   and check inside, state on a card's mark and colour only where it wants you, one bracket per sub-goal into the
   goal, square quiet edges, the question on the canvas, the pane as an inspector, Home with one filled act a card.
+  Rounds four and five, after critics clicked through real VS Code and Cursor: depth (cards off their sub-goal, the
+  sub-goal off the canvas), marks that read at 1x, the editor's own icons, white button words where Cursor's are
+  dark, Approve on Cursor's diff editor, the chips moved into the header so they never cover a card, a tall tab laid
+  downward as whole cards, Starting… until a run is seen, the ask kept as the title, Send back that keeps its note.
 - **README** 159 → 97 lines, the extension's 185 → 104, one word a thing on every screen.
 
 ## Decisions for your veto
 
-In the PR body, each with what undoes it.
+In the PR body, each with what undoes it. The PR has 64 commits: 50 after the first fold, then 7 and 6 for the two
+rounds after it (pushed branches are not rewritten); every one passes the extension's checks on its own.
 
 ## Not verified
 
