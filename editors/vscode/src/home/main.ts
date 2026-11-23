@@ -29,6 +29,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: stri
 
 function button(b: Btn, parent: HTMLElement): HTMLButtonElement {
   const btn = el("button", b.main ? "" : "quiet", b.label, parent);
+  if (b.note) el("span", "note", b.note, btn);
   if (b.title) btn.title = b.title;
   btn.disabled = b.off === true;
   btn.dataset.mark = `${b.act}|${b.id ?? ""}|${b.arg ?? ""}`; // the same button after a redraw, for the focus
@@ -68,7 +69,7 @@ const intro = el("p", "intro", undefined, head);
 const notCursor = el("p", "intro aside", NOT_CURSOR, head); // in Cursor, its Agent's chat is the one at hand
 const pipe = el("div", "pipe", undefined, head); // Plan, Run, Review: where the work is
 pipe.setAttribute("role", "list");
-const toGraph = el("button", "open", undefined, head);
+const toGraph = el("button", "open quiet", undefined, head); // the graph's tab is most often open already: a way back, not the next act
 mark(toGraph);
 toGraph.append("Open the graph");
 toGraph.title = "the whole plan in a tab of the editor: every task, what it waits on, and what proves it";
@@ -173,6 +174,12 @@ function drawSection(s: Section): HTMLElement {
 function drawCard(c: Card): HTMLElement {
   const card = el("article", `card tone-${c.tone}`);
   el("div", "c-tag", c.tag, card); // what it is, in its state's colour, above what it is called
+  // Remove is a small × in the corner, never the biggest thing on a card about work to come (its host asks first)
+  for (const b of c.buttons.filter((x) => x.act === "drop")) {
+    const x = button({ ...b, label: "×", title: b.title ? `${b.label}: ${b.title}` : b.label }, card);
+    x.classList.add("remove");
+    x.setAttribute("aria-label", b.label);
+  }
   el("div", "c-title", c.title, card);
   if (c.lines.length) {
     const dl = el("dl", "c-lines", undefined, card);
@@ -182,9 +189,10 @@ function drawCard(c: Card): HTMLElement {
       el("dd", l.mono ? "mono" : "", l.v, r);
     }
   }
-  if (c.buttons.length) {
-    const acts = el("div", "c-acts", undefined, card);
-    for (const b of c.buttons) button(b, acts);
+  const acts = c.buttons.filter((x) => x.act !== "drop");
+  if (acts.length) {
+    const row = el("div", c.tone === "question" ? "c-acts choices" : "c-acts", undefined, card); // a question's options: a list to pick from
+    for (const b of acts) button(b, row);
   }
   return card;
 }
