@@ -727,9 +727,10 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
 }
 
 /** A chip on a card, in mono, cut to the card: the files the step may change (or has written, or wrote outside
- *  them), its command. A path too long for it says its file (`…/RecipeLookupServiceImpl.java +1`), then its file's
- *  name (`CookServiceImpl +2`) before it is cut. ``bad`` ends it in the came-back red (a refused write) and stays
- *  whole: the words give way to it, their last one (`files`) before a number is cut. */
+ *  them), its command. A path too long for it says its file (`CookServiceImpl.java +2`), then its file's name
+ *  (`RecipeLookupServiceImpl +1`) before it is cut; never `…/` before it, one more spelling in a band for a folder
+ *  it does not name. ``bad`` ends it in the came-back red (a refused write) and stays whole: the words give way to
+ *  it, their last one (`files`) before a number is cut. */
 function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "") {
   const g = el("g", { class: `pill ${kind}` });
   const rect = g.appendChild(el("rect", { x, y, width: max, height: 18, rx: 5 }));
@@ -741,8 +742,8 @@ function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: n
   const room = max - 26 - (bad || more ? text.getComputedTextLength() || (bad + more).length * 7.2 : 0);
   words = words.slice(0, words.length - more.length);
   text.textContent = words;
-  const tail = words.split(" ").map(tailPath).join(" "), file = tail.replace(/(^|\s)…\//g, "$1"); // a path says its file, then its file alone, then its name
-  for (const shorter of [tail, file, file.replace(/\.\w+(?=\s|$)/g, "")]) if (text.getComputedTextLength() > room) text.textContent = words = shorter;
+  const file = words.split(" ").map(tailPath).join(" ").replace(/(^|\s)…\//g, "$1"); // a path says its file, then its name
+  for (const shorter of [file, file.replace(/\.\w+(?=\s|$)/g, "")]) if (text.getComputedTextLength() > room) text.textContent = words = shorter;
   if (bad && text.getComputedTextLength() > room) text.textContent = words.replace(/ \S+$/, "");
   fitText(text, room);
   if (more) text.appendChild(document.createTextNode(more));
