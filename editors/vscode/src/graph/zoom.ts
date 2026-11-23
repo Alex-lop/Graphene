@@ -72,11 +72,18 @@ export function fitView(canvas: Size, drawing: Size, foot = 0, most = 1, least =
 /** How a plan opens in its pane: as whole cards where they fit at a scale they read at (``keep``: the level on
  *  screen, which whole cards hold down to FULL_KEEP), else as rows, fitted and drawn no larger than their own size
  *  nor smaller than ROWS_FROM (``whole`` false: the plan is larger than its pane). ``rows`` (the plan's size laid
- *  out as rows) is asked for only when it is needed. */
-export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact"): Zoom & { level: Level; whole: boolean } {
-  const whole = fitView(canvas, full, foot);
-  if (whole.k >= (keep === "full" ? FULL_KEEP : FULL_FROM)) return { level: "full", ...whole };
-  return { level: "compact", ...fitView(canvas, rows(), foot, ROWS_MOST, ROWS_FROM) };
+ *  out as rows) is asked for only when it is needed. ``cut``: how much of a level's drawing is empty margin round
+ *  the plan, which a fit just too tight for that level may cut, evenly, so as to keep it (a laptop's tab opens the
+ *  running plan as whole cards, not as rows for want of 10 px of nothing); a looser fit keeps all of it. */
+export function fitPlan(canvas: Size, full: Size, rows: () => Size, foot = 0, keep: Level = "compact",
+                        cut: (l: Level) => Size = () => ({ w: 0, h: 0 })): Zoom & { level: Level; whole: boolean } {
+  const fits = (l: Level, size: Size, least: number) => {
+    const z = fitView(canvas, size, foot, l === "full" ? 1 : ROWS_MOST, least), c = cut(l);
+    if (z.whole || !fitView(canvas, { w: size.w - c.w, h: size.h - c.h }, foot, 1, least).whole) return z;
+    return { k: least, tx: (canvas.w - size.w * least) / 2, ty: (Math.max(1, canvas.h - foot) - size.h * least) / 2, whole: true };
+  };
+  const whole = fits("full", full, keep === "full" ? FULL_KEEP : FULL_FROM);
+  return whole.whole ? { level: "full", ...whole } : { level: "compact", ...fits("compact", rows(), ROWS_FROM) };
 }
 
 /** A fit larger than its canvas, moved just enough to bring a box of the drawing (the card that matters) ``margin``

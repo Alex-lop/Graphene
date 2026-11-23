@@ -495,12 +495,14 @@ function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zo
   const full = place(s, down, "full");
   let rows: Placed | undefined;
   const keep = fitted && !$("details").hidden ? level : "compact"; // a pane open beside whole cards keeps them whole a little further
-  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep);
+  // the drawing's empty margin round the plan and its bands, which a fit just too tight may cut (zoom.ts)
+  const cut = (l: Level): Size => ({ w: 2 * (full.awayW ? 8 : DIMS[l].padX - DIMS[l].inset), h: 2 * (DIMS[l].padY - DIMS[l].gapY / 2) });
+  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep, cut);
   if (fit) {
-    const at = fit.level === "compact" && rows ? rows : full, { k, tx, ty } = fit;
+    const at = fit.level === "compact" && rows ? rows : full, z = { k: fit.k, tx: fit.tx, ty: fit.ty };
     const id = fit.whole ? undefined : [selected, ...wantYou(), ...s.tasks.filter((t) => t.state === "running").map((t) => t.id)].find((x) => x && at.lay.boxes[x]);
     const p = id ? at.lay.boxes[id] : undefined;
-    return { level: fit.level, at, zoom: p ? onto({ k, tx, ty }, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : { k, tx, ty } };
+    return { level: fit.level, at, zoom: p ? onto(z, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : z };
   }
   // a step that asks you is the thing to see: a graph wider than its canvas opens on that step, past the line,
   // and not on its left edge; a short one sits in the middle

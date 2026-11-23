@@ -71,6 +71,20 @@ test("a plan opens as whole cards where they fit at 11/12 or more, else as rows,
   }
 });
 
+test("a fit just too tight for whole cards cuts the drawing's empty margin, evenly, to keep them; a looser one keeps it", () => {
+  const rows = () => ({ w: 1100, h: 400 }), cut = () => ({ w: 28, h: 16 });
+  // the running plan in a 1280 by 800 tab: 1228 by 721 with its margin, short of 11/12 by 11 px of height
+  const tight = fitPlan({ w: 1280, h: 697 }, { w: 1228, h: 721 }, rows, 46, "compact", cut);
+  assert.deepEqual([tight.level, tight.k, tight.whole], ["full", FULL_FROM, true]);
+  assert.ok(Math.abs(tight.ty - (651 - 721 * FULL_FROM) / 2) < 1e-9 && tight.ty < 0 && tight.ty > -8, "its margin cut evenly, under its 8 px");
+  assert.ok(tight.tx > 0, "in the middle across, where it has room");
+  // without the margin to cut, rows; with room, all of it, as before
+  assert.equal(fitPlan({ w: 1280, h: 697 }, { w: 1228, h: 721 }, rows, 46).level, "compact");
+  assert.deepEqual(fitPlan({ w: 1440, h: 800 }, { w: 1228, h: 721 }, rows, 46, "compact", cut), fitPlan({ w: 1440, h: 800 }, { w: 1228, h: 721 }, rows, 46));
+  // a plan whole cards do not hold even without their margin is rows, its margin kept
+  assert.equal(fitPlan({ w: 1000, h: 697 }, { w: 1228, h: 721 }, rows, 46, "compact", cut).level, "compact");
+});
+
 test("a plan larger than its pane opens moved just enough to show the card that matters, its start kept where it can be", () => {
   const canvas = { w: 680, h: 500 }, drawing = { w: 1744, h: 784 }, k = ROWS_FROM, fit = { k, tx: 0, ty: 0 };
   // in view already: nothing moves, the plan's start and its sub-goals' titles stay on screen
