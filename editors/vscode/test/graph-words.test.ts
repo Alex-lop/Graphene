@@ -48,6 +48,8 @@ test("the news a screen reader hears is in the screen's words, and not what a ch
   assert.equal(newsLine(plan, false), "the planner suggested 4 tasks under 2 sub-goals", "the CLI's proposed is suggested; its question is its chip's");
   assert.equal(newsLine({ ...plan, news: ["proposed: Input loop, quit and exit"] }, false), "suggested: Input loop, quit and exit");
   assert.equal(newsLine(fx("big"), false), "DELETE /orders/:id cancels needs help: it wrote outside its files");
+  assert.equal(newsLine({ ...plan, news: ["proposed: List proposed changes"] }, false), "suggested: List proposed changes", "a title keeps its own words");
+  assert.equal(newsLine({ ...plan, news: ["Retry when the API came back came back: it failed"] }, false), "Retry when the API came back needs help: it failed");
   assert.equal(newsLine(auto, true), "round 2 checked the goal: red", "auto's wait is its line's in the header, said once");
   assert.equal(newsLine(auto, false), "auto waits: the budget has $0.63 left and a question is open");
 });

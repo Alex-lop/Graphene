@@ -534,5 +534,7 @@ export function newsLine(s: Pick<StateX, "news" | "questions">, autoShown: boole
   const said = (line: string) => (s.questions.length > 0 && /^asks: |\bquestions? waits? for you\b/.test(line)) || (autoShown && /^auto\b/.test(line));
   return newsWords([...s.news].reverse().find((l) => !said(l)) ?? "");
 }
-/** A news line in the screen's words (the status bar's hover reads them too). */
-export const newsWords = (line: string): string => screenWords(line).replace(/\bproposed\b/g, SAY.proposed).replace(/\bcame back\b/g, SAY["came back"]);
+/** A news line in the screen's words (the status bar's hover reads them too): only the narrator's own verbs
+ *  (`proposed: <title>`, `proposed goal: …`, `<title> came back: why`), so a title that says proposed keeps it. */
+export const newsWords = (line: string): string =>
+  screenWords(line).replace(/^(the planner )?proposed(?=:| goal:| \d)/, `$1${SAY.proposed}`).replace(/ came back(?=: )/, ` ${SAY["came back"]}`);
