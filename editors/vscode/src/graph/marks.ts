@@ -210,7 +210,7 @@ export function tailPath(p: string): string {
  *  its end if it must. What it runs on is its last path or dotted name (else its last word that is no flag),
  *  quotes off: a path's file, a dotted test's own name. Several `--tests` of one class are that class and how many
  *  (`GeneralCommandTests · 3 tests`, not the last test's name as if it were the check); short of room its first
- *  word goes, then the count. Short strings untouched; never longer than ``n``. */
+ *  word goes, then the count is `×3`, then it goes. Short strings untouched; never longer than ``n``. */
 export function checkCut(s: string, n: number): string {
   if (s.length <= n) return s;
   if (!(n >= 2)) return n >= 1 ? "…" : "";
@@ -222,7 +222,8 @@ export function checkCut(s: string, n: number): string {
   const tests = [...s.matchAll(/--tests[=\s]+['"]?([^'"\s]+)/g)].map((m) => m[1]!);
   const one = tests.length > 1 && tests.every((w) => classOf(w) && classOf(w) === classOf(tests[0]!));
   const on = one ? classOf(last) : own(last), more = one ? ` · ${tests.length} tests` : "";
-  const said = [...(words.length > 1 ? [`${words[0]} … ${on}${more}`] : []), `${on}${more}`, ...(words.length > 1 && more ? [`${words[0]} … ${on}`] : []), on];
+  const said = [...(words.length > 1 ? [`${words[0]} … ${on}${more}`] : []), `${on}${more}`, ...(more ? [`${on} ×${tests.length}`] : []),
+                ...(words.length > 1 && more ? [`${words[0]} … ${on}`] : []), on];
   return said.find((x) => x.length <= n) ?? cutWhole(on, Math.floor(n));
 }
 
@@ -260,9 +261,8 @@ export function attemptsMark(t: TaskX, limit: number | null | undefined): string
   return n < 2 || t.forks.length || !t.check || t.command || !["proposed", "ready", "waiting"].includes(t.state) ? "" : `${n} agents at once`;
 }
 
-/** What `3 agents at once` means, for its hover and the pane's stepper. */
-export const attemptsWhy = (n: number): string =>
-  `${n} agents work on it at once, each in its own copy of the repository; its check keeps one. About ${n}× the cost of one.`;
+/** What `3 agents at once` means, for its hover: the pane's stepper says it in these words. */
+export const attemptsWhy = (n: number): string => `${n} agents work on it at once, each in its own copy; its check keeps one. About ${n}× the cost.`;
 
 // ---- a card's status line ----
 
@@ -276,13 +276,21 @@ export function covers(t: Pick<TaskX, "title" | "full">): string {
   return rest && rest[0]!.toUpperCase() + rest.slice(1);
 }
 
+/** What a step covers in ``n`` characters: its whole items while they fit (`Collections, JSON import…`, `Shopping
+ *  list…`), never a clause cut at its `and…`; nothing when not even its first fits. */
+function coversIn(c: string, n: number): string {
+  if (c.length <= n) return c;
+  const at = Math.max(0, ...[...c.matchAll(/, | and /g)].map((m) => m.index).filter((i) => i < n));
+  return at ? `${c.slice(0, at)}…` : "";
+}
+
 /** A card's status line in ``n`` characters, its state first (words.ts `sub`), with what the card's other parts do
- *  not say: a suggested step what it covers (its corner's ring says suggested); a working one `working` and its
- *  agent (each of its attempts is a row naming its model); one that wears the filled diamond for a ``question`` on
- *  it says it asks you, and what. */
+ *  not say: a suggested step what it covers, else `suggested` (its corner's ring says it too); a working one
+ *  `working` and its agent (each of its attempts is a row naming its model); a ``question`` on a step that wears the
+ *  filled diamond for it, or on a suggestion, says it asks you, and what. */
 export function cardLine(t: TaskX, n: number, question = ""): string {
-  if (question && stateMark(t) === "you" && !["review", "yours"].includes(t.state)) return cutWhole(`${ASKS}: ${question}`, n);
-  if (t.state === "proposed") return cutWhole(covers(t) || SAY.proposed, n);
+  if (question && (t.state === "proposed" || stateMark(t) === "you") && !["review", "yours"].includes(t.state)) return cutWhole(`${ASKS}: ${question}`, n);
+  if (t.state === "proposed") return cutWhole(coversIn(covers(t), n) || SAY.proposed, n);
   if (t.state !== "running") return sub(t, n);
   const parts = sub({ ...t, forks: [] }, 1000).split(" · "), agent = parts.find((p) => p.startsWith("agent ")) ?? "";
   return fitWords([SAY.running, agent, ...parts.filter((p) => p !== SAY.running && p !== agent)], n);
