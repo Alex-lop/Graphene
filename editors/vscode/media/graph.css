@@ -144,6 +144,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .q-on { color: var(--dim); font-size: 11.5px; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-text { line-height: 1.45; margin-bottom: 10px; }
 .q-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.q-opts button { text-align: left; } /* a long answer wraps as a sentence does */
 .q-if { color: var(--dim); font-size: 11.5px; margin-top: 8px; }
 #notice.missing, #notice.error { color: var(--came-back); }
 /* beside the canvas the pane's body scrolls on its own: its head and its acts stay in view, however long a

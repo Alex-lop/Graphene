@@ -346,7 +346,7 @@ function chips(s: StateX) {
   card.hidden = !asking || !q;
   if (card.hidden || !q || card.dataset.key === JSON.stringify(q)) return;
   card.dataset.key = JSON.stringify(q);
-  const on = q.about ? (s.tasks.find((t) => t.id === q.about)?.title ?? goalTitle(s, q.about)) : "";
+  const on = q.about ? (s.tasks.find((t) => t.id === q.about)?.title ?? goalTitle(s, q.about)).replace(/^\?\s+/, "") : ""; // a sub-goal's `? ` says it asks: the card says so
   card.replaceChildren();
   div("q-on", on ? `Question on “${on}”` : "Question on the plan", card);
   div("q-text", q.text, card);
