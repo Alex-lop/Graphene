@@ -5,6 +5,7 @@ import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { banner, checkHome, countsLine, home, PROVES_NOTHING, type Card, type Home } from "../src/home/cards.ts";
 import { headline, parseState, type State } from "../src/state.ts";
+import { HOW, WHAT } from "../src/home/who.ts";
 
 const fixture = (name: string): State => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
 const section = (h: Home, key: string) => h.sections.find((s) => s.key === key);
@@ -16,7 +17,8 @@ test("a suggested plan is read before it starts: each task says what for, what i
   assert.deepEqual(h.sections.map((s) => s.key), ["needs", "suggested"]); // the question first: it changes the plan
   const s = section(h, "suggested")!;
   assert.equal(s.title, "Suggested plan · 4 tasks");
-  assert.deepEqual(s.buttons.map((b) => [b.label, b.act, Boolean(b.main)]), [["Start", "startAll", true], ["Discard all", "discardAll", false]]);
+  // outlined, as Up next's Run: the graph's header, open beside Home on a suggested plan, has the one filled Start
+  assert.deepEqual(s.buttons.map((b) => [b.label, b.act, Boolean(b.main)]), [["Start", "startAll", false], ["Discard all", "discardAll", false]]);
   const hello = card(h, "p:hello");
   assert.equal(hello.tag, "", "its section says suggested: the card does not say it again");
   assert.equal(hello.task, "hello", "its title opens it in the graph's pane, where its files and check are whole");
@@ -127,7 +129,8 @@ test("who is working, what is up next, and what is done, each in its own section
   assert.deepEqual(section(h, "next")!.buttons.map((b) => [b.act, b.title]), [["run", "hand these to the run that is going"]]);
   const idle = section(home({ ...fixture("running"), run: { going: false, pid: null } }), "next")!;
   assert.deepEqual(idle.buttons.map((b) => [b.act, b.title]), [["run", "start an agent on every task that is ready"]]);
-  assert.deepEqual([section(h, "next")!.buttons[0]!.main, idle.buttons[0]!.main], [false, true], "filled only when it is the next act");
+  // never filled: the graph's header, open beside Home, has the one filled Run
+  assert.deepEqual([section(h, "next")!.buttons[0]!.main, idle.buttons[0]!.main], [undefined, undefined]);
 });
 
 test("the header: the goal, else what was last asked; the counts in plain words; a practice run says so", () => {
@@ -135,10 +138,10 @@ test("the header: the goal, else what was last asked; the counts in plain words;
   assert.equal(headline(s), "make the app friendlier");
   assert.equal(headline({ ...s, goal: "", news: ["you asked: a --json flag", "proposed: x"] }), "a --json flag");
   assert.equal(headline({ ...s, goal: "", news: [] }), "");
-  assert.equal(countsLine(s), "2 of 7 done · $0.42 at list price"); // who is working and what needs you: the stages and Needs you say it
+  assert.equal(countsLine(s), "2 of 7 done · $0.42 so far, at list price"); // who is working and what needs you: the stages and Needs you say it
   // on a subscription nothing is billed: never "spent"; nor "planned for", as the store's bill holds a dropped
-  // plan's and an earlier run's too; none, no cost
-  assert.equal(countsLine({ ...fixture("proposals"), spent: 1.336791 }), "0 of 4 done · $1.34 at list price");
+  // plan's and an earlier run's too; "so far", so on a plan nobody started it is what was, not a price for Start; none, no cost
+  assert.equal(countsLine({ ...fixture("proposals"), spent: 1.336791 }), "0 of 4 done · $1.34 so far, at list price");
   assert.equal(countsLine(fixture("proposals")), "0 of 4 done");
   assert.equal(banner(s), "");
   assert.equal(banner({ ...s, stand_in: true }), "Practice run: a scripted stand-in answers for the AI, so nothing is spent");
@@ -201,6 +204,8 @@ test("the palette shows seven commands; the rest, and the advanced views, only w
   assert.equal(views[0].id, "graphene.home", "the side bar is Home: the graph is a tab of the editor, opened with it");
   for (const v of views.slice(1)) assert.equal(v.when, "config.graphene.advanced", v.id);
   assert.equal(c.configuration.properties["graphene.advanced"].default, false);
+  assert.equal(c.walkthroughs[0].description, WHAT, "one sentence for what Graphene is, as Set Up says it");
+  assert.equal(pkg.description, `${WHAT} ${HOW}`, "the Extensions view says it as Set Up does");
 });
 
 test("Home shows the pipeline's three stages and the one switch, on until `auto` is on", () => {

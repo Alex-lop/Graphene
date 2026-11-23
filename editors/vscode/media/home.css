@@ -6,6 +6,9 @@
   --warn: var(--vscode-editorWarning-foreground, #cca700);
   --bad: var(--vscode-errorForeground, #f48771);
 }
+/* Cursor Dark Midnight's description colour is 70% of a foreground already dim: under 3:1, so halfway back to it.
+   Its button is pale, so a switch's knob is the button's own dark text there, not white (2:1). */
+:root:has(> body[data-vscode-theme-id*="Midnight"]) { --dim: color-mix(in srgb, var(--vscode-descriptionForeground) 50%, var(--fg)); --knob: var(--accent-ink); }
 body {
   margin: 0; padding: 10px 12px 18px; color: var(--fg); background: var(--bg);
   font-family: var(--font); font-size: var(--vscode-font-size, 13px); line-height: 1.4;
@@ -123,6 +126,7 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
   .c-line.run dd.mono { padding: 0; text-indent: 0; }
 }
 .c-line.warn dd { color: var(--warn); }
+body.vscode-light .c-line.warn dd { color: color-mix(in srgb, var(--warn) 55%, var(--fg)); } /* a warning amber is ~2-3:1 on a light card, as a tag's */
 .mono { font-family: var(--mono); font-size: 0.95em; }
 .c-acts, .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 /* acts at their own width, left: a card ends in its words, not in bars */
@@ -145,22 +149,29 @@ button .note { color: var(--dim); font-size: 11px; }
 /* settings: what any agent's plan follows too, at the foot */
 .prefs { margin-top: 24px; padding-top: 12px; border-top: 1px solid var(--divider); }
 .prefs-head { margin-bottom: 8px; }
-button.switch { display: flex; align-items: center; gap: 8px; padding: 2px 0; background: none; border: none; color: var(--fg); cursor: pointer; }
-button.switch:hover { background: none; }
-/* the knob is white, never the button's text colour (near-black in Cursor) */
-.switch i { width: 28px; height: 16px; border-radius: 99px; background: var(--line-3); position: relative; flex: none; transition: background 0.2s; }
-.switch i::after {
-  content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
-  background: var(--knob); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25); transition: left 0.2s;
+/* every setting on Home is a switch, one control for one kind of thing; its words wrap beside the knob */
+button.switch {
+  display: flex; align-items: flex-start; gap: 8px; padding: 2px 0; background: none; border: none; color: var(--fg);
+  text-align: left; cursor: pointer;
 }
-.switch[aria-checked="true"] i { background: var(--accent); }
-.switch[aria-checked="true"] i::after { left: 14px; }
-body.vscode-high-contrast .switch i, body.vscode-high-contrast-light .switch i { outline: 1px solid var(--vscode-contrastBorder, #6fc3df); }
+button.switch:hover { background: none; }
+.prefs .switch.approve { margin-bottom: 10px; }
+.screen .switch { margin: 10px 0 4px; }
+/* off is an outline and a knob in the dim text colour, 3:1 or more on every theme (a grey fill was 1.5:1 in
+   Light); on is filled, its knob white, never the button's text colour (near-black in Cursor) */
+.switch i {
+  width: 28px; height: 16px; margin-top: 0.5px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--dim);
+  position: relative; flex: none; transition: background 0.2s;
+}
+.switch i::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 10px; height: 10px; border-radius: 50%;
+  background: var(--dim); transition: left 0.2s;
+}
+.switch[aria-checked="true"] i { background: var(--accent); box-shadow: none; }
+.switch[aria-checked="true"] i::after { left: 15px; background: var(--knob); }
+/* high contrast: the button colour is black there, so on is filled with the focus colour */
+body.vscode-high-contrast .switch[aria-checked="true"] i, body.vscode-high-contrast-light .switch[aria-checked="true"] i { background: var(--accent-line); }
 .pref-note { margin: 1px 0 10px 36px; color: var(--dim); font-size: 12px; }
-.tick { display: flex; align-items: center; gap: 6px; margin: 10px 0 4px; cursor: pointer; }
-.prefs .tick { align-items: flex-start; gap: 8px; margin: 0 0 10px; width: fit-content; }
-.prefs .tick.exact { margin: 0; }
-.prefs .tick input { flex: none; width: 14px; margin: 2px 7px 0; }
 .foot { margin-top: 14px; }
 /* a link, not a box: the foot's, and a card's acts when none leads (they wrap as a line of text) */
 .foot button.quiet, .c-acts.links button { background: none; border-color: transparent; padding: 2px 0; color: var(--vscode-textLink-foreground, var(--fg)); }
@@ -191,5 +202,5 @@ button.quiet { color: var(--fg); background: transparent; border-color: var(--li
 button.quiet:hover { background: var(--fill-2); }
 body.vscode-high-contrast button:hover, body.vscode-high-contrast-light button:hover { outline: 1px dashed var(--focus); outline-offset: -1px; }
 button:disabled { opacity: 0.5; cursor: default; }
-button:focus-visible, input:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
+button:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
 @media (prefers-reduced-motion: reduce) { .switch i, .switch i::after { transition: none; } .busy::before { animation: none; } }

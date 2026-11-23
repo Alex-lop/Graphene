@@ -61,7 +61,7 @@ try {
   await home.locator("button.pick", { hasText: "Claude Code" }).click();
   await until(home, () => !document.querySelector("section.work").hidden && document.querySelector(".head.empty button.open")
     && document.querySelector(".said")?.textContent.includes("waits for your approval"), null, "Set Up done, review on"); // init, then config set
-  if (!(await home.locator(".tick.approve input").isChecked())) throw new Error("Set Up asked for approval, yet Settings show it unticked");
+  if ((await home.locator(".prefs button.switch.approve").getAttribute("aria-checked")) !== "true") throw new Error("Set Up asked for approval, yet Settings show it off");
   if (await home.locator("textarea").count()) throw new Error("Home offers a box to type an ask in: a plan comes from the agent's chat");
   const set = state(dir);
   if (set.envelope.review !== "every") throw new Error(`Set Up left review ${set.envelope.review}, not every`);
@@ -80,7 +80,7 @@ try {
   if (suggested < 1) throw new Error("no suggested task");
   const stage = () => home.evaluate(() => document.querySelector(".pipe .stage.now")?.textContent ?? "");
   if (!(await stage()).includes("Plan")) throw new Error(`a suggested plan, yet the stage is “${await stage()}”, not Plan`);
-  if ((await home.locator("button.switch").getAttribute("aria-checked")) !== "true") throw new Error("Stop after the plan is not on by default");
+  if ((await home.locator("button.switch.stop").getAttribute("aria-checked")) !== "true") throw new Error("Stop after the plan is not on by default");
   say(`an ask from outside: ${suggested} suggested tasks, each with what it may change and what proves it; the stage is Plan, and it stopped there`);
   await shot("suggested");
 
@@ -129,14 +129,14 @@ try {
   if (by[title] !== "done") throw new Error(`“${title}” is ${by[title]}, not done`);
   if (!["ready", "waiting"].includes(by[back])) throw new Error(`“${back}” is ${by[back]}, not back on the plan`);
 
-  // Exact, off until its box is ticked: three settings that exist, and Home's Start waits for your answers
+  // Exact, off until its switch is turned on: three settings that exist, and Home's Start waits for your answers
   const env = L.cleanEnv(L.safeEnv(standin.url));
   const settings = () => execFileSync(graphene, ["config"], { cwd: dir, env }).toString().split("\n");
-  const exact = home.locator(".tick.exact input");
-  if (await exact.isChecked()) throw new Error("Exact is on before anyone turned it on");
+  const exact = home.locator("button.switch.exact");
+  if ((await exact.getAttribute("aria-checked")) !== "false") throw new Error("Exact is on before anyone turned it on");
   execFileSync(graphene, ["config", "set", "review", "off"], { cwd: dir, env, stdio: "pipe" }); // so that off has something to put back
   await page.waitForTimeout(1000); // the stream brings Home the setting
-  await exact.check();
+  await exact.click();
   await until(home, () => document.querySelector(".said")?.textContent.startsWith("Start waits for every answer now"), null, "Exact said on");
   for (const line of ["board: on", "review: every", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact on left no “${line}”`);
   execFileSync(graphene, ["plan", "propose", "-"], { cwd: dir, input: ASKS, stdio: ["pipe", "pipe", "pipe"], // a plan that asks something, as an agent proposes one
@@ -149,7 +149,7 @@ try {
   await home.locator("article.tone-question button", { hasText: "ten" }).click(); // the default's button confirms it
   await until(home, () => [...document.querySelectorAll(".sec-suggested .sec-head button")].some((x) => x.textContent === "Start" && !x.disabled), null,
               "Start, once the question is answered");
-  await exact.uncheck();
+  await exact.click();
   await until(home, () => document.querySelector(".said")?.textContent.startsWith("Start no longer waits"), null, "Exact said off");
   for (const line of ["board: auto", "review: off", "auto: off"]) if (!settings().includes(line)) throw new Error(`Exact off left no “${line}”`);
   say("the default's button confirmed it and Start came back; Exact off put the board and review back as they were");
@@ -162,9 +162,9 @@ try {
   await L.openSidebar(session.page);
   await L.setSidebarWidth(session.page, 400);
   home = await L.homeFrame(session.page);
-  const checked = (want) => until(home, (w) => document.querySelector("button.switch")?.getAttribute("aria-checked") === w, want, `the switch ${want}`);
+  const checked = (want) => until(home, (w) => document.querySelector("button.switch.stop")?.getAttribute("aria-checked") === w, want, `the switch ${want}`);
   await checked("true");
-  await home.locator("button.switch").click();
+  await home.locator("button.switch.stop").click();
   await checked("false");
   await until(home, () => document.querySelector(".said")?.textContent.startsWith("Stop after the plan is off"), null, "the switch said off");
   if (state(fx.dir).envelope.auto !== "on") throw new Error("the switch went off, yet auto is not on");
@@ -177,7 +177,7 @@ try {
   if (await home.locator(".sec-suggested").count()) throw new Error("auto ran, yet a suggested plan still waits for Start");
   say("Stop after the plan off: auto drew the plan and ran it with no Start; 3 tasks landed, and the stage is Review, done");
   await shot("auto-landed");
-  await home.locator("button.switch").click();
+  await home.locator("button.switch.stop").click();
   await checked("true");
   if (state(fx.dir).envelope.auto !== "off") throw new Error("the switch went back on, yet auto is not off");
 

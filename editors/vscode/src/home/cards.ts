@@ -44,15 +44,16 @@ export function banner(s: State): string {
   return s.stand_in ? "Practice run: a scripted stand-in answers for the AI, so nothing is spent" : "";
 }
 
-/** `3 of 6 done · $0.42 at list price`: who is working and what needs you are said just under it, by the stages
- *  and the Needs you section. The cost is everything this repository's planners and agents have cost so far, a
- *  dropped plan's included, at list price as the CLI says it: on a subscription nothing is billed, so it is never
- *  "spent", nor "planned for" (the snapshot cannot tell the planner's share). A practice run spends nothing, so
- *  it shows no cost: the stand-in's is a list price. */
+/** `3 of 6 done · $0.42 so far, at list price`: who is working and what needs you are said just under it, by the
+ *  stages and the Needs you section. The cost is everything this repository's planners and agents have cost so
+ *  far, a dropped plan's included (COST_HOVER says so), at list price as the CLI says it: on a subscription nothing
+ *  is billed, so it is never "spent", nor "planned for" (the snapshot cannot tell the planner's share). "So far",
+ *  so on a plan nobody started it reads as what was, not a price for Start. A practice run spends nothing, so it
+ *  shows no cost: the stand-in's is a list price. */
 export function countsLine(s: State): string {
   const sb = s.scoreboard;
   const cost = s.stand_in ? "" : usd(s.spent);
-  return [sb.total ? `${sb.proven} of ${sb.total} done` : "", cost ? `${cost} at list price` : ""].filter(Boolean).join(" · ");
+  return [sb.total ? `${sb.proven} of ${sb.total} done` : "", cost ? `${cost} so far, at list price` : ""].filter(Boolean).join(" · ");
 }
 
 /** The open questions with no default: one stops the run either way, so Start waits for its answer as auto does. */
@@ -227,7 +228,8 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
       ? `Start waits for every answer: answer the ${plural(s.questions.length, "open question")} under Needs you first (a default's button confirms it).`
       : unanswered(s) ? `Answer the ${plural(unanswered(s), "question")} with no default under Needs you first: a question with no default stops the run.`
       : "Read what each task may change and what proves it done. A\u00a0card's\u00a0× leaves it out.", // held together: no "A" or "×" alone at a line's end
-    buttons: [{ label: "Start", act: "startAll", main: true, off: (exact && s.questions.length > 0) || unanswered(s) > 0,
+    // outlined, as Up next's Run: the graph's header, which opens beside Home on a suggested plan, has the filled Start
+    buttons: [{ label: "Start", act: "startAll", off: (exact && s.questions.length > 0) || unanswered(s) > 0,
                 title: exact && s.questions.length ? "it waits for every answer, as Settings say" : unanswered(s) ? "it waits for an answer: a question with no default is open"
                   : "accept these tasks and start an agent on each" },
               { label: "Discard all", act: "discardAll" }],
@@ -252,8 +254,8 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
     key: `n:${t.id}`, tone: t.state === "ready" ? "ready" as const : "waiting" as const, title: t.title, tag: SAY[t.state], task: t.id,
     lines: glance([...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name, true).filter((l) => l.k !== "After")]),
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "take this task out of the plan" }],
-  })), { buttons: [{ label: "Run", act: "run", main: !s.run.going, title: s.run.going ? "hand these to the run that is going"
-                                                                            : "start an agent on every task that is ready" }] });
+  })), { buttons: [{ label: "Run", act: "run", title: s.run.going ? "hand these to the run that is going" // outlined: the graph's header,
+                                                     : "start an agent on every task that is ready" }] }); // beside it, has the filled Run
 
   section("workflows", `Workflows · ${workflows.length}`, workflows.map((w) => ({
     key: `wf:${w.name}`, tone: "ready" as const, title: w.name, tag: "",

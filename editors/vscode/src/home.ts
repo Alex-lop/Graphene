@@ -246,7 +246,7 @@ export class HomeHost implements vscode.WebviewViewProvider {
 
   /** Approval, as Set Up asks it: each finished task waits for the person before it lands (`review: every`).
    *  Off while Exact holds it: only Exact goes (`board` back to auto), and Stop after the plan stays as Settings
-   *  show it, not as it was before Exact. Pushed either way: the page has moved its tick already. */
+   *  show it, not as it was before Exact. Pushed either way: the page's switch moves only when the host says so. */
   private async setReview(on: boolean) {
     const exact = !on && this.exact;
     if (exact) {

@@ -3,7 +3,7 @@
 // Nothing is typed here: a plan comes from the person's coding agent, in its chat (`graphene plan propose`).
 import { STOP_AFTER, STOP_AFTER_HOVER } from "../graph/words.ts";
 import type { Act, Btn, Card, Home, Line, Section } from "./cards.ts";
-import { ASK, EXACT, EXACT_HOVER, NOT_CURSOR, WHO } from "./who.ts";
+import { ASK, COST_HOVER, EXACT, EXACT_HOVER, HOW, NOT_CURSOR, WHAT, WHO } from "./who.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
@@ -80,25 +80,21 @@ const out = el("div", "said", undefined, work);
 const sections = el("div", "sections", undefined, work);
 const prefs = el("div", "prefs", undefined, work); // engine settings, which plans from any agent follow too
 el("div", "prefs-head", "Settings", prefs);
-const stopAfter = el("button", "switch", undefined, prefs); // the one switch: off is auto
-stopAfter.setAttribute("role", "switch");
-el("i", "", undefined, stopAfter);
-stopAfter.append(STOP_AFTER);
-stopAfter.title = STOP_AFTER_HOVER;
-stopAfter.addEventListener("click", () => send("stopAfter", { flag: stopAfter.getAttribute("aria-checked") !== "true" }));
-const stopNote = el("p", "pref-note", "", prefs);
-/** A tick in Settings, its box under the switch's knob. */
-function tick(cls: string, words: string, act: "review" | "exact"): HTMLInputElement {
-  const label = el("label", `tick ${cls}`, undefined, prefs);
-  const box = el("input", "", undefined, label);
-  box.type = "checkbox";
-  label.append(words);
-  box.addEventListener("change", () => send(act, { flag: box.checked }));
-  return box;
+/** A setting, on or off: one control for every one on Home, a switch, not the browser's checkbox beside it. */
+function toggle(cls: string, words: string, parent: HTMLElement, flip: (on: boolean) => void): HTMLButtonElement {
+  const b = el("button", `switch ${cls}`, undefined, parent);
+  b.setAttribute("role", "switch");
+  el("i", "", undefined, b);
+  b.append(words);
+  b.addEventListener("click", () => flip(b.getAttribute("aria-checked") !== "true"));
+  return b;
 }
-const approve = tick("approve", "Approve each finished task before it lands", "review"); // as Set Up asked it, ticked as it was left
-const exact = tick("exact", EXACT, "exact");
-exact.parentElement!.title = EXACT_HOVER;
+const stopAfter = toggle("stop", STOP_AFTER, prefs, (flag) => send("stopAfter", { flag })); // the one switch: off is auto
+stopAfter.title = STOP_AFTER_HOVER;
+const stopNote = el("p", "pref-note", "", prefs);
+const approve = toggle("approve", "Approve each finished task before it lands", prefs, (flag) => send("review", { flag })); // as Set Up asked it
+const exact = toggle("exact", EXACT, prefs, (flag) => send("exact", { flag }));
+exact.title = EXACT_HOVER;
 el("p", "pref-note", "Even a question with a default waits for you. It turns the two above on too.", prefs);
 const foot = el("div", "foot", undefined, work);
 button({ label: "Watch the demo", act: "demo" }, foot);
@@ -121,8 +117,12 @@ function render(m: Model) {
   goal.textContent = h.goal || (h.empty ? "No plan yet" : "");
   goal.title = h.goal; // three lines at most on the page
   goal.hidden = !goal.textContent; // a plan whose ask is no longer known: no headline rather than a wrong one
-  // each of its parts wraps as a whole first (`0 of 6 done ·`, then `$1.34 at list price`)
-  counts.replaceChildren(...h.counts.split(" · ").flatMap((p, i, all) => [el("span", "part", glue(p) + (i < all.length - 1 ? "\u00a0·" : "")), " "]));
+  // each of its parts wraps as a whole first (`0 of 6 done ·`, then `$1.34 so far, at list price`); the cost says on hover what it paid for
+  counts.replaceChildren(...h.counts.split(" · ").flatMap((p, i, all) => {
+    const part = el("span", "part", glue(p) + (i < all.length - 1 ? "\u00a0·" : ""));
+    if (p.includes("list price")) part.title = COST_HOVER;
+    return [part, " "];
+  }));
   counts.hidden = !h.counts || h.empty;
   pipe.replaceChildren(...h.stages.map((st) => {
     const stage = el("span", `stage ${st.at}`);
@@ -144,8 +144,8 @@ function render(m: Model) {
   stopNote.textContent = h.stopAfter ? "A plan your agent proposes waits for your Start." : "Off: a plan that fits your limits runs at once.";
   busy.textContent = m.busy;
   busy.hidden = !m.busy;
-  exact.checked = m.exact;
-  approve.checked = m.review;
+  exact.setAttribute("aria-checked", String(m.exact));
+  approve.setAttribute("aria-checked", String(m.review));
   drawSaid(out, m.last);
   const focused = document.activeElement instanceof HTMLButtonElement && sections.contains(document.activeElement)
     ? document.activeElement.dataset.mark : "";
@@ -285,14 +285,13 @@ function drawScreen(m: Model) {
 
 function drawSetUp(m: Model) {
   el("h2", "", "Set up Graphene in this folder", screen);
-  el("p", "", "Graphene turns what you ask for into small tasks, runs an agent on each in its own copy of this repository, "
-    + "and checks each one before it reaches your code.", screen);
-  const label = el("label", "tick", undefined, screen);
-  const tick = el("input", "", undefined, label);
-  tick.type = "checkbox";
-  tick.checked = saved.review ?? true;
-  tick.addEventListener("change", () => remember({ review: tick.checked }));
-  label.append(" Ask me to approve each finished task before it lands (recommended)");
+  el("p", "", `${WHAT} ${HOW}`, screen);
+  const review = () => saved.review ?? true;
+  const tick = toggle("approve", "Ask me to approve each finished task before it lands (recommended)", screen, (on) => {
+    remember({ review: on });
+    tick.setAttribute("aria-checked", String(on)); // the page's own until a pick: no host to answer
+  });
+  tick.setAttribute("aria-checked", String(review()));
   el("p", "strong", "Who should plan and do the work?", screen);
   const picks = el("div", "picks", undefined, screen);
   for (const w of WHO) {
@@ -300,15 +299,14 @@ function drawSetUp(m: Model) {
     el("span", "pick-name", w.label, b);
     el("span", "pick-note", w.note, b);
     b.disabled = Boolean(m.busy);
-    b.addEventListener("click", () => send("setup", { arg: w.word, flag: tick.checked }));
+    b.addEventListener("click", () => send("setup", { arg: w.word, flag: review() }));
   }
   // what one click writes and records, said before it (`graphene init` installs both tools' hooks either way)
   const writes = el("p", "writes", "Either choice adds hooks to ", screen);
   el("span", "mono", ".claude/settings.local.json", writes);
   writes.append(" and ");
   el("span", "mono", ".codex/hooks.json", writes);
-  writes.append(": Claude Code here then proposes a plan before it writes, and each of its sessions is recorded on this "
-    + "machine only. ");
+  writes.append("; each agent session is recorded on this machine only. ");
   el("span", "mono", "graphene init --remove", writes);
   writes.append(" takes them out.");
   if (m.busy) el("p", "busy", m.busy, screen);

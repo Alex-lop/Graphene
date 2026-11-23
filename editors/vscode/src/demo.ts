@@ -39,12 +39,18 @@ export function end(child: { exitCode: number | null; kill(signal: "SIGTERM" | "
   setTimeout(rm, 500);
 }
 
+/** No graphene to play the replay: say what the demo needs and offer to install it, not a spawn's error code. */
+export const NEEDS = "The demo is played by the graphene command, which this editor cannot find. Install it once; the demo then needs no key and no network.";
+const offerInstall = () => void vscode.window.showWarningMessage(NEEDS, "Install Graphene")
+  .then((pick) => { if (pick) void vscode.commands.executeCommand("graphene.install"); });
+
 export function register(context: vscode.ExtensionContext, session: Session, _ui: UI) {
   let running: { child: ChildProcess; dir: string; stop: (atOnce?: boolean) => void } | null = null;
 
   context.subscriptions.push({ dispose: () => running?.stop(true) });
   context.subscriptions.push(vscode.commands.registerCommand("graphene.watchDemo", async () => {
     if (running) return void vscode.window.showInformationMessage("The demo is already playing. Close its graph to stop it.");
+    if (session.status.kind === "missing") return offerInstall(); // with no folder open the spawn's ENOENT says it below
     const dir = demoDir();
     const child = spawn(session.path, C.demoInto(dir), { cwd: dir, env: C.scrub(process.env), stdio: ["ignore", "pipe", "pipe"] });
     let err = "";
@@ -54,7 +60,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     const graph = new GraphHost(context, replay, "Graphene demo");
     const tick = setInterval(() => void replay.refresh(), 1000);
     const stop = (atOnce = false) => {
-      if (!running) return;
+      if (running?.child !== child) return; // this demo's only: an old panel closing must not end the next one
       running = null;
       clearInterval(tick);
       replay.dispose();
@@ -66,14 +72,20 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
       if (code) void vscode.window.showErrorMessage(`graphene demo ended: ${C.plain(C.firstLine(err, "", `exit ${code}`))}`);
       stop();
     });
-    child.on("error", (e) => { void vscode.window.showErrorMessage(`graphene demo: ${C.plain(e.message)}`); stop(); });
+    child.on("error", (e: NodeJS.ErrnoException) => {
+      if (e.code === "ENOENT") offerInstall();
+      else void vscode.window.showErrorMessage(`graphene demo: ${C.plain(e.message)}`);
+      stop();
+    });
 
-    // the store appears once the replay has set its repo up; then the graph of its own
+    // the store appears once the replay has set its repo up; then the graph of its own. Its own demo still: one
+    // that failed to spawn never exits, and a demo started after it must not be stopped by this one's wait.
+    const mine = () => running?.child === child;
     const t0 = Date.now();
-    while (!existsSync(path.join(dir, STORE)) && child.exitCode === null && Date.now() - t0 < 30_000) {
+    while (mine() && !existsSync(path.join(dir, STORE)) && child.exitCode === null && Date.now() - t0 < 30_000) {
       await new Promise((r) => setTimeout(r, 300));
     }
-    if (!running) return;
+    if (!mine()) return;
     if (!existsSync(path.join(dir, STORE))) {
       void vscode.window.showErrorMessage(`graphene demo made no store in ${dir}: ${C.plain(C.firstLine(err, "", "it said nothing"))}`);
       return stop();

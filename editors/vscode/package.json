@@ -1,7 +1,7 @@
 {
   "name": "graphene-vscode",
   "displayName": "Graphene",
-  "description": "Your coding agent's plan as a graph: read it, start it, and approve what each agent did. A plan comes from Claude Code or Codex in its chat, a workflow, or Add task; each agent works in its own copy of the repo, and your checks and your review decide what lands.",
+  "description": "Your coding agent proposes a plan before it writes, and Graphene draws it as a graph. Each task runs in its own copy of your repository and lands only when its check passes.",
   "version": "0.10.0",
   "publisher": "alex-lop",
   "license": "Apache-2.0",
@@ -590,15 +590,15 @@
       {
         "id": "start",
         "title": "Get started with Graphene",
-        "description": "Coding agents on one repo: each in its own copy, and your checks and your review decide what lands.",
+        "description": "Your coding agent proposes a plan before it writes, and Graphene draws it as a graph.",
         "steps": [
           {
             "id": "demo",
             "title": "Watch the demo",
-            "description": "No key and no network: a recorded run plays in the graph, three agents racing one task and its check keeping one.\n[Watch the Demo](command:graphene.watchDemo)",
+            "description": "A recorded run plays in the graph: three agents race one task, and its check keeps one. No key and no network; it needs the graphene command, and offers to install it first.\n[Watch the Demo](command:graphene.watchDemo)",
             "media": {
-              "image": "media/graph.png",
-              "altText": "the replay in the graph"
+              "image": "media/walk-demo.png",
+              "altText": "a race on the graph: one task with three attempts, its check keeping one; a task asking you, one that needs help, one to review"
             },
             "completionEvents": [
               "onCommand:graphene.watchDemo"
@@ -607,10 +607,10 @@
           {
             "id": "install",
             "title": "Install Graphene",
-            "description": "This extension drives the `graphene` command. Install it once (it uses uv): `uv tool install graphene-map`.\n[Install Graphene](command:graphene.install)",
+            "description": "This extension drives the graphene command. Install it once with uv; the button runs uv tool install graphene-map for you.\n[Install Graphene](command:graphene.install)",
             "media": {
-              "image": "media/graph.png",
-              "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
+              "image": "media/walk-install.png",
+              "altText": "Home with no graphene command found: Graphene is not installed, and an Install Graphene button"
             },
             "completionEvents": [
               "onContext:graphene.status && graphene.status != missing"
@@ -621,8 +621,8 @@
             "title": "Set up a folder",
             "description": "On Graphene's Home, pick who plans and does the work: Claude Code or Codex. One click.\n[Open Home](command:graphene.home)",
             "media": {
-              "image": "media/graph.png",
-              "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
+              "image": "media/walk-setup.png",
+              "altText": "Home's Set Up: approval on, then Claude Code or Codex, and what either choice writes"
             },
             "completionEvents": [
               "onContext:graphene.status == ok || graphene.status == empty"
@@ -633,8 +633,8 @@
             "title": "Ask your agent for a plan",
             "description": "In Claude Code or Codex, say what you want, in its chat. It proposes a plan to Graphene: small tasks, each with the files it may change and the check that proves it. A workflow on Home, or Add task on the graph, makes one too. Read it on the graph, remove what you do not want, then Start.\n[Open the Graph](command:graphene.showGraph)",
             "media": {
-              "image": "media/graph.png",
-              "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
+              "image": "media/walk-ask.png",
+              "altText": "a suggested plan on the graph, its four tasks with their files and checks, a question, and Start"
             },
             "completionEvents": [
               "onContext:graphene.status == ok"
@@ -645,8 +645,8 @@
             "title": "Review before it lands",
             "description": "Each finished task shows what changed and the check that passed. Open its changes, then Approve it, or Send it back with what is wrong. The graph shows the whole plan.\n[Open the Graph](command:graphene.showGraph)",
             "media": {
-              "image": "media/graph.png",
-              "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
+              "image": "media/walk-review.png",
+              "altText": "Home's card for a task to review: what changed, the check that passed, Open changes, Approve and Send back"
             },
             "completionEvents": [
               "onCommand:graphene.showGraph"
