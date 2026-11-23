@@ -77,7 +77,7 @@ test("the kept fork's chip says so in the cockpit's words; a running one its pro
   assert.equal(chip("b"), "b ✓ kept: 4 lines against 12");
   assert.equal(chip("a", 60), "a · Nano · gave up · 12 lines · 2 tries · $0.09"); // finished: the state is the news
   assert.equal(chip("a"), "a · Nano · gave up · 12 lines");
-  assert.equal(chip("c", 60), "c · Super · 7 lines · 23 s quiet · $0.15 · running"); // running: the numbers are the news
+  assert.equal(chip("c", 60), "c · Super · 7 lines · 23 s quiet · $0.15 · working"); // working: the numbers are the news
   assert.equal(chip("c"), "c · Super · 7 lines · 23 s quiet"); // the chip's own width holds the progress
   assert.equal(forkWords({ ...g.forks[2]!, idle: 0 }, g.kept), "c · Super · 7 lines · $0.15");
 });
@@ -268,13 +268,13 @@ test("one pipeline, the plan first: Plan, Run, Review, and where the work is in 
   assert.deepEqual(at(all("ready")), ["Plan done: 7 tasks", "Run now: 7 ready", "Review next"]);
   assert.deepEqual(at({ ...all("ready"), run: { going: true, pid: 1 } }), ["Plan done: 7 tasks", "Run now: starting", "Review next"]);
   assert.deepEqual(at(all("review")), ["Plan done: 7 tasks", "Run done", "Review now: 7 to review"]);
-  assert.deepEqual(at(all("done")), ["Plan done: 7 tasks", "Run done", "Review done: landed"]);
+  assert.deepEqual(at(all("done")), ["Plan done: 7 tasks", "Run done", "Review done: done"]);
   // something suggested while agents work (an agent's proposal, a second ask): the work is still at Run, and the plan says what waits
   const more = { ...state, tasks: [...state.tasks, { ...task("ship"), id: "extra", state: "proposed" as const }] };
   assert.deepEqual(at(more), ["Plan done: 8 tasks · 1 suggested · 1 question", "Run now: 1 working", "Review next: 2 to review"]);
   const back = { ...all("ready"), tasks: all("ready").tasks.map((t, i) => (i ? t : { ...t, state: "came back" as const })) };
   assert.equal(at(back)[1], "Run now: 1 needs help");
-  assert.deepEqual(at({ ...all("done"), run: { going: true, pid: 1 } }), ["Plan done: 7 tasks", "Run done", "Review done: landed"], "a run winding down has nothing left to start");
+  assert.deepEqual(at({ ...all("done"), run: { going: true, pid: 1 } }), ["Plan done: 7 tasks", "Run done", "Review done: done"], "a run winding down has nothing left to start");
   // the switch is the envelope's auto setting, the other way round; an older CLI that says nothing leaves it on
   assert.equal(stopAfterPlan(fx("proposals")), true);
   assert.equal(stopAfterPlan({ envelope: { auto: "on" } }), false);

@@ -8,7 +8,7 @@ import { GraphHost } from "./graph.ts";
 import { HomeHost } from "./home.ts";
 import { which } from "./find.ts";
 import { owner } from "./owners.ts";
-import { autoNews, mdText, summary, type Task } from "./state.ts";
+import { autoNews, mdText, SAY, summary, type Task } from "./state.ts";
 import { topLine } from "./graph/words.ts";
 import { DROPPABLE, keyTrouble } from "./needs.ts";
 import { parseLog, rounds, type LogRow } from "./rounds.ts";
@@ -149,7 +149,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (given) return given;
     if (!among.length) { void vscode.window.showInformationMessage("No task to choose from."); return undefined; }
     const chosen = await vscode.window.showQuickPick( // a planner's title as text: a label reads `$(name)` as an icon
-      among.map((t) => ({ label: C.plain(t.title), description: `${t.state} · ${t.id}`, detail: C.plain(t.scope.join("  ")), t })), { placeHolder });
+      among.map((t) => ({ label: C.plain(t.title), description: `${SAY[t.state]} · ${t.id}`, detail: C.plain(t.scope.join("  ")), t })), { placeHolder });
     return chosen?.t;
   };
   const cmd = (name: string, fn: (arg?: Arg) => unknown) =>
@@ -186,13 +186,13 @@ export function activate(context: vscode.ExtensionContext) {
     await session.act(C.setting(chosen.key, value.trim()));
   });
   cmd("accept", async (arg) => {
-    const t = await pick(arg, "the proposed task to accept", session.tasks().filter((x) => x.state === "proposed"));
+    const t = await pick(arg, "the suggested task to accept", session.tasks().filter((x) => x.state === "proposed"));
     if (t) await session.act(C.accept(t.id));
   });
   cmd("acceptAll", async () => {
     const n = session.tasks().filter((x) => x.state === "proposed").length;
-    if (!n) return void vscode.window.showInformationMessage("Nothing is proposed.");
-    const ok = await vscode.window.showWarningMessage(`Accept all ${n} proposed task${n > 1 ? "s" : ""}?`, { modal: true }, "Accept");
+    if (!n) return void vscode.window.showInformationMessage("Nothing is suggested.");
+    const ok = await vscode.window.showWarningMessage(`Accept all ${n} suggested task${n > 1 ? "s" : ""}?`, { modal: true }, "Accept");
     if (ok) await session.act(C.acceptAll());
   });
   cmd("link", async (arg) => {
@@ -218,9 +218,9 @@ export function activate(context: vscode.ExtensionContext) {
     await session.act(C.editStep(t.id, field.f, field.f === "scope" ? C.globs(value) : value.trim()));
   });
   cmd("dropStep", async (arg) => {
-    const t = await pick(arg, "the task to drop", session.tasks().filter((x) => DROPPABLE.includes(x.state)));
+    const t = await pick(arg, "the task to remove", session.tasks().filter((x) => DROPPABLE.includes(x.state)));
     if (!t) return;
-    const ok = await vscode.window.showWarningMessage(`Drop “${t.title}”? \`graphene plan undo\` puts it back.`, { modal: true }, "Drop");
+    const ok = await vscode.window.showWarningMessage(`Remove “${t.title}”? \`graphene plan undo\` puts it back.`, { modal: true }, "Remove");
     if (ok) await session.act(C.dropStep(t.id));
   });
   cmd("tell", async (arg) => {

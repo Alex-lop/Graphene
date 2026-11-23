@@ -564,11 +564,11 @@ function graph(s: StateX, dir: "across" | "down") {
         for (const m of group.marks) { goalG.appendChild(el("rect", { class: "cell", "data-mark": m, x, y: FOOT_Y + 6, width: step * 0.8, height: 10, rx: Math.min(1.5, step / 4) })); x += step; }
         x += step * 0.7;
       }
-      goalG.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, `goal · ${all.landed} of ${all.total} landed`));
+      goalG.appendChild(el("text", { class: "sub", x: 2, y: BOX_H + 16 }, `goal · ${all.landed} of ${all.total} done`));
       goalG.appendChild(el("circle", { class: "port in", cx: down ? gp.w / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
     }
     if (gp) {
-      goalG.setAttribute("aria-label", `goal: ${s.goal}, ${all.landed} of ${all.total} landed`);
+      goalG.setAttribute("aria-label", `goal: ${s.goal}, ${all.landed} of ${all.total} done`);
       goalG.setAttribute("role", "group"); // reachable by Tab and the arrows, announced
       goalG.setAttribute("tabindex", "0");
       goalG.appendChild(el("title", {}, s.goal));

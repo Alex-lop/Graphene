@@ -59,7 +59,7 @@ export function fitWords(words: string[], max: number): string {
 }
 
 export function forkWord(f: Fork): string {
-  return f.state || "waiting";
+  return f.state === "running" ? SAY.running : f.state || "waiting";
 }
 
 /** A lane's corner: the model while the task runs, cut to about six characters (`Nano`, `claude…`); the pane
@@ -187,7 +187,7 @@ export const OUTSIDE_OWN = "none granted by Graphene: this agent's own settings 
 export function heldWords(t: Pick<TaskX, "held">): { shield: boolean; line: string; proof: string } {
   const by = family(t.held.by) === "claude" ? "Claude Code" : family(t.held.by) === "codex" ? "Codex" : t.held.by || "this agent";
   if (t.held.state === "refused") return { shield: true, line: "A write outside its files is refused before it happens.", proof: `${by}'s hook, proven by tests/test_every_agent.py` };
-  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest: the task comes back and none of its work is merged.",
+  if (t.held.state === "caught") return { shield: true, line: "A write outside its files is caught when it finishes, at the latest: the task needs help and none of its work is merged.",
                                           proof: `Proven for every agent a run starts, ${by} too, by tests/test_every_agent.py: the finish checks what changed against its files.` };
   return { shield: false, line: "Not held: nothing stops a write outside its files.",
            proof: t.held.state === "none" ? "A task you do yourself, or give to an editor's own agent (Cursor, Copilot), is checked only when you mark it done."
@@ -250,7 +250,7 @@ export function pipeline(s: Pick<StateX, "drafting" | "tasks" | "goals" | "quest
     : [s.tasks.length ? count(s.tasks.length, "task") : "", planned && n("proposed") ? `${n("proposed")} suggested` : "", asks].filter(Boolean).join(" · ");
   const run = !planned || ran ? "" : n("running") ? `${n("running")} working` : n("came back") ? `${n("came back")} need${n("came back") === 1 ? "s" : ""} help` : s.run.going ? (s.tasks.some((t) => t.command && !t.leaves && t.state === "ready") ? "running a command" : "starting")
     : n("yours") ? `${n("yours")} ask${n("yours") === 1 ? "s" : ""} you` : n("ready") ? `${n("ready")} ready` : "waiting";
-  const review = n("review") ? `${n("review")} to review` : landed ? "landed" : "";
+  const review = n("review") ? `${n("review")} to review` : landed ? "done" : "";
   return [
     { key: "plan", label: "Plan", at: planned ? "done" : "now", note: plan },
     { key: "run", label: "Run", at: !planned ? "next" : ran ? "done" : "now", note: run },
@@ -466,9 +466,9 @@ export function tabOrder(lay: Layout, ids: string[]): string[] {
 
 /** Every key the page answers, for the `?` overlay. */
 export const KEYS: readonly [string, string][] = [
-  ["Tab", "the next box"],
-  ["← → ↑ ↓", "the box beside it (across the waves, or along one)"],
-  ["Enter", "open the box's details"],
+  ["Tab", "the next card"],
+  ["← → ↑ ↓", "the card beside it (across the waves, or along one)"],
+  ["Enter", "open the card's details"],
   ["Esc", "close the details, or stop linking"],
   ["g", "bring the goal on screen"],
   ["n", "the next task that needs you: selected, and brought on screen"],

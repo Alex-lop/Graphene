@@ -40,13 +40,13 @@ export async function addStep(session: Session, arg?: Arg): Promise<boolean> {
   }
   const p = C.proposed(out.stdout);
   if (!p) {
-    void vscode.window.showInformationMessage(`Graphene: ${C.plain(C.firstLine(out.stdout, out.stderr, "nothing was proposed"))}`);
+    void vscode.window.showInformationMessage(`Graphene: ${C.plain(C.firstLine(out.stdout, out.stderr, "nothing was suggested"))}`);
     return false;
   }
   // the planner's title, as text: a link or an icon in it is shown, not read
-  void vscode.window.showInformationMessage(`Proposed: ${C.plain(p.title)} (${C.plain(p.id)})`, "Accept", "Drop").then((pick) => {
+  void vscode.window.showInformationMessage(`Suggested: ${C.plain(p.title)} (${C.plain(p.id)})`, "Accept", "Remove").then((pick) => {
     if (pick === "Accept") void session.act(C.accept(p.id));
-    if (pick === "Drop") void session.act(C.dropStep(p.id));
+    if (pick === "Remove") void session.act(C.dropStep(p.id));
   });
   return true;
 }
@@ -76,7 +76,7 @@ export async function addByHand(session: Session, arg?: Arg) {
                                                   placeHolder: "app.py tests/test_app.py", ignoreFocusOut: true,
                                                   validateInput: (v) => (C.globs(v).length ? undefined : "a task needs a scope: the paths it may touch") });
   if (scope === undefined) return;
-  const check = await vscode.window.showInputBox({ prompt: "The command that passes only when it is done; leave it empty and your sign-off finishes it",
+  const check = await vscode.window.showInputBox({ prompt: "The command that passes only when it is done; leave it empty and your approval finishes it",
                                                   placeHolder: "pytest -q tests/test_app.py", ignoreFocusOut: true });
   if (check === undefined) return;
   await session.act(C.byHand(title, parent, needs, scope, check));

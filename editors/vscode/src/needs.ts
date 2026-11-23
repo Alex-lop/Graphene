@@ -100,6 +100,6 @@ export function offerWords(t: Task, titles: Record<string, string> = {}): { labe
     const label = k === "b" ? `A new task for ${on}; this one waits on it` : on ? `${what} ${on}` : what;
     return { label, detail: `graphene ${argv.join(" ")}`, argv, long: false };
   });
-  out.push({ label: "Try it again", detail: `graphene ${tryAgain(t.id).join(" ")}: a new agent, told why it came back`, argv: tryAgain(t.id), long: true });
+  out.push({ label: "Try it again", detail: `graphene ${tryAgain(t.id).join(" ")}: a new agent, told why the last one stopped`, argv: tryAgain(t.id), long: true });
   return out;
 }

@@ -15,8 +15,8 @@ const step = (state: Word, more: Partial<TaskX> = {}): TaskX => ({ ...parseTask(
 test("every state wears one mark, and the full card's corner leaves out the three its border says", () => {
   const rows: [Word, Mark, Mark | "", string][] = [
     ["waiting", "waiting", "", "waiting"], ["ready", "ready", "", "ready"], ["running", "working", "working", "working"],
-    ["review", "you", "you", "to review"], ["yours", "yours", "yours", "yours"], ["came back", "back", "back", "came back"],
-    ["done", "landed", "landed", "landed"], ["proposed", "suggested", "", "suggested"],
+    ["review", "you", "you", "to review"], ["yours", "yours", "yours", "yours"], ["came back", "back", "back", "needs help"],
+    ["done", "landed", "landed", "done"], ["proposed", "suggested", "", "suggested"],
   ];
   assert.deepEqual(rows.map((r) => r[0]).sort(), [...WORDS].sort(), "a state the snapshot can say has no row");
   for (const [state, mark, corner, word] of rows) {
@@ -32,11 +32,11 @@ test("the first match decides: landed, came back and suggested before what needs
     ["a step past the line is the person's move", step("yours", { leaves: true, command: "git push" }), "you", "asks you"],
     ["the snapshot says needs_you of every yours step: it stays the hollow diamond", step("yours", { needs_you: true }), "yours", "yours"],
     ["to review, as the snapshot sends it", step("review", { needs_you: true }), "you", "to review"],
-    ["came back, as the snapshot sends it", step("came back", { needs_you: true }), "back", "came back"],
+    ["came back, as the snapshot sends it", step("came back", { needs_you: true }), "back", "needs help"],
     ["suggested, as the snapshot sends it", step("proposed", { needs_you: true }), "suggested", "suggested"],
-    ["landed stays landed", step("done", { needs_you: true }), "landed", "landed"],
+    ["landed stays landed", step("done", { needs_you: true }), "landed", "done"],
     ["a step past the line that has not come up yet waits", step("waiting", { leaves: true, command: "git push" }), "waiting", "waiting"],
-    ["and once it ran it landed", step("done", { leaves: true, command: "git push" }), "landed", "landed"],
+    ["and once it ran it landed", step("done", { leaves: true, command: "git push" }), "landed", "done"],
   ];
   for (const [why, t, mark, word] of cases) {
     assert.equal(stateMark(t), mark, why);
@@ -58,15 +58,16 @@ test("a tally reads as a bar: landed first, then loudest first, and says in word
   assert.deepEqual(tally(plan), {
     landed: 2, total: 10, portion: 0.2,
     marks: ["landed", "landed", "you", "you", "back", "yours", "working", "ready", "waiting", "suggested"],
-    wants: [{ mark: "you", text: "1 to review" }, { mark: "back", text: "1 came back" }, { mark: "yours", text: "1 yours" }, { mark: "you", text: "1 asks you" }],
+    wants: [{ mark: "you", text: "1 to review" }, { mark: "back", text: "1 needs help" }, { mark: "yours", text: "1 yours" }, { mark: "you", text: "1 asks you" }],
   });
   const store = tally(plan.filter((t) => t.parent === "store"));
   assert.deepEqual([store.landed, store.total, store.portion, store.wants.map((w) => w.text)], [1, 4, 0.25, ["1 to review"]]);
   assert.deepEqual(tally([]), { landed: 0, total: 0, portion: 0, marks: [], wants: [] }, "an empty plan: nothing, and no division by none");
   assert.deepEqual(tally(calm).wants, [], "nothing needs the person: no words");
   assert.equal(tally([step("done"), step("done", { id: "b" })]).portion, 1);
-  const many = tally([step("review"), step("review", { id: "r2" }), step("running", { id: "w1", needs_you: true }), step("running", { id: "w2", needs_you: true })]);
-  assert.deepEqual(many.wants.map((w) => w.text), ["2 to review", "2 ask you"]);
+  const many = tally([step("review"), step("review", { id: "r2" }), step("running", { id: "w1", needs_you: true }), step("running", { id: "w2", needs_you: true }),
+                     step("came back", { id: "b1" }), step("came back", { id: "b2" })]);
+  assert.deepEqual(many.wants.map((w) => w.text), ["2 to review", "2 need help", "2 ask you"]);
 });
 
 test("the steps that want the person, in plan order, and the next one round again", () => {
@@ -88,9 +89,9 @@ test("the steps that want the person, in plan order, and the next one round agai
 });
 
 test("the legend lists the marks the plan has, loudest first, each with its word and its count", () => {
-  assert.deepEqual(legend(plan), [["you", "to review / asks you", 2], ["back", "came back", 1], ["yours", "yours", 1], ["working", "working", 1],
-                                  ["landed", "landed", 2], ["ready", "ready", 1], ["waiting", "waiting", 1], ["suggested", "suggested", 1]]);
-  assert.deepEqual(legend(calm), [["working", "working", 1], ["landed", "landed", 1], ["ready", "ready", 1], ["waiting", "waiting", 1], ["suggested", "suggested", 1]]);
+  assert.deepEqual(legend(plan), [["you", "to review / asks you", 2], ["back", "needs help", 1], ["yours", "yours", 1], ["working", "working", 1],
+                                  ["landed", "done", 2], ["ready", "ready", 1], ["waiting", "waiting", 1], ["suggested", "suggested", 1]]);
+  assert.deepEqual(legend(calm), [["working", "working", 1], ["landed", "done", 1], ["ready", "ready", 1], ["waiting", "waiting", 1], ["suggested", "suggested", 1]]);
   assert.deepEqual(legend([]), [], "an empty plan has no legend");
   assert.deepEqual(legend([step("yours", { leaves: true })]), [["you", "asks you", 1]], "a diamond that is no review says what it is");
   assert.deepEqual(legend([], 2), [["suggested", "a draft", 2]], "drafts on an empty canvas: the dashed ring, by its own word");
@@ -377,10 +378,10 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
   // the engine reads a step behind an unmet need as waiting, the person's own too (plan.reads), and `node done` on it is refused
   for (const t of big.tasks) if (t.state !== "waiting" && t.state !== "proposed") assert.deepEqual(t.needs.filter((n) => at(n).state !== "done"), [], `${t.id} is ${t.state} behind an unmet need`);
   assert.deepEqual(big.edges.map(([a, b]) => `${a}>${b}`).sort(), big.tasks.flatMap((t) => t.needs.map((n) => `${n}>${t.id}`)).sort(), "an edge a need, and no other");
-  assert.deepEqual(legend(big.tasks), [["you", "to review", 1], ["back", "came back", 1], ["yours", "yours", 1], ["working", "working", 3],
-                                       ["landed", "landed", 5], ["ready", "ready", 3], ["waiting", "waiting", 11], ["suggested", "suggested", 1]]);
+  assert.deepEqual(legend(big.tasks), [["you", "to review", 1], ["back", "needs help", 1], ["yours", "yours", 1], ["working", "working", 3],
+                                       ["landed", "done", 5], ["ready", "ready", 3], ["waiting", "waiting", 11], ["suggested", "suggested", 1]]);
   const all = tally(big.tasks);
-  assert.deepEqual([all.landed, all.total, all.wants.map((w) => w.text)], [5, 26, ["1 to review", "1 came back", "1 yours"]]);
+  assert.deepEqual([all.landed, all.total, all.wants.map((w) => w.text)], [5, 26, ["1 to review", "1 needs help", "1 yours"]]);
   assert.deepEqual(goalCells(big.tasks, big.goals).map((g) => `${g.title}: ${g.marks.join(" ")}`), [
     "the store keeps orders: landed landed landed you working waiting",
     "the API serves them: landed back working working ready waiting waiting waiting",

@@ -1,7 +1,8 @@
 // The Plan view: goal → sub-goals → tasks, a codicon a state, `model · forks · $` beside the title, the
 // contract in the tooltip; a click opens the graph on that task. Context menus are chosen by `task:<state>`.
 import * as vscode from "vscode";
-import { mdText, usd, type Goal, type State, type Task } from "./state.ts";
+import { forkWord } from "./graph/words.ts";
+import { mdText, SAY, usd, type Goal, type State, type Task } from "./state.ts";
 
 export type Node = { kind: "goal"; goal: Goal } | { kind: "task"; task: Task };
 
@@ -23,7 +24,7 @@ export function description(t: Task): string {
   if (t.forks.length) parts.push(`${t.forks.length} attempts${t.kept ? ` · kept ${t.kept.letter}` : ""}`);
   const spent = usd(t.usd);
   if (spent) parts.push(spent);
-  if (!parts.length && t.state !== "running") parts.push(t.state);
+  if (!parts.length && t.state !== "running") parts.push(SAY[t.state]);
   return parts.join(" · ");
 }
 
@@ -31,7 +32,7 @@ export function description(t: Task): string {
 export function tooltip(t: Task, goals: Goal[]): vscode.MarkdownString {
   const md = new vscode.MarkdownString(undefined, true);
   const x = mdText;
-  md.appendMarkdown(`**${x(t.title)}** · ${x(t.id)} · ${x(t.state)}${t.needs_you ? " · needs you" : ""}\n\n`);
+  md.appendMarkdown(`**${x(t.title)}** · ${x(t.id)} · ${x(SAY[t.state])}${t.needs_you ? " · needs you" : ""}\n\n`);
   if (t.full) md.appendMarkdown(`${x(t.full)}\n\n`);
   const under = goals.find((g) => g.id === t.parent);
   if (under) md.appendMarkdown(`under **${x(under.title)}**\n\n`);
@@ -41,7 +42,7 @@ export function tooltip(t: Task, goals: Goal[]): vscode.MarkdownString {
   if (t.agent) md.appendMarkdown(`agent ${x(`${t.agent}${t.model ? ` · ${t.model}` : ""}${usd(t.usd) ? ` · ${usd(t.usd)}` : ""}`)}\n\n`);
   for (const f of t.forks) {
     const kept = t.kept?.letter === f.letter ? " · ✓ kept" : "";
-    md.appendMarkdown(`- fork ${x(`${f.letter} · ${f.model} · ${f.state}${f.lines !== null ? ` · ${f.lines} lines` : ""}${kept}`)}\n`);
+    md.appendMarkdown(`- attempt ${x(`${f.letter} · ${f.model} · ${forkWord(f)}${f.lines !== null ? ` · ${f.lines} lines` : ""}${kept}`)}\n`);
   }
   if (t.forks.length) md.appendMarkdown("\n");
   if (t.tail.length) md.appendMarkdown(t.tail.slice(-4).map((l) => `- ${x(l)}`).join("\n") + "\n");

@@ -170,11 +170,11 @@ try {
   await shot("switch-off");
   execFileSync(graphene, ["auto", "--", ASK], { cwd: fx.dir, env: L.cleanEnv(L.safeEnv(standin.url)), stdio: "pipe", timeout: 180000 });
   await sectionShown(home, "Done · 3", "the three tasks landed with no Start", 120000);
-  await until(home, () => document.querySelector(".pipe")?.textContent.includes("landed"), null, "the Review stage to say landed");
+  await until(home, () => [...document.querySelectorAll(".pipe .stage small")].at(-1)?.textContent === "done", null, "the Review stage to say done");
   const ran = state(fx.dir);
   if (ran.tasks.length !== 3 || ran.tasks.some((t) => t.state !== "done")) throw new Error(`auto left ${ran.tasks.map((t) => `${t.id} ${t.state}`).join(", ")}`);
   if (await home.locator(".sec-suggested").count()) throw new Error("auto ran, yet a suggested plan still waits for Start");
-  say("Stop after the plan off: auto drew the plan and ran it with no Start; 3 tasks landed, and the stage is Review, landed");
+  say("Stop after the plan off: auto drew the plan and ran it with no Start; 3 tasks landed, and the stage is Review, done");
   await shot("auto-landed");
   await home.locator("button.switch").click();
   await checked("true");

@@ -2,7 +2,7 @@
 // in the order a person acts on them (what needs you, the suggested plan, who is working, what is up next, what
 // is done); each card says what its task is for and what proves it, with its buttons. No VS Code and no DOM
 // here: home.ts sends what this returns, home/main.ts draws it, and checkHome reads what the page sends back.
-import { pipeline, PROVES_NOTHING, stopAfterPlan, type Stage } from "../graph/words.ts";
+import { forkWord, pipeline, PROVES_NOTHING, stopAfterPlan, type Stage } from "../graph/words.ts";
 import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
 import { WHO } from "./who.ts";
@@ -25,8 +25,8 @@ const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1).trimE
 const files = (paths: string[]) => paths.join(", ");
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const line = (k: string, v: string, more: Partial<Line> = {}): Line[] => (v ? [{ k, v, ...more }] : []);
-/** `a: passed, 9 lines · b: running`: each attempt at a task, as one line. */
-const attempts = (t: Task) => t.forks.map((f) => `${f.letter}: ${f.state || "waiting"}${f.lines !== null ? `, ${f.lines} lines` : ""}`).join(" · ");
+/** `a: passed, 9 lines · b: working`: each attempt at a task, as one line. */
+const attempts = (t: Task) => t.forks.map((f) => `${f.letter}: ${forkWord(f)}${f.lines !== null ? `, ${f.lines} lines` : ""}`).join(" · ");
 
 /** The first words on the page when this is not a real run: a replay, or a race against the scripted stand-in. */
 export function banner(s: State): string {
@@ -105,7 +105,7 @@ function help(t: Task, titles: Record<string, string>): Btn[] {
   };
   const offers = OFFERS.filter(([k]) => t.offers[k]).map(([k]) =>
     ({ label: cut(words[k]!(offerOn(k, t.offers[k]!, t, titles)), 80), act: "offer" as const, id: t.id, arg: k }));
-  return [{ label: "Try again", act: "tryAgain", id: t.id, main: true, title: "a new agent, told why it came back" }, ...offers,
+  return [{ label: "Try again", act: "tryAgain", id: t.id, main: true, title: "a new agent, told why the last one stopped" }, ...offers,
           { label: "Open changes", act: "openDiff", id: t.id }, { label: "Remove task", act: "drop", id: t.id }];
 }
 

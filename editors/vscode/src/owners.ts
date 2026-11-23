@@ -2,7 +2,7 @@
 // `_pattern` and `in_scope`; test/fixtures/scope-cases.json holds both to one table, and
 // tests/test_vscode_scope_parity.py checks the Python side), and the live task whose scope holds the path.
 // Pure: the decoration provider in extension.ts draws what this returns.
-import type { Task } from "./state.ts";
+import { SAY, type Task } from "./state.ts";
 
 /** One glob as plan.py's `_pattern`: `**` crosses directories, `*` and `?` stay in one, and a last name with
  *  no wildcard covers what is beneath it (`src/api` is `src/api/**`). */
@@ -78,7 +78,7 @@ export function owner(path: string, tasks: Task[]): Owner | null {
     return { badge: t.agent && t.agent.length <= 2 ? t.agent : "◆", state: t.state, colour: STEP_COLOURS[stepColour(t.id, tasks)]!,
       tooltip: `${t.title} · agent ${t.agent || "?"}${t.model ? ` · ${t.model}` : ""}${forks}: writing these files now` };
   }
-  const [badge, said] = t.state === "review" ? ["✓", "passed, waits for your sign-off"]
-    : t.state === "came back" ? ["!", "came back"] : ["·", `${t.state}: its files once it runs`];
+  const [badge, said] = t.state === "review" ? ["✓", "passed, waits for your approval"]
+    : t.state === "came back" ? ["!", SAY["came back"]] : ["·", `${SAY[t.state]}: its files once it runs`];
   return { badge, state: t.state, colour: STEP_COLOURS[stepColour(t.id, tasks)]!, tooltip: `${t.title} · ${said}` };
 }
