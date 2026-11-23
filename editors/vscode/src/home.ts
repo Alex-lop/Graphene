@@ -271,8 +271,13 @@ export class HomeHost implements vscode.WebviewViewProvider {
       this.say([why], { bad: true, key: keyTrouble(why).key || (who === "nemotron" && /key/i.test(why)) });
     } else {
       const label = WHO.find((w) => w.word === who)?.label ?? who;
-      const warn = `${out.stdout}\n${out.stderr}`.split(/\r?\n/).filter((l) => /no commit yet|^warning:/.test(l.trim()));
-      this.say([`${label} plans and does the work here.`, ...(review ? ["Each finished task waits for your approval before it lands."] : []), ...warn]);
+      // the CLI's warnings, in its words; what it wrote and records, in Home's (`graphene init` installs both
+      // tools' hooks whoever is picked), and the one step a Codex gate needs from the person
+      const warn = `${out.stdout}\n${out.stderr}`.split(/\r?\n/).map((l) => l.trim().replace(/`/g, ""))
+        .filter((l) => /no commit yet|^warning:/.test(l));
+      this.say([`${label} plans and does the work here.`, ...(review ? ["Each finished task waits for your approval before it lands."] : []),
+                "Hooks are in .claude/settings.local.json and .codex/hooks.json: each Claude Code session here is recorded on this machine only. graphene init --remove takes them out.",
+                ...(who === "codex" ? ["In a new Codex session, trust this project and review its hooks with /hooks before running tasks."] : []), ...warn]);
     }
     this.session.moved();
     await this.session.refresh();

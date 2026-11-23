@@ -18,11 +18,19 @@ test("a suggested plan is read before it starts: each task says what for, what i
   assert.equal(s.title, "Suggested plan · 4 tasks");
   assert.deepEqual(s.buttons.map((b) => [b.label, b.act, Boolean(b.main)]), [["Start", "startAll", true], ["Discard all", "discardAll", false]]);
   const hello = card(h, "p:hello");
-  assert.equal(hello.tag, "suggested");
+  assert.equal(hello.tag, "", "its section says suggested: the card does not say it again");
   assert.deepEqual(hello.lines, [
     { k: "What for", v: "hello says hello to the person by name" },
-    { k: "May change", v: "words.py", mono: true, paths: ["words.py"] },
-    { k: "Done when", v: "pytest -q tests/test_words.py passes", mono: true },
+    { k: "May change", v: "words.py", mono: true },
+    { k: "Done when", v: "pytest … test_words.py passes", mono: true, hover: "pytest -q tests/test_words.py passes" },
+  ]);
+  // a side bar is for a glance: a task not started names its files and its check short, the whole on hover
+  const java = { ...fixture("proposals"), tasks: fixture("proposals").tasks.map((t) => (t.id !== "hello" ? t : { ...t,
+    scope: ["src/main/java/app/impl/CookServiceImpl.java", "src/main/java/app/impl/CookingSessionImpl.java", "src/test/java/app/impl/CookServiceImplTest.java"],
+    check: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest'" })) };
+  assert.deepEqual(card(home(java), "p:hello").lines.slice(1), [
+    { k: "May change", v: "CookServiceImpl.java +2", mono: true, hover: "src/main/java/app/impl/CookServiceImpl.java\nsrc/main/java/app/impl/CookingSessionImpl.java\nsrc/test/java/app/impl/CookServiceImplTest.java" },
+    { k: "Done when", v: "CookServiceImplTest passes", mono: true, hover: "./gradlew test --tests 'app.cookyourbooks.services.impl.CookServiceImplTest' passes" },
   ]);
   assert.deepEqual(card(h, "p:farewell").lines.find((l) => l.k === "After"), { k: "After", v: "bye says goodbye, greet route" });
   assert.deepEqual(labels(hello), ["Remove"]);
@@ -104,7 +112,8 @@ test("who is working, what is up next, and what is done, each in its own section
   assert.ok(greet.lines.some((l) => l.k === "Attempts"));
   assert.deepEqual(labels(greet), ["Open changes so far", "Message agent…", "Compare attempts"]);
   assert.deepEqual(section(h, "working")!.buttons.map((b) => b.act), ["stop"]);
-  assert.equal(card(h, "n:ship").tag, "waiting");
+  assert.equal(card(h, "n:ship").tag, "waiting"); // Up next holds ready and waiting: its cards say which
+  assert.equal(greet.tag, "", "Working now says it");
   assert.equal(section(h, "done")!.folded, true);
   assert.deepEqual(labels(card(h, "d:hello")), ["Open changes", "Send back…"]);
   // Run is always there: while a run goes, `graphene run` hands the ready tasks to it (a run fixes its set at start)
@@ -305,4 +314,23 @@ test("unticking Approve while Exact is on turns only Exact off: Stop after the p
   pushed = 0;
   await host.setReview(true);
   assert.equal(pushed, 1, "a refused setting still redraws the tick");
+});
+
+test("Set Up says in Home's words what it wrote and what it records, a Codex gate's step, and the CLI's warnings", async () => {
+  const stub = "export const commands = { registerCommand() { return { dispose() {} }; } }; export const env = { appName: 'Code' };";
+  const hook = `export async function resolve(s, c, n) { return s === "vscode" ? { url: ${JSON.stringify(`data:text/javascript,${encodeURIComponent(stub)}`)}, shortCircuit: true } : n(s, c); }`;
+  register(`data:text/javascript,${encodeURIComponent(hook)}`);
+  const { HomeHost } = await import("../src/home.ts");
+  const said = ["planner: claude, executor: claude", "hooks added to .claude/settings.local.json (7 Claude Code hooks)",
+                "each Claude Code session here is recorded on this machine only (its prompts, tool calls and what they returned, the files it edits); `graphene init --remove` takes the hooks out",
+                "warning: `git` is old", "Codex gate: .codex/hooks.json; trust this project", "next: `graphene auto '<what you want>'` plans it"];
+  const session = { state: null, seen: new Set(), onDidChange: () => ({ dispose() {} }), onDidSee: () => ({ dispose() {} }), refresh: async () => {}, moved() {},
+    status: { kind: "uninitialised", text: "" }, run: async () => ({ code: 0, stdout: said.join("\n"), stderr: "" }) };
+  const host = new HomeHost({ subscriptions: [] } as never, session as never) as unknown as { setUp(who: string, review: boolean): Promise<void>; last: { lines: string[] } };
+  const hooks = "Hooks are in .claude/settings.local.json and .codex/hooks.json: each Claude Code session here is recorded on this machine only. graphene init --remove takes them out.";
+  await host.setUp("claude", false);
+  assert.deepEqual(host.last.lines, ["Claude Code plans and does the work here.", hooks, "warning: git is old"]);
+  await host.setUp("codex", false);
+  assert.deepEqual(host.last.lines, ["Codex plans and does the work here.", hooks,
+                                     "In a new Codex session, trust this project and review its hooks with /hooks before running tasks.", "warning: git is old"]);
 });
