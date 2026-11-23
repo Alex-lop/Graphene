@@ -114,6 +114,8 @@ test("the header's one act: Start a suggested plan (held by a question with no d
   assert.equal(say(plan), "Start start main", "a suggestion: Run would fail in a terminal, nobody accepted it");
   assert.equal(say({ ...plan, questions: plan.questions.map((q) => ({ ...q, default: null })) }), "Start start off");
   assert.match(mainAct({ ...plan, questions: [{ ...plan.questions[0]!, default: null }] })!.title, /question with no default/);
+  assert.deepEqual([mainAct(plan, true)!.off, mainAct(plan, true)!.title], [true, "Exact is on: it waits for your answers"], "Exact: any question holds it, as Home's");
+  assert.equal(mainAct({ ...plan, questions: [] }, true)!.main, true, "Exact with nothing asked: nothing to wait for");
   assert.equal(say({ ...plan, tasks: [...plan.tasks, { ...plan.tasks[0]!, id: "r", state: "ready" }] }), "Run run main", "something ready: Run, the suggestion waits on Home");
   assert.equal(say(fx("running")), "Stop stop", "a run going: Stop, never filled");
   assert.equal(say({ ...fx("running"), run: { going: false, pid: null } }), "Run run off", "nothing ready: Run is there, held");

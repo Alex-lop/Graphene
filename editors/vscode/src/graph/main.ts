@@ -19,7 +19,7 @@ import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, neares
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
 type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder"; text: string };
-type Incoming = { type: "state"; state: StateX } | { type: "status"; status: Status } | { type: "select"; id: string }
+type Incoming = { type: "state"; state: StateX; exact?: boolean } | { type: "status"; status: Status } | { type: "select"; id: string }
   | { type: "drafts"; drafts: Draft[] }
   | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string }; // graphene's answer to a change made here
 type View = "auto" | "graph" | "lanes";
@@ -52,6 +52,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const svgNS = "http://www.w3.org/2000/svg";
 
 let state: StateX | null = null;
+let exact = false; // Exact is on (the host reads `board`): Start waits for every answer, as Home's
 let lastJson = "";
 let lay: Layout | null = null;
 let selected: string | null = null;
@@ -391,7 +392,7 @@ function header(s: StateX, blank: boolean) {
   if (!s.tasks.length) $("b-save").hidden = $("b-view").hidden = true; // no plan: nothing to save, or to see as lanes
   else $("b-view").hidden = false;
   // the one act on the whole plan: Start a suggestion, Run what is ready, Stop a run (words.ts `mainAct`)
-  const act = mainAct(s), run = $<HTMLButtonElement>("b-run");
+  const act = mainAct(s, exact), run = $<HTMLButtonElement>("b-run");
   if (!act) run.hidden = true;
   else {
     run.replaceChildren(icon(act.icon), document.createTextNode(act.label));
@@ -1783,10 +1784,11 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
   const m = e.data;
   if (!m || typeof m !== "object") return;
   if (m.type === "state") {
-    const json = JSON.stringify(m.state);
+    const json = JSON.stringify([m.state, m.exact === true]);
     if (json === lastJson) return; // nothing changed: nothing moves
     lastJson = json;
     state = m.state;
+    exact = m.exact === true;
     const has = (id: string | null) => state!.tasks.some((t) => t.id === id);
     if (arriving && has(arriving)) { selected = arriving; arriving = null; }
     if (selected && !has(selected) && !isDraft(selected)) selected = null;
@@ -2078,7 +2080,14 @@ function wire() {
   top("b-view", "", "list-flat", "Lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "Keys (?)", () => help($("help").hidden));
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
-  top("b-run", "Run", "play", "", () => { const a = state && mainAct(state); if (a) api.postMessage({ type: "act", act: a.act, id: "" }); });
+  top("b-run", "Run", "play", "", () => {
+    const a = state && mainAct(state, exact), run = $<HTMLButtonElement>("b-run");
+    if (!a) return;
+    api.postMessage({ type: "act", act: a.act, id: "" });
+    // Start accepts the plan before the run's terminal opens: said, as Home's is, until the host's next state
+    // redraws it, the same state too (a refused accept changes nothing; the host pushes once Start is over)
+    if (a.act === "start") { run.disabled = true; run.replaceChildren(icon(a.icon), document.createTextNode("Starting…")); lastJson = ""; }
+  });
   // under the goal: the pipeline's three stages (made here, so the preview's shell has them too). Stop after the
   // plan is Home's, under its Settings: beside Start and Stop here it read as a third way to stop
   const pipe = div("", undefined, document.querySelector("header")!);

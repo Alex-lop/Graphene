@@ -293,10 +293,14 @@ test("the header's Start is Home's: every suggested task accepted, then the run;
   await page({ ...plan, questions: plan.questions.map((q) => ({ ...q, default: null })) }).receive({ type: "act", act: "start", id: "" });
   const exact = { ...plan, envelope: { ...plan.envelope, review: "every", auto: "off" } };
   await page(exact, "on").receive({ type: "act", act: "start", id: "" });
-  assert.deepEqual([ran, started() - n], [[["config"]], 1], "held: nothing accepted, nothing run");
+  assert.deepEqual([ran.filter((argv) => argv[0] !== "config"), started() - n], [[], 1], "held: nothing accepted, nothing run");
+  const told = page(exact, "on") as unknown as { sent: { type: string; exact?: boolean }[]; receive(m: unknown): Promise<unknown> };
+  await told.receive({ type: "ready" });
+  await new Promise((r) => setTimeout(r, 0)); // `graphene config` answered
+  assert.equal(told.sent.filter((m) => m.type === "state").at(-1)?.exact, true, "the page is told, so its Start is held before a click, as Home's");
   ran.length = 0;
   await page(exact, "off").receive({ type: "act", act: "start", id: "" });
-  assert.deepEqual([ran.at(-1), started() - n], [C.acceptAll(), 2], "Exact off: the default answers, as Home's Start takes it");
+  assert.deepEqual([ran.filter((argv) => argv[0] !== "config"), started() - n], [[C.acceptAll()], 2], "Exact off: the default answers, as Home's Start takes it");
 });
 
 test("Home disables Start while it is busy (a workflow proposing), so a plan that appears cannot swallow the click", async () => {
