@@ -7,7 +7,7 @@ import { layout, modeFor, rounded, route, spread, step, type Box, type Edge, typ
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, markWord, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
+import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, covers, coversIn, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, markWord, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, earlier, edgeKind, editable,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
@@ -625,11 +625,11 @@ function graph(s: StateX, dir: "across" | "down") {
   for (const [key, path] of edgeEls) if (!seenEdges.has(key)) { path.remove(); edgeEls.delete(key); }
   // boxes: one group a task, rebuilt only when its words or its place changed
   const tasks = $("tasks") as unknown as SVGGElement;
-  const seen = new Set<string>();
+  const shown = new Set<string>();
   const box = (id: string, key: string, paint: (g: SVGGElement, h: number) => void, watched = false) => {
     const p = lay!.boxes[id];
     if (!p) return;
-    seen.add(id);
+    shown.add(id);
     key = JSON.stringify([key, p.x, p.y, id === selected, down, level]);
     let have = taskEls.get(id);
     if (have && have.key === key) return;
@@ -650,10 +650,10 @@ function graph(s: StateX, dir: "across" | "down") {
     paint(have.g, p.h);
     have.g.style.transform = `translate(${p.x}px, ${p.y}px)`;
   };
-  for (const t of s.tasks) box(t.id, JSON.stringify([t, s.envelope.forks]), (grp, h) => drawTask(grp, t, h, down, s.envelope.forks));
+  for (const t of s.tasks) box(t.id, JSON.stringify([t, s.envelope.forks, seen.has(t.id)]), (grp, h) => drawTask(grp, t, h, down, s.envelope.forks));
   for (const d of drawn()) box(d.key, JSON.stringify([d, naming === d.key]), (grp) => drawDraft(grp, d));
   for (const d of draftedSteps(s)) box(PLAN + d.id, JSON.stringify(d), (grp) => drawPlanned(grp, d, down), true);
-  for (const [id, have] of taskEls) if (!seen.has(id)) { have.g.remove(); taskEls.delete(id); }
+  for (const [id, have] of taskEls) if (!shown.has(id)) { have.g.remove(); taskEls.delete(id); }
   // Tab walks the boxes wave by wave, which is their order in the DOM: reordered only when it changed
   const want = tabOrder(lay, [...s.tasks.map((t) => t.id), ...drawn().map((d) => d.key), ...draftedSteps(s).map((d) => PLAN + d.id)]);
   const have = Array.from(tasks.children).map((c) => c.getAttribute("data-id"));
@@ -777,7 +777,7 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
   return node;
 }
 
-/** A chip on a card, in mono, cut to the card: the files the step may change (or has written, or wrote outside
+/** A chip on a card, in the UI's font as its foot's check, cut to the card: the files the step may change (or has written, or wrote outside
  *  them), its command. A path too long for it says its file (`CookServiceImpl.java +2`), then its file's name
  *  (`RecipeLookupServiceImpl +1`) before it is cut; never `…/` before it, one more spelling in a band for a folder
  *  it does not name. Where ``named`` (the check on the card's foot, which runs its test) says its file's name too, the
@@ -787,7 +787,9 @@ function inStep<T extends SVGElement>(node: T, period: number): T {
 function pill(grp: SVGGElement, kind: string, glyph: string, words: string, x: number, y: number, max: number, bad = "", named = "") {
   const g = el("g", { class: `pill ${kind}` });
   const rect = g.appendChild(el("rect", { x, y, width: max, height: 18, rx: 5 }));
-  g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 13 }, glyph));
+  // a codicon, drawn: a font's glyph for an icon is a grey blob at 1x, and another shape in every font. `$` is a word
+  if (ICONS[glyph]) g.appendChild(el("path", { class: "pill-mark", d: ICONS[glyph], transform: `translate(${x + 4} ${y + 3}) scale(0.75)` }));
+  else g.appendChild(el("text", { class: "pill-mark", x: x + 6, y: y + 13 }, glyph));
   const text = g.appendChild(el("text", { class: "pill-text", x: x + 20, y: y + 13 }, bad));
   grp.appendChild(g);
   let more = / \+\d+$/.exec(words)?.[0] ?? ""; // how many more files: kept whole, as the refused writes are
@@ -831,9 +833,11 @@ const MARKS: Record<Mark | CheckMark["box"] | "ended" | "warn" | "portion", [str
 };
 
 /** A mark drawn about a point, ``r`` px from its middle to its edge. Its lines are never thinner than 1.3 px;
- *  what turns on it takes up where the page's clock is (`inStep`). */
+ *  what turns on it takes up where the page's clock is (`inStep`). Its line's width is set on its style, not as a
+ *  `style` attribute, which the webview's policy drops: in the editor every mark was a 1 px line scaled down. */
 function mark(grp: SVGElement, kind: keyof typeof MARKS, x: number, y: number, r: number): SVGGElement {
-  const g = grp.appendChild(el("g", { class: `mk ${kind}`, transform: `translate(${x} ${y}) scale(${r / 10})`, style: `--sw:${Math.max(2, 13 / r)}`, "aria-hidden": "true" }));
+  const g = grp.appendChild(el("g", { class: `mk ${kind}`, transform: `translate(${x} ${y}) scale(${r / 10})`, "aria-hidden": "true" }));
+  g.style.setProperty("--sw", String(Math.max(2, 13 / r)));
   for (const [how, d] of MARKS[kind]) { // a path's length is said as 100, so its dots and dashes meet where it closes
     const p = g.appendChild(el("path", { class: how, d, pathLength: 100 }));
     if (how.endsWith("spin")) inStep(p, 900);
@@ -886,20 +890,24 @@ function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: num
 /** A card's foot, which is its check's, along the card's own foot (``h``, its attempts above it): a hairline, the
  *  check's box (marks.ts `checkMark`) and the check (``says``, cut at its words to as many characters as there is
  *  room for), tinted where the verdict is news. Its hover says `done when` the check whole, and the verdict. A step
- *  with no check is done when you approve; a draft that has said neither wears the blank. */
-function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h = BOX_H, w = BOX_W) {
+ *  with no check is done when you approve; a draft that has said neither wears no box (a dotted one is a check not
+ *  run yet) and says ``blank``. */
+function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h = BOX_H, w = BOX_W, blank = "no check yet") {
   const y = h - FOOT_H;
   const g = grp.appendChild(el("g", { class: `foot ${c.tone}` }));
   g.appendChild(el("path", { class: "tint", d: `M0.5,${y}H${w - 0.5}V${h - 12}a11.5,11.5 0 0 1 -11.5,11.5H12a11.5,11.5 0 0 1 -11.5,-11.5Z` }));
-  g.appendChild(el("path", { class: "hair", d: `M0.5,${y}H${w - 0.5}` }));
-  mark(g, c.box, PAD + 7, y + 11, 7);
+  g.appendChild(el("path", { class: "hair", d: `M0.5,${y + 0.5}H${w - 0.5}` })); // on a pixel's middle: one crisp line, not two soft ones
   const whole = says(Infinity), hover = [whole ? `done when ${whole}` : "", c.words].filter(Boolean).join(" · ") || (c.box === "approval" ? "done when you approve" : "");
+  const boxed = Boolean(whole) || c.box !== "unrun";
+  if (boxed) mark(g, c.box, PAD + 7, y + 11, 7);
   if (hover) g.appendChild(el("title", {}, hover)); // a draft that has said neither has nothing to say yet
-  const x = PAD + 20, room = w - PAD - x;
+  const x = boxed ? PAD + 20 : PAD, room = w - PAD - x;
   const v = g.appendChild(el("text", { class: "foot-v", x, y: y + 15 }));
-  let n = Math.floor(room / 7.2); // a mono character at 12 px; then by its drawn length
-  do v.textContent = says(n) || (c.box === "approval" ? "you approve" : "___"); while (v.getComputedTextLength() > room && --n > 6);
-  if (v.getComputedTextLength() > room) v.remove();
+  const fill = (n: number) => (v.textContent = says(n) || (c.box === "approval" ? "you approve" : blank));
+  let n = Math.floor(room / 5); // more characters than a 12 px line holds; then by its drawn length
+  do fill(n); while (v.getComputedTextLength() > room && --n > 6);
+  if (!v.getComputedTextLength()) fill(Math.floor(room / 7.2)); // not drawn yet: by a count that never runs past
+  if (v.getComputedTextLength() > room || !v.textContent) v.remove();
 }
 
 /** The card's one act, a real button at the status line's right end: Tab stops on it after the card, Enter and
@@ -918,10 +926,11 @@ function actButton(grp: SVGGElement, act: Button, id: string, title: string, go 
 }
 
 /** A draft's foot (a task drawn by hand, a step the planner is writing): its check as one not run yet; with
- *  none, your approval where it asks for it, else the blank. */
-const draftFoot = (grp: SVGGElement, check: string, approve = false) =>
+ *  none, your approval where it asks for it, else that it has no check yet, unless its status names that blank
+ *  already (``named``: `check ___`). */
+const draftFoot = (grp: SVGGElement, check: string, approve = false, named = false) =>
   cardFoot(grp, check || approve ? checkMark({ check: check || null, checked: { before: null, after: null }, state: "proposed", hollow: false }) : { box: "unrun", tone: "dim", words: "" },
-       (n) => checkCut(check, n));
+       (n) => checkCut(check, n), BOX_H, BOX_W, named ? "" : undefined);
 
 /** A title on up to ``most`` lines of ``max`` px from (``x``, ``y``), ``lh`` apart: whole words on each line, the
  *  last cut to the room (marks.ts `wrap`). Its text reads as the title does, whichever way it is broken. */
@@ -946,7 +955,7 @@ function rowTitle(grp: SVGGElement, title: string, max: number) {
 function drawCompact(grp: SVGGElement, c: { title: string; hover: string; mark: Mark; selected: boolean; port?: string; naming?: Draft;
                                             hollow?: boolean; forks?: readonly ForkX[] }) {
   if (c.selected) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: ROW_W + 10, height: ROW_H + 10, rx: 14 }));
-  grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: ROW_W, height: ROW_H, rx: 10 }));
+  grp.appendChild(el("rect", { class: "box", x: 0.5, y: 0.5, width: ROW_W - 1, height: ROW_H - 1, rx: 9.5 })); // on a pixel's middle, as a card's (`frame`)
   mark(grp, c.mark, 19, ROW_H / 2, 9.5);
   const forks = c.hollow ? [] : c.forks ?? [], cols = Math.min(4, forks.length), lines = Math.ceil(forks.length / 4);
   if (c.hollow) mark(grp, "warn", ROW_W - 15, ROW_H / 2, 7.5);
@@ -966,10 +975,11 @@ function drawCompact(grp: SVGGElement, c: { title: string; hover: string; mark: 
 }
 
 /** A whole card's frame, ``h`` tall (its attempts make it taller): the ring of the chosen one, the box. A working
- *  card has no halo: its turning mark and its moving edge say it works. */
+ *  card has no halo: its turning mark and its moving edge say it works. The box's 1 px border is drawn half a pixel
+ *  in, on a pixel's middle: on a whole one it was two half-grey pixels at 100%, a soft edge on a 1x screen. */
 function frame(grp: SVGGElement, h: number, chosen: boolean) {
   if (chosen) grp.appendChild(el("rect", { class: "ring", x: -5, y: -5, width: BOX_W + 10, height: h + 10, rx: 16 }));
-  grp.appendChild(el("rect", { class: "box", x: 0, y: 0, width: BOX_W, height: h, rx: 12 }));
+  grp.appendChild(el("rect", { class: "box", x: 0.5, y: 0.5, width: BOX_W - 1, height: h - 1, rx: 11.5 }));
 }
 
 /** A card's status line, in its room (``right``: where its act or its tail starts). ``words`` says it in as many
@@ -1003,12 +1013,12 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   grp.setAttribute("class", `task ${cls(t.state)}${t.id === selected ? " selected" : ""}${t.needs_you ? " needs-you" : ""}`);
   grp.setAttribute("data-mark", stateMark(t));
   const asked = state ? questionOn(state, t.id)?.text ?? "" : "";
-  const line = cardLine(t, 60, asked), times = attemptsMark(t, limit), check = checkMark(t);
+  const line = cardLine(t, 60, asked), times = attemptsMark(t, limit), check = checkMark(t), what = covers(t);
   if (times) grp.dataset.attempts = String(parseInt(times)); else delete grp.dataset.attempts;
-  // its state in words where its line says something else (what a suggestion covers): only its mark says it to the eye
+  // its state in words where its line says something else (a question): only its mark says it to the eye
   const word = markWord(stateMark(t), t), said = (l: string) => (l.startsWith(word) ? l : `${word}, ${l}`);
-  grp.setAttribute("aria-label", `${t.title}: ${said(line)}${t.id === selected ? ", selected" : ""}`);
-  const hover = [t.title, said(cardLine(t, LONG, asked)), check.words].filter(Boolean).join(" · "); // the whole line, and the check's verdict
+  grp.setAttribute("aria-label", `${t.title}: ${said(line)}${what ? `; ${what}` : ""}${t.id === selected ? ", selected" : ""}`);
+  const hover = [t.title, what, said(cardLine(t, LONG, asked)), check.words].filter(Boolean).join(" · "); // what it covers whole, the whole line, and the check's verdict
   if (level === "compact") {
     return drawCompact(grp, { title: t.title, hover, mark: stateMark(t), selected: t.id === selected,
                               port: replaying() || t.leaves ? undefined : t.id, hollow: check.box === "hollow", forks: t.forks });
@@ -1017,12 +1027,21 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   const corner = cornerMark(t); // its state's mark, inside the card at its title's right, as a row has it at its left
   cardTitle(grp, t.title, corner ? 20 : 0);
   if (corner) mark(grp, corner, BOX_W - PAD - 7, 16, 7);
+  // a title on one line leaves its second to what the task covers past it (`Librarian service: collections, …`), dim:
+  // no card in a row has an empty band where another has words, and the status row says the state
+  if (what && grp.querySelector(".title")?.childElementCount === 1) {
+    const c = grp.appendChild(el("text", { class: "covers", x: PAD, y: 37 })), room = BOX_W - 2 * PAD;
+    let n = Math.floor(room / 6.2);
+    do c.textContent = coversIn(what, n); while (c.getComputedTextLength() > room && --n > 4);
+    if (!c.getComputedTextLength()) c.textContent = coversIn(what, Math.floor(room / 7)); // not drawn yet: by a count that never runs past
+    if (!c.textContent) c.remove();
+  }
   const files = filesLine(t); // the latest fact about its files: what it may change, has written, or wrote outside them
   if (t.command) pill(grp, "run", "$", commandChip(t.command), PAD, 48, BOX_W - 2 * PAD); // a command step: what runs, with no agent
   if (files.text) pill(grp, `files ${files.tone}`, files.mark, files.text, PAD, 48, BOX_W - 2 * PAD, files.refused && ` · ${files.refused}`, files.tone === "plain" ? t.check ?? "" : "");
   // the status; at its end the card's act, else its model while one agent runs it (attempts each name theirs), or
   // the agents it is set to, whose hover says what that costs
-  const act = cardAct(t, replaying());
+  const act = cardAct(t, replaying(), seen.has(t.id)); // its changes opened here: Approve, as its pane says
   let right = BOX_W - PAD;
   if (act) right = actButton(grp, act, t.id, t.title);
   else if (asked && stateMark(t) === "you" && !replaying()) { // it wants you for its question: its answers are in its pane, the first one focused
@@ -1088,9 +1107,9 @@ function drawDraft(grp: SVGGElement, d: Draft) {
     grp.appendChild(fo);
   } else cardTitle(grp, d.title, 20);
   const files = filesChip(globs(d.files));
-  if (files) pill(grp, "files", "▤", files, PAD, 48, BOX_W - 2 * PAD);
+  if (files) pill(grp, "files", "file", files, PAD, 48, BOX_W - 2 * PAD);
   status(grp, () => (d.said ? "not taken: see why" : blanks(d)), BOX_W - PAD, Boolean(d.said));
-  draftFoot(grp, d.check, d.approve);
+  draftFoot(grp, d.check, d.approve, !d.said);
   grp.appendChild(el("title", {}, `a draft: ${d.title} · ${blanks(d)}`));
 }
 
@@ -1107,7 +1126,7 @@ function drawPlanned(grp: SVGGElement, d: DraftStep, down: boolean) {
   cardTitle(grp, d.title, 20);
   mark(grp, "suggested", BOX_W - PAD - 7, 16, 7);
   const files = filesChip(d.scope);
-  if (files) pill(grp, "files", "▤", files, PAD, 48, BOX_W - 2 * PAD);
+  if (files) pill(grp, "files", "file", files, PAD, 48, BOX_W - 2 * PAD);
   status(grp, () => "drafted", BOX_W - PAD);
   draftFoot(grp, d.check ?? "");
   grp.appendChild(el("title", {}, `the planner is drafting: ${d.title}`));

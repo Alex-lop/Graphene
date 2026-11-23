@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
-import { attemptsMark, attemptsWhy, cardAct, cardLine, covers, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, checkCut, cutWhole, nextWanting, tailPath, wrap, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
+import { attemptsMark, attemptsWhy, cardAct, cardLine, covers, coversIn, checkLines, checkMark, cornerMark, doneWhen, filesLine, forkMark, goalBox, goalCells, legend, markWord, checkCut, cutWhole, nextWanting, tailPath, wrap, stateMark, tally, wanting, wantingLine, type Box, type CheckMark, type Mark } from "../src/graph/marks.ts";
 import { check } from "../src/graph/check.ts";
 import { actsFor, checkWords, cut, KEYS, sub, type TaskX } from "../src/graph/words.ts";
 import { markDone, offerWords, widen } from "../src/needs.ts";
@@ -94,8 +94,8 @@ test("the legend lists the marks the plan has, loudest first, each with its word
   assert.deepEqual(legend(calm), [["working", "working", 1], ["landed", "done", 1], ["ready", "ready", 1], ["waiting", "waiting", 1], ["suggested", "suggested", 1]]);
   assert.deepEqual(legend([]), [], "an empty plan has no legend");
   assert.deepEqual(legend([step("yours", { leaves: true })]), [["you", "asks you", 1]], "a diamond that is no review says what it is");
-  assert.deepEqual(legend([], 2), [["suggested", "a draft", 2]], "drafts on an empty canvas: the dashed ring, by its own word");
-  assert.deepEqual(legend(calm, 2).at(-1), ["suggested", "suggested / a draft", 3]);
+  assert.deepEqual(legend([], 2), [["suggested", "drafted", 2]], "drafts on an empty canvas: the dashed ring, by its own word");
+  assert.deepEqual(legend(calm, 2).at(-1), ["suggested", "suggested / drafted", 3]);
 });
 
 test("the goal's row groups the marks by sub-goal, in the order the plan first names each", () => {
@@ -240,10 +240,12 @@ test("a check is cut at its words: its first and what it runs on, else that alon
   assert.equal(checkCut("pytest tests/test_words.py", 22), "pytest … test_words.py");
   assert.equal(checkCut("python -m pytest tests/test_app.py -k log", 22), "python … test_app.py", "a path, not the flag's word after it");
   assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 30), "RecipeLookupServiceImplTest", "a dotted test, by its own name");
-  assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 22), "RecipeLookupService…", "cut at its end only when nothing whole fits, at a hump of its name");
-  // Alex's real plan: each card's foot (21 characters) names its own test, never cut inside a word
-  assert.deepEqual(["RecipeLookup", "Librarian", "Cook", "Planner", "Transformer"].map((x) => checkCut(`./gradlew test --tests 'app.cookyourbooks.services.impl.${x}ServiceImplTest'`, 21)),
-                   ["RecipeLookupService…", "LibrarianServiceImpl…", "CookServiceImplTest", "PlannerServiceImpl…", "TransformerService…"]);
+  assert.equal(checkCut("./gradlew test --tests 'app.cookyourbooks.services.impl.RecipeLookupServiceImplTest'", 22), "RecipeLookup…ImplTest", "cut only when nothing whole fits, in its middle at its humps: its end says it is the test");
+  // Alex's real plan: each test named by its own humps, never cut inside one, and still ending in Test; at 21 characters,
+  // and at about the 24 a card's foot holds in the UI's font (it is measured)
+  const real = (n: number) => ["RecipeLookup", "Librarian", "Cook", "Planner", "Transformer"].map((x) => checkCut(`./gradlew test --tests 'app.cookyourbooks.services.impl.${x}ServiceImplTest'`, n));
+  assert.deepEqual(real(21), ["RecipeLookup…ImplTest", "LibrarianService…Test", "CookServiceImplTest", "PlannerService…Test", "Transformer…ImplTest"]);
+  assert.deepEqual(real(24), ["RecipeLookupService…Test", "LibrarianServiceImplTest", "CookServiceImplTest", "PlannerServiceImplTest", "TransformerService…Test"]);
   assert.equal(checkCut("./gradlew test --tests 'app.cli.commands.GeneralCommandTests.unknownCommand_displaysUnknownMessage'", 21), "unknownCommand…");
   // Alex's CLI task runs three tests of one class: its card names that class and how many, never the last test as if it were the check
   const cli = "./gradlew test --tests 'app.cookyourbooks.cli.commands.GeneralCommandTests.quit_displaysGoodbyeAndExits' --tests 'app.cookyourbooks.cli.commands.GeneralCommandTests.exit_displaysGoodbyeAndExits' --tests 'app.cookyourbooks.cli.commands.GeneralCommandTests.unknownCommand_displaysUnknownMessage'";
@@ -310,24 +312,24 @@ const stop = (path: string) => ({ path, at: "2026-11-21T14:02:11", how: "edit" }
 test("the files chip says the latest fact: what it may change, what it has written, what was refused, what it wrote outside", () => {
   const working = step("running", { scope: ["api/create/**"], files: FOUR, filesN: 4, touched: FOUR.slice(1, 3) });
   const rows: [string, TaskX, ReturnType<typeof filesLine>][] = [
-    ["not started: the files it may change", step("ready", { scope: ["store/cache.py", "tests/store/**"] }), { tone: "plain", mark: "▤", text: "store/cache.py +1", refused: "" }],
+    ["not started: the files it may change", step("ready", { scope: ["store/cache.py", "tests/store/**"] }), { tone: "plain", mark: "file", text: "store/cache.py +1", refused: "" }],
     ["no files named: no chip", step("waiting"), { tone: "plain", mark: "", text: "", refused: "" }],
-    ["working: how many of its files it has written", working, { tone: "working", mark: "✎", text: "2 of 4 files", refused: "" }],
-    ["and how many writes were refused, apart", { ...working, stops: [stop("store/repo.py")] }, { tone: "working", mark: "✎", text: "2 of 4 files", refused: "1 refused" }],
+    ["working: how many of its files it has written", working, { tone: "working", mark: "edit", text: "2 of 4 files", refused: "" }],
+    ["and how many writes were refused, apart", { ...working, stops: [stop("store/repo.py")] }, { tone: "working", mark: "edit", text: "2 of 4 files", refused: "1 refused" }],
     ["a file it created counts, and one file is a file", step("running", { scope: ["store/audit.py"], touched: ["store/audit.py"], stops: [stop("a"), stop("b")] }),
-     { tone: "working", mark: "✎", text: "1 of 1 file", refused: "2 refused" }],
-    ["working, nothing written yet", { ...working, touched: [] }, { tone: "working", mark: "✎", text: "0 of 4 files", refused: "" }],
-    ["working under an older CLI, which counts no files: the scope, as today", step("running", { scope: ["api/list.py"] }), { tone: "plain", mark: "▤", text: "api/list.py", refused: "" }],
+     { tone: "working", mark: "edit", text: "1 of 1 file", refused: "2 refused" }],
+    ["working, nothing written yet", { ...working, touched: [] }, { tone: "working", mark: "edit", text: "0 of 4 files", refused: "" }],
+    ["working under an older CLI, which counts no files: the scope, as today", step("running", { scope: ["api/list.py"] }), { tone: "plain", mark: "file", text: "api/list.py", refused: "" }],
     ["working where no file is there yet: the scope, and still the refused write", step("running", { scope: ["src/new/**"], stops: [stop("README.md")] }),
-     { tone: "plain", mark: "▤", text: "src/new/**", refused: "1 refused" }],
+     { tone: "plain", mark: "file", text: "src/new/**", refused: "1 refused" }],
     ["the count is for a step at work: to review, the scope again", { ...working, state: "review", changed: FOUR.slice(1, 3), touched: [], stops: [stop("x")] },
-     { tone: "plain", mark: "▤", text: "api/create/**", refused: "" }],
-    ["came back for a write outside its files: which", step("came back", { scope: ["api/cancel.py"], outside: ["store/repo.py"] }), { tone: "back", mark: "✕", text: "wrote store/repo.py", refused: "" }],
+     { tone: "plain", mark: "file", text: "api/create/**", refused: "" }],
+    ["came back for a write outside its files: which", step("came back", { scope: ["api/cancel.py"], outside: ["store/repo.py"] }), { tone: "back", mark: "close", text: "wrote store/repo.py", refused: "" }],
     ["and how many more", step("came back", { scope: ["api/cancel.py"], outside: ["store/repo.py", "store/index.py", "README.md"] }),
-     { tone: "back", mark: "✕", text: "wrote store/repo.py +2", refused: "" }],
-    ["came back for another reason: the scope", step("came back", { scope: ["api/cancel.py"] }), { tone: "plain", mark: "▤", text: "api/cancel.py", refused: "" }],
+     { tone: "back", mark: "close", text: "wrote store/repo.py +2", refused: "" }],
+    ["came back for another reason: the scope", step("came back", { scope: ["api/cancel.py"] }), { tone: "plain", mark: "file", text: "api/cancel.py", refused: "" }],
     ["`outside` on a step that did not come back says nothing here", step("running", { scope: ["api/cancel.py"], outside: ["store/repo.py"] }),
-     { tone: "plain", mark: "▤", text: "api/cancel.py", refused: "" }],
+     { tone: "plain", mark: "file", text: "api/cancel.py", refused: "" }],
     ["a command step keeps its own chip", step("ready", { check: "uv run pytest -q", command: "uv run pytest -q" }), { tone: "plain", mark: "", text: "", refused: "" }],
   ];
   for (const [why, t, want] of rows) assert.deepEqual(filesLine(t), want, why);
@@ -357,7 +359,7 @@ test("3 agents at once on a step set to attempts that has started none, not trie
 });
 
 // ---- a card's status line ----
-test("a card's status says its state first and what its other parts do not: what a suggestion covers, a question on it, no attempts as words", () => {
+test("a card's status says its state first and what its other parts do not: a question on it, no attempts as words; what a suggestion covers is its title's second line", () => {
   const real = parseState(readFileSync(new URL("./fixtures/real-auto.json", import.meta.url), "utf8"));
   const race = parseState(readFileSync(new URL("./fixtures/graph-race.json", import.meta.url), "utf8"));
   // what each suggestion covers, as its planner wrote it past its title and a colon; a full text in any other shape says nothing
@@ -368,15 +370,18 @@ test("a card's status says its state first and what its other parts do not: what
                     covers({ title: "the export", full: "Write the export: CSV for the weekly report" })],
                    ["Collections, JSON import, ingredient search", "CSV for the weekly report", "", "", ""]);
   const suggested = (title: string, full: string) => cardLine(step("proposed", { title, full, check: CHECK }), 60);
-  assert.equal(suggested("Planner service", "Planner service: shopping list and Markdown export"), "Shopping list and Markdown export", "not `suggested` again: its corner's ring says it");
-  assert.equal(suggested("Planner service", "Planner service"), "suggested", "nothing more to say: its state");
-  // on Alex's plan, in a card's 25 characters: whole items while they fit, never `Shopping list and…`; else its state
-  const cards = (title: string, full: string) => cardLine(step("proposed", { title, full, check: CHECK }), 25);
-  assert.deepEqual([cards("Transformer service", "Transformer service: scale, convert, house conversions, unit names"),
-                    cards("Planner service", "Planner service: shopping list and Markdown export"),
-                    cards("Librarian service", "Librarian service: collections, JSON import, ingredient search"),
-                    cards("the export", "Export: a weekly report of every order shipped")],
-                   ["Scale, convert…", "Shopping list…", "Collections, JSON import…", "suggested"]);
+  assert.equal(suggested("Planner service", "Planner service: shopping list and Markdown export"), "suggested", "the row says one thing on every suggestion: what it covers is a line of its own");
+  assert.equal(suggested("Planner service", "Planner service"), "suggested");
+  // on Alex's plan, in a card's line (28 characters): whole items where they fill most of it, else as many whole words
+  // as fit, so Planner keeps its Markdown export; never ending on `and…`
+  const cards = (full: string, n = 28) => coversIn(covers({ title: full.slice(0, full.indexOf(":")), full }), n);
+  assert.deepEqual([cards("Transformer service: scale, convert, house conversions, unit names"),
+                    cards("Planner service: shopping list and Markdown export"),
+                    cards("Librarian service: collections, JSON import, ingredient search"),
+                    cards("the export: a weekly report of every order shipped")],
+                   ["Scale, convert, house…", "Shopping list and Markdown…", "Collections, JSON import…", "A weekly report of every…"]);
+  assert.equal(cards("Planner service: shopping list and Markdown export", 22), "Shopping list…", "not `Shopping list and…`");
+  assert.equal(coversIn("Internationalisation", 10), "", "not even a word fits: nothing");
   // a question on a suggestion is the line's news, as on a step at work
   assert.equal(cardLine(step("proposed", { title: "greet route", full: "greet route: a /greet route", check: CHECK }), 24, "which port does the dev server take?"), "asks you: which port…");
   // the race's main card wears the filled diamond for the question on it: it says so, with the question, and not `agent 3 · 3 attempts`
@@ -415,6 +420,10 @@ test("a full card wears one act, the pane's first main one, and never Accept; a 
     assert.equal(cardAct(t, true), null, `${why}: a replay is watched`);
     if (b) assert.deepEqual(b, actsFor(t, false).find((x) => x.main), `${why}: the pane's own button, not a second one`);
   }
+  // its changes opened in this window, a task to review wears Approve, as its pane does, not Open changes again
+  const opened = cardAct(step("review", { check: CHECK }), false, true);
+  assert.deepEqual(opened && [opened.label, opened.act], ["Approve", "signOff"]);
+  assert.deepEqual(opened, actsFor(step("review", { check: CHECK }), false, true).find((x) => x.main));
 });
 
 test("Mark done on a step of your own: the pane offers it, the host lets it through, and it runs `graphene node done` on that step", () => {
@@ -480,13 +489,16 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
   assert.deepEqual(checkMark(at("docker")), { box: "hollow", tone: "warn", words: "passed before the work: it proves nothing yet" });
   assert.deepEqual([checkMark(at("a11y")).box, checkMark(at("changelog")).box], ["approval", "approval"]);
   // the files chip's three other facts
-  assert.deepEqual(filesLine(at("create")), { tone: "working", mark: "✎", text: "2 of 4 files", refused: "" });
-  assert.deepEqual(filesLine(at("audit")), { tone: "working", mark: "✎", text: "1 of 1 file", refused: "1 refused" });
+  assert.deepEqual(filesLine(at("create")), { tone: "working", mark: "edit", text: "2 of 4 files", refused: "" });
+  assert.deepEqual(filesLine(at("audit")), { tone: "working", mark: "edit", text: "1 of 1 file", refused: "1 refused" });
   assert.equal(stateMark(at("audit")), "working", "the refused write was its first attempt's: nothing is stopped in the one going now");
-  assert.deepEqual(filesLine(at("cancel")), { tone: "back", mark: "✕", text: "wrote store/repo.py", refused: "" });
+  assert.deepEqual(filesLine(at("cancel")), { tone: "back", mark: "close", text: "wrote store/repo.py", refused: "" });
   // 3 agents at once where the limits' three have not started; the two races under way keep their rows
   for (const t of big.tasks) assert.equal(attemptsMark(t, big.envelope.forks), ["ready", "waiting"].includes(t.state) ? "3 agents at once" : "", t.id);
-  assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Compare attempts", "cancel: Help it…", "a11y: Mark done"]);
+  assert.deepEqual(big.tasks.filter((t) => cardAct(t, false)).map((t) => `${t.id}: ${cardAct(t, false)!.label}`), ["cache: Compare", "cancel: Help it…", "a11y: Mark done"]);
+  // Compare, in a word, so the race's `to review` beside it is whole; the pane's own act otherwise, its hover saying what it compares
+  const race = big.tasks.find((t) => t.id === "cache")!;
+  assert.deepEqual(cardAct(race, false), { ...actsFor(race, false).find((x) => x.main)!, label: "Compare" });
 });
 
 test("a command step's box says what its pane says: the workflow fixture's two, and the pane's own lines", () => {
