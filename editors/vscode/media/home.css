@@ -95,10 +95,11 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
 .c-line.wide dd { grid-column: 1 / -1; }
 .c-line dt { color: var(--dim); }
 .c-line dd { margin: 0; overflow-wrap: break-word; }
-.c-line dd.mono { overflow-wrap: anywhere; } /* a command breaks at its seams (main.ts code); mid-word only when one is wider than the card */
-.path { display: flex; min-width: 0; white-space: nowrap; }
-.path .dir { flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; color: var(--dim); }
-.path .file { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; } /* the folder gives way first */
+/* a command or a file breaks at its seams (main.ts), mid-word only when one is wider than the card, and what it
+   wraps onto is indented, so a file that wraps does not read as two */
+.c-line dd.mono { overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+.path { display: block; }
+.path .dir { color: var(--dim); }
 /* a narrow side bar: a long value goes under its label, with the card's whole width */
 @media (max-width: 360px) { .c-line.long dt, .c-line.long dd { grid-column: 1 / -1; } }
 .c-line.warn dd { color: var(--warn); }

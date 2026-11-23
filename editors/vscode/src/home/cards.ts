@@ -14,7 +14,7 @@ export type Act = (typeof ACTS)[number];
 
 /** ``main``: the card's one filled button, if any. ``note``: a dim word after the label (a question's default). */
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean; note?: string }
-/** ``paths``: the value is these files, drawn one a line and cut in the middle when long (``v`` says them all). */
+/** ``paths``: the value is these files, drawn one a line, a deep one from its last folder (``v`` says them all). */
 export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[] }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }

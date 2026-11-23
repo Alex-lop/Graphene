@@ -191,7 +191,7 @@ function drawCard(c: Card): HTMLElement {
   if (c.lines.length) {
     const dl = el("dl", "c-lines", undefined, card);
     for (const l of c.lines) {
-      const size = l.paths ? Math.max(...l.paths.map((x) => x.length)) : l.v.length; // files are one a line: the longest counts
+      const size = l.paths ? Math.max(...l.paths.map((x) => short(x).length)) : l.v.length; // files are one a line: the longest counts
       const long = l.k && size > (l.mono ? 26 : 40) ? " long" : ""; // under its label in a narrow side bar (home.css)
       const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}${long}`, undefined, dl);
       if (l.k) el("dt", "", l.k, r);
@@ -209,14 +209,19 @@ function drawCard(c: Card): HTMLElement {
   return card;
 }
 
-/** A file on a line of its own: its name whole, its folder dim and cut from the left when the line is short
- *  (`…ces/impl/RecipeLookupServiceImpl.java`); the whole path on hover. Never broken inside a word. */
+/** A file as Home shows it: deeper than two folders, its last folder and its name (`…/impl/Recipe.java`), so
+ *  every row of a card starts the same way and a folder is never cut inside its name. */
+const short = (p: string) => { const d = p.split("/"); return d.length > 3 ? `…/${d.slice(-2).join("/")}` : p; };
+
+/** A file on a line of its own, its folder dim and the whole path on hover. It breaks as a command does: after
+ *  a slash, after a long name's dots, and mid-word only when nothing else fits. */
 function path(p: string, parent: HTMLElement) {
   const row = el("span", "path", undefined, parent);
   row.title = p;
-  const cut = p.lastIndexOf("/") + 1;
-  if (cut) el("span", "dir", `${p.slice(0, cut)}\u200e`, row); // the mark keeps the last slash on the right, as the dir is set right to left
-  el("span", "file", p.slice(cut), row);
+  const s = short(p), cut = s.lastIndexOf("/") + 1;
+  if (cut) code(s.slice(0, cut), el("span", "dir", undefined, row));
+  row.append(document.createElement("wbr"));
+  code(s.slice(cut), row);
 }
 
 /** A command, breakable where it reads as a seam: at its spaces, after a slash, and after the dots of a long
