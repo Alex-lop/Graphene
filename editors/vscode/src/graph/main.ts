@@ -2234,7 +2234,7 @@ function wire() {
     b.id = id;
     b.className = "quiet";
     b.append(icon(ico));
-    if (label) div("label", label, b); // a tab too narrow for it shows the icon alone (graph.css)
+    if (label) b.appendChild(document.createElement("span")).append(label); // a tab too narrow for it shows the icon alone (graph.css)
     b.title = title;
     b.addEventListener("click", on);
     b.setAttribute("aria-label", label || title.replace(/:.*| \(.*/, ""));

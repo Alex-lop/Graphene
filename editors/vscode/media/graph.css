@@ -194,7 +194,7 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
 /* the narrowest tab an editor gives (about 220 px): Add task is its icon, and the stages stand closer, with no line
    between them, so the three names still fit whole */
 @media (max-width: 320px) {
-  #b-add .label { display: none; }
+  #b-add span { display: none; }
   #b-add { width: 28px; padding: 0; justify-content: center; }
   .stage { padding: 3px 6px 3px 2px; gap: 4px; }
   .stage + .stage { margin-left: 4px; }

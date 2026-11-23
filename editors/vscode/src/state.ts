@@ -351,6 +351,10 @@ export function mdText(s: string): string {
 /** A practice run (every model call went to the scripted stand-in) or a replay (no model runs): nothing is spent
  *  here, so no screen says a cost, the status bar, auto's line and the graph's (graph.ts sends it none) alike. */
 export const free = (s: Pick<State, "stand_in" | "replay">): boolean => s.stand_in || Boolean(s.replay);
+/** The snapshot a page is sent: a free one with no cost in it to put on a card, a lane, an attempt or a Cost row. */
+export function unpriced(s: State): State {
+  return free(s) ? { ...s, spent: null, tasks: s.tasks.map((t) => ({ ...t, usd: null, forks: t.forks.map((f) => ({ ...f, usd: null })) })) } : s;
+}
 
 /** The status bar's words: `2 working · 1 needs you · $0.42`, `3 of 6 done` when nothing runs; while auto is on,
  *  its round first (`auto round 2 · …`), or that it waits for you, or is done. */
