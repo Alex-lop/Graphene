@@ -129,8 +129,9 @@ test("the header: the goal, else what was last asked; the counts in plain words;
   assert.equal(headline({ ...s, goal: "", news: ["you asked: a --json flag", "proposed: x"] }), "a --json flag");
   assert.equal(headline({ ...s, goal: "", news: [] }), "");
   assert.equal(countsLine(s), "2 of 7 done · $0.42 at list price"); // who is working and what needs you: the stages and Needs you say it
-  // on a subscription nothing is billed: never "spent"; before Start the cost is the planner's call; none, no cost
-  assert.equal(countsLine({ ...fixture("proposals"), spent: 1.336791 }), "0 of 4 done · planned for $1.34 at list price");
+  // on a subscription nothing is billed: never "spent"; nor "planned for", as the store's bill holds a dropped
+  // plan's and an earlier run's too; none, no cost
+  assert.equal(countsLine({ ...fixture("proposals"), spent: 1.336791 }), "0 of 4 done · $1.34 at list price");
   assert.equal(countsLine(fixture("proposals")), "0 of 4 done");
   assert.equal(banner(s), "");
   assert.equal(banner({ ...s, stand_in: true }), "Practice run: a scripted stand-in answers for the AI, so nothing is spent");

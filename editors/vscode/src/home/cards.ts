@@ -43,14 +43,14 @@ export function banner(s: State): string {
 }
 
 /** `3 of 6 done · $0.42 at list price`: who is working and what needs you are said just under it, by the stages
- *  and the Needs you section. The cost is what the agents' calls would cost at list price, as the CLI says it: on
- *  a subscription nothing is billed, so it is never "spent"; before Start it is the planner's call alone. A
- *  practice run spends nothing, so it shows no cost: the stand-in's is a list price. */
+ *  and the Needs you section. The cost is everything this repository's planners and agents have cost so far, a
+ *  dropped plan's included, at list price as the CLI says it: on a subscription nothing is billed, so it is never
+ *  "spent", nor "planned for" (the snapshot cannot tell the planner's share). A practice run spends nothing, so
+ *  it shows no cost: the stand-in's is a list price. */
 export function countsLine(s: State): string {
   const sb = s.scoreboard;
   const cost = s.stand_in ? "" : usd(s.spent);
-  const planned = s.tasks.length > 0 && s.tasks.every((t) => t.state === "proposed");
-  return [sb.total ? `${sb.proven} of ${sb.total} done` : "", cost ? `${planned ? "planned for " : ""}${cost} at list price` : ""].filter(Boolean).join(" · ");
+  return [sb.total ? `${sb.proven} of ${sb.total} done` : "", cost ? `${cost} at list price` : ""].filter(Boolean).join(" · ");
 }
 
 /** The open questions with no default: one stops the run either way, so Start waits for its answer as auto does. */

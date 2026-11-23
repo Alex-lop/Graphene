@@ -121,7 +121,7 @@ function render(m: Model) {
   goal.textContent = h.goal || (h.empty ? "No plan yet" : "");
   goal.title = h.goal; // three lines at most on the page
   goal.hidden = !goal.textContent; // a plan whose ask is no longer known: no headline rather than a wrong one
-  // each of its parts wraps as a whole first (`0 of 6 done ·`, then `planned for $1.34 at list price`)
+  // each of its parts wraps as a whole first (`0 of 6 done ·`, then `$1.34 at list price`)
   counts.replaceChildren(...h.counts.split(" · ").flatMap((p, i, all) => [el("span", "part", glue(p) + (i < all.length - 1 ? "\u00a0·" : "")), " "]));
   counts.hidden = !h.counts || h.empty;
   pipe.replaceChildren(...h.stages.map((st) => {
