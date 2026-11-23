@@ -1,5 +1,6 @@
 /* The theme variables VS Code (or Cursor) gives a webview, for the two previews (preview.html, home-preview.html):
-   Dark Modern by default; ?theme=light, hc, cursor, midnight or plus picks another. */
+   Dark Modern by default; ?theme=light, hc, cursor, midnight, plus or cursorlight picks another (as a theme- class, so no theme's name
+   clashes with the page's own classes: graph.css has a .plus). */
 :root { color-scheme: dark; --vscode-editor-background: #1f1f1f; --vscode-foreground: #cccccc;
         --vscode-descriptionForeground: #9d9d9d; --vscode-editorWidget-background: #202020;
         --vscode-widget-border: #313131; --vscode-focusBorder: #0078d4; --vscode-button-background: #0078d4;
@@ -11,7 +12,7 @@
         --vscode-sideBar-background: #181818; --vscode-list-hoverBackground: #2a2d2e; --vscode-list-activeSelectionBackground: #04395e;
         --vscode-errorForeground: #f88070; --vscode-textLink-foreground: #4daafc; }
 /* ?theme=light: the Light Modern theme's values */
-:root.light { color-scheme: light; --vscode-editor-background: #ffffff; --vscode-foreground: #3b3b3b;
+:root.theme-light { color-scheme: light; --vscode-editor-background: #ffffff; --vscode-foreground: #3b3b3b;
         --vscode-descriptionForeground: #717171; --vscode-editorWidget-background: #f8f8f8;
         --vscode-widget-border: #e5e5e5; --vscode-focusBorder: #005fb8; --vscode-button-background: #005fb8;
         --vscode-button-foreground: #ffffff; --vscode-button-secondaryBackground: #e5e5e5;
@@ -21,7 +22,7 @@
         --vscode-editor-inactiveSelectionBackground: #e5ebf1; --vscode-sideBar-background: #f8f8f8;
         --vscode-list-hoverBackground: #f2f2f2; --vscode-list-activeSelectionBackground: #e8e8e8; --vscode-errorForeground: #f85149; }
 /* ?theme=hc: the Dark High Contrast theme's values; the body gets vscode-high-contrast as VS Code sets it */
-:root.hc { color-scheme: dark; --vscode-editor-background: #000000; --vscode-foreground: #ffffff;
+:root.theme-hc { color-scheme: dark; --vscode-editor-background: #000000; --vscode-foreground: #ffffff;
         --vscode-descriptionForeground: #ffffff; --vscode-editorWidget-background: #000000;
         --vscode-widget-border: #6fc3df; --vscode-contrastBorder: #6fc3df; --vscode-contrastActiveBorder: #f38518;
         --vscode-focusBorder: #f38518; --vscode-button-background: #000000; --vscode-button-foreground: #ffffff;
@@ -31,7 +32,7 @@
         --vscode-list-hoverBackground: transparent; --vscode-errorForeground: #f48771; }
 /* ?theme=cursor: Cursor Dark, the theme a new Cursor user gets (theme-cursor/themes/cursor-dark-color-theme.json):
    its focus border is 20% white and its button text is dark, which a page must not lean on */
-:root.cursor { color-scheme: dark; --vscode-editor-background: #191919; --vscode-foreground: #f5f5f5;
+:root.theme-cursor { color-scheme: dark; --vscode-editor-background: #191919; --vscode-foreground: #f5f5f5;
         --vscode-descriptionForeground: #f5f5f5bd; --vscode-editorWidget-background: #141414;
         --vscode-widget-border: #f5f5f51f; --vscode-focusBorder: #f5f5f533; --vscode-button-background: #1372da;
         --vscode-button-foreground: #191919; --vscode-button-secondaryBackground: #f5f5f524;
@@ -42,7 +43,7 @@
         --vscode-errorForeground: #ff6161; --vscode-textLink-foreground: #8fbfff; --vscode-panel-border: #f5f5f514;
         --vscode-input-background: #191919; --vscode-input-border: #f5f5f533; }
 /* ?theme=midnight: Cursor Dark Midnight: no focus border at all, a pale button, no chart colours of its own */
-:root.midnight { color-scheme: dark; --vscode-editor-background: #1e2127; --vscode-foreground: #7b88a1;
+:root.theme-midnight { color-scheme: dark; --vscode-editor-background: #1e2127; --vscode-foreground: #7b88a1;
         --vscode-descriptionForeground: #7b88a1b3; --vscode-editorWidget-background: #191c22; --vscode-widget-border: transparent;
         --vscode-focusBorder: #00000000; --vscode-button-background: #88c0d0; --vscode-button-foreground: #191c22;
         --vscode-button-secondaryBackground: #434c5e; --vscode-button-secondaryForeground: #d8dee9;
@@ -51,7 +52,7 @@
         --vscode-sideBar-background: #191c22; --vscode-list-hoverBackground: #272c3699; --vscode-list-activeSelectionBackground: #21242b;
         --vscode-errorForeground: #bf616a; --vscode-textLink-foreground: #8fbcbb; --vscode-panel-border: #ffffff0d; }
 /* ?theme=plus: Default Dark+, the classic dark theme (VS Code's defaults under dark_vs) */
-:root.plus { color-scheme: dark; --vscode-editor-background: #1e1e1e; --vscode-foreground: #cccccc;
+:root.theme-plus { color-scheme: dark; --vscode-editor-background: #1e1e1e; --vscode-foreground: #cccccc;
         --vscode-descriptionForeground: #ccccccb3; --vscode-editorWidget-background: #252526; --vscode-widget-border: #303031;
         --vscode-focusBorder: #007fd4; --vscode-button-background: #0e639c; --vscode-button-foreground: #ffffff;
         --vscode-button-secondaryBackground: #3a3d41; --vscode-button-secondaryForeground: #ffffff;
@@ -59,3 +60,20 @@
         --vscode-charts-red: #f14c4c; --vscode-charts-blue: #3794ff; --vscode-charts-green: #89d185;
         --vscode-sideBar-background: #252526; --vscode-list-hoverBackground: #2a2d2e; --vscode-list-activeSelectionBackground: #04395e;
         --vscode-errorForeground: #f48771; --vscode-textLink-foreground: #3794ff; --vscode-panel-border: #80808059; }
+/* added for the Cursor lens: what the real themes also set (widget.shadow is the one that matters) */
+:root { --vscode-widget-shadow: #0000005c; --vscode-panel-border: #2b2b2b; --vscode-editorWarning-foreground: #cca700; --vscode-charts-orange: #d18616; }
+:root.theme-cursor { --vscode-widget-shadow: #f5f5f524; --vscode-editorWarning-foreground: #ff8750; --vscode-charts-orange: #ff8750; }
+:root.theme-midnight { --vscode-widget-shadow: #00000066; --vscode-editorWarning-foreground: #ebcb8b; }
+:root.theme-plus { --vscode-widget-shadow: #0000005c; }
+/* ?theme=cursorlight: Cursor Light */
+:root.theme-cursorlight { color-scheme: light; --vscode-editor-background: #ffffff; --vscode-foreground: #1c1c1c;
+        --vscode-descriptionForeground: #1c1c1cbd; --vscode-editorWidget-background: #fcfcfc;
+        --vscode-widget-border: #1c1c1c1f; --vscode-focusBorder: #1c1c1c33; --vscode-button-background: #1680f3;
+        --vscode-button-foreground: #ffffff; --vscode-button-secondaryBackground: #1c1c1c24;
+        --vscode-button-secondaryForeground: #1c1c1c; --vscode-button-secondaryHoverBackground: #1c1c1c33;
+        --vscode-charts-yellow: #aa6300; --vscode-charts-purple: #7547d0; --vscode-charts-red: #cd2834;
+        --vscode-charts-blue: #0b6dd3; --vscode-charts-green: #00854a; --vscode-charts-orange: #c14c00; --vscode-editor-inactiveSelectionBackground: #1c1c1c14;
+        --vscode-sideBar-background: #fcfcfc; --vscode-list-hoverBackground: #1c1c1c14; --vscode-list-activeSelectionBackground: #1c1c1c14;
+        --vscode-errorForeground: #ad1f2a; --vscode-textLink-foreground: #085ab2; --vscode-panel-border: #1c1c1c14;
+        --vscode-input-background: #ffffff; --vscode-input-border: #1c1c1c33; --vscode-widget-shadow: #1c1c1c24; --vscode-editorWarning-foreground: #c14c00; }
+html.plus { opacity: 1 !important; cursor: auto; } /* the preview names the theme "plus", which graph.css hides (.plus is the + button) */
