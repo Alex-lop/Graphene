@@ -1466,7 +1466,7 @@ function setField(t: TaskX, name: "title" | "scope" | "check" | "forks" | "signo
   api.postMessage({ type: "act", act: "set", id: t.id, field: name, value });
 }
 
-/** A task's form: its title, the files it may change, its check, its agents at once, your approval, and whether it
+/** A task's form: its title, the files it may change, its check, its attempts, your approval, and whether it
  *  is yours; each change is graphene's to take or refuse, and the line under them says what it does now. */
 function form(body: HTMLElement, t: TaskX, s: StateX) {
   const same = (a: string, b: string) => a.trim() === b.trim();
@@ -1477,26 +1477,26 @@ function form(body: HTMLElement, t: TaskX, s: StateX) {
         (v) => (!globs(v).length || globs(v).join(" ") === t.scope.join(" ") ? back() : setField(t, "scope", globs(v).join(" "))));
   field(body, "check", "Check", t.check ?? "", "pytest -q", "the command that passes only when the task is done; empty: your approval finishes it",
         (v) => (same(v, t.check ?? "") ? back() : setField(t, "check", v.trim())));
-  // how many agents work on it at once, each in its own copy and each spending: not retries, so it says so
+  // its attempts are agents at once, each in its own copy and each spending: not retries, so it says so
   const n = attemptsOf(t, s.envelope.forks);
   const r = div("row", undefined, body);
-  r.title = n > 1 ? `${n} agents work on it at once, each in its own copy; its check keeps one. About ${n}× the cost.`
-    : "one agent works on it; with more, they work at once, each in its own copy, and its check keeps one";
-  div("k", "Agents", r);
+  r.title = n > 1 ? `${n} attempts: ${n} agents work on it at once, each in its own copy; its check keeps one. About ${n}× the cost.`
+    : "one agent works on it; with more attempts, more agents work at once, each in its own copy, and its check keeps one";
+  div("k", "Attempts", r);
   const v = div("v stepper", undefined, r);
   const step = (label: string, to: number, sign: string) => {
     const b = document.createElement("button");
     b.className = "quiet";
     b.textContent = sign;
     b.setAttribute("aria-label", label);
-    b.title = t.check ? label : "more agents need a check to keep one";
+    b.title = t.check ? label : "more attempts need a check to keep one";
     b.disabled = !t.check || to < 1 || to > 8;
     b.addEventListener("click", () => setField(t, "forks", to));
     v.appendChild(b);
   };
-  step("one agent fewer", n - 1, "−");
-  div("count", String(n), v).setAttribute("aria-label", `${n} agent${n > 1 ? "s" : ""} at once`);
-  step("one agent more", n + 1, "+");
+  step("one attempt fewer", n - 1, "−");
+  div("count", String(n), v).setAttribute("aria-label", `${n} attempt${n > 1 ? "s" : ""} at once`);
+  step("one more attempt", n + 1, "+");
   div("dim", !t.check ? "more need a check to keep one" : n > 1 ? `at once · about ${n}× the cost` : "", v);
   const unread = t.signoff === null; // `graphene plan --json` not read yet: a moment
   tick(body, "signoff", "Wait for my approval", t.signoff === true, "it lands only once you approve it, as well as passing its check", (on) => setField(t, "signoff", on), unread);
@@ -1573,11 +1573,12 @@ function part(body: HTMLElement, title: string, aside = ""): HTMLElement {
 }
 
 let restOpen = false; // May change's fold, as the person left it
+let wholeCheck = false; // a long check shown whole, as the person left it
 
-/** A command or a path, breakable where it reads as a seam, as Home's are (home/main.ts code()): its spaces; a path
- *  after its slashes; a long dotted name after its dots and underscores (`app.cookyourbooks.services.impl.` and
- *  `CookServiceImplTest`), never before its extension; a short piece with a hyphen held whole (`--tests`). <wbr>, so
- *  a copied command is the command. */
+/** A command or a path, breakable where it reads as a seam: its spaces; a path after its slashes; a long dotted name
+ *  after its dots and underscores (`app.cookyourbooks.services.impl.` and `CookServiceImplTest`), never before its
+ *  extension; a short piece with a hyphen held whole (`--tests`). <wbr>, so a copied command is the command. Home's
+ *  code() (home/main.ts) is a near copy that does break before an extension: they are to be one function. */
 function seams(text: string, parent: HTMLElement) {
   for (const w of text.split(/(\s+)/)) {
     w.split(w.includes("/") || w.length < 24 ? /(?<=\/)/ : /(?<=[._])(?![^._]{1,5}$)/).forEach((part, i) => {
@@ -1598,17 +1599,33 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   const change = part(body, "May change", wrote && !wrote.startsWith("0 ") ? `✎ ${wrote}` : ""); // a count once something is written
   const tree = div("tree", undefined, change);
   const rows = scopeTree(t, s);
-  // a deep path by its last two parts (`…/impl/LookupTest.java`), so a repository's nested files are told apart; whole on the hover
-  const short = (p: string) => { const at = p.split("/").filter(Boolean); return at.length > 3 ? `…/${at.slice(-2).join("/")}${p.endsWith("/") ? "/" : ""}` : p; };
+  // a deep path by its first two parts and its last, a file's folder too (`src/main/…/impl/`, `src/test/…/impl/`:
+  // code and its test told apart); whole on the hover
+  const short = (p: string) => {
+    const at = p.split("/").filter(Boolean), end = p.endsWith("/") ? 1 : 2;
+    return at.length > end + 3 ? `${[...at.slice(0, 2), "…", ...at.slice(-end)].join("/")}${p.endsWith("/") ? "/" : ""}` : p;
+  };
   const line = (r: { name: string; kind: string; depth: number; note: string }, parent: HTMLElement) => {
     const row = div(`tr ${r.kind}${r.depth ? " in1" : ""}`, undefined, parent);
     const name = div("tr-name", undefined, row);
     name.title = r.name;
+    // what is become of a file is a mark in the gutter before it, its word on the hover: never a word left alone on a
+    // line under a long name
+    const mark = ({ new: ["+", "new: not there yet, it may create it"], written: ["✎", "written"], "outside its files": ["✕", "written outside its files"] } as Record<string, string[]>)[r.note];
+    if (mark) {
+      const m = document.createElement("span");
+      m.className = `tr-mark${r.note === "written" ? " wr" : ""}`;
+      m.textContent = mark[0]!;
+      m.title = mark[1]!;
+      m.setAttribute("role", "img");
+      m.setAttribute("aria-label", mark[1]!);
+      name.append(m);
+    }
     // it wraps after a slash, not inside a name
     (r.depth ? r.name : short(r.name)).split("/").forEach((bit, i) => name.append(...(i ? ["/", document.createElement("wbr")] : []), bit));
-    if (r.note) { // after its name, so a wrapped path's note is on its file's line, never a line of its own
+    if (r.note && !mark) { // another task's: after its name
       const note = document.createElement("span");
-      note.className = `tr-note${r.note === "written" ? " wr" : ""}`;
+      note.className = "tr-note";
       note.textContent = r.note;
       name.append(" ", note);
     }
@@ -1641,7 +1658,17 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   }
   // what decides Approve, Accept or Help it, next to the files: the rest is the same on most tasks
   const when = part(body, "Done when");
-  if (t.check) code(t.check, div("", undefined, when));
+  const check = t.check ? code(t.check, div("", undefined, when)) : null;
+  if (check && t.check!.length > 120) { // three --tests: four lines until asked, hidden from the eye alone, so a copy is whole
+    const more = document.createElement("button");
+    more.className = "more-link";
+    const show = () => { check.classList.toggle("clamp", !wholeCheck); more.textContent = wholeCheck ? "less" : "the whole check"; more.setAttribute("aria-expanded", String(wholeCheck)); };
+    more.addEventListener("click", () => { wholeCheck = !wholeCheck; show(); });
+    show();
+    when.appendChild(more);
+    // ponytail: measured as the pane is built; a tab resized after keeps its link until the pane is next drawn
+    if (!wholeCheck && check.scrollHeight <= check.clientHeight) more.remove(); // its four lines hold it all here
+  }
   for (const c of checkLines(t)) { // the verdict after the work only where it stands, as the card's box wears it
     const row = div("checkrow", undefined, when);
     div(`dot ${c.tone}`, undefined, row);
@@ -1808,9 +1835,9 @@ function pane() {
   const w = who(t, s.executor);
   meta.append(` · ${t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : w.kind === "you" || t.command ? w.label : `for ${w.label}`}`);
   // one act is the pane's to offer at its foot (the state's own; the looks at its work, and to review the verdicts
-  // that are not the act now, beside them); the rest wait in the …
+  // that are not the act now, beside them); the rest wait in the …, Compare too once an attempt is kept: the race is settled
   const all = actsFor(t, replaying(), seen.has(t.id));
-  const inFoot = (b: Button) => b.main || ["openDiff", "compareForks", "signOff", "sendBack"].includes(b.act);
+  const inFoot = (b: Button) => b.main || ["openDiff", "signOff", "sendBack"].includes(b.act) || (b.act === "compareForks" && !t.kept);
   const tools = div("d-tools", undefined, head);
   paneMenu(tools, t.id, all.filter((b) => !inFoot(b)));
   closer(tools);

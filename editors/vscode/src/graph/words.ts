@@ -76,7 +76,7 @@ export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | nul
   if (t.command) return { kind: "cmd", mark: commandWord(t.command).slice(0, 3), label: "a command, with no agent" }; // a workflow's `run:` step
   if (t.state === "yours" || (t.owner && t.owner !== "agent")) return { kind: "you", mark: "◆", label: "you" };
   const words = executor.trim().split(/\s+/).filter(Boolean);
-  const name = (words[0] ?? "").split("/").pop() ?? "";
+  const name = family((words[0] ?? "").split("/").pop() ?? ""); // `claude` of the setting's `claude:opus`
   if (name === "claude") return { kind: "claude", mark: "C", label: "Claude Code" };
   if (name === "codex") return { kind: "codex", mark: "X", label: "Codex" };
   if (!name) return { kind: "agent", mark: "?", label: "an agent" };
@@ -119,16 +119,19 @@ const fixedOf = (glob: string) => {
 };
 
 /** May change, as a tree: the repository's top-level entries; this step's folders opened to the files it covers
- *  (a written one says so, at most ``most`` a folder); a path it may create that is not there yet (new); another
- *  step's entries named; everything else dim. The glob itself is the pane's to show when asked. */
+ *  (a written one says so, at most ``most`` a folder); a path it may create that is not there yet (new; a file under
+ *  its folder); another step's entries named; everything else dim. The glob itself is the pane's to show when asked. */
 export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "touched" | "changed">, s: Pick<StateX, "tree" | "tasks">, most = 12): TreeRow[] {
   const wrote = writtenIn(t), written = new Set(wrote);
   const files = [...new Set([...t.files, ...wrote])].sort(); // a file it created is one of its files, though git does not track it yet
   const cut = t.filesN > t.files.length; // the snapshot lists 200 at most: the rest are its own all the same
-  const mine = new Map<string, string[]>(); // a folder of its files -> the files
-  for (const f of files) mine.set(dirOf(f), [...(mine.get(dirOf(f)) ?? []), f]);
   const globs = t.scope.filter((g) => !g.startsWith("!")).map(fixedOf);
   const fresh = cut ? [] : globs.filter((g) => g && !files.some((f) => f === g || f.startsWith(g))); // nothing there yet
+  // a file it may create stands under its folder, as its files do, so a deep path never wraps into what reads as a child
+  const born = new Set(fresh.filter((g) => g.includes("/") && !g.endsWith("/")));
+  const isNew = s.tree.length ? "new" : ""; // no tree (a replay, an older CLI): nobody knows what is there
+  const mine = new Map<string, string[]>(); // a folder of its files -> the files
+  for (const f of [...files, ...born].sort()) mine.set(dirOf(f), [...(mine.get(dirOf(f)) ?? []), f]);
   const others = new Map<string, string>(); // a top-level entry -> the other step whose files are under it
   for (const o of s.tasks) {
     if (o.id === t.id) continue;
@@ -140,16 +143,16 @@ export function scopeTree(t: Pick<TaskX, "id" | "scope" | "files" | "filesN" | "
   const open = (dir: string) => {
     const files = mine.get(dir) ?? [];
     if (dir) rows.push({ name: dir, depth: 0, kind: "in", note: "" });
-    for (const f of files.slice(0, most)) rows.push({ name: dir ? f.slice(dir.length) : f, depth: dir ? 1 : 0, kind: "in", note: written.has(f) ? "written" : "" });
+    for (const f of files.slice(0, most)) rows.push({ name: dir ? f.slice(dir.length) : f, depth: dir ? 1 : 0, kind: "in", note: written.has(f) ? "written" : born.has(f) ? isNew : "" });
     if (files.length > most) rows.push({ name: `… and ${files.length - most} more`, depth: dir ? 1 : 0, kind: "in", note: "" });
   };
   for (const top of tops) {
     const dirs = [...mine.keys()].filter((d) => (top.endsWith("/") ? d.startsWith(top) : false)).sort();
-    const here = fresh.filter((g) => topOf(g) === top);
+    const here = fresh.filter((g) => topOf(g) === top && !born.has(g));
     if (!top.endsWith("/") && files.includes(top)) rows.push({ name: top, depth: 0, kind: "in", note: written.has(top) ? "written" : "" });
     else if (dirs.length || here.length) {
       for (const d of dirs) open(d);
-      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: written.has(g) ? "written" : s.tree.length ? "new" : "" }); // no tree (a replay, an older CLI): nobody knows what is there
+      for (const g of here) rows.push({ name: g, depth: 0, kind: "in", note: isNew });
     } else if (cut && globs.some((g) => !g || g.startsWith(top))) rows.push({ name: top, depth: 0, kind: "in", note: "" }); // its own, past the list's cut
     else rows.push({ name: top, depth: 0, kind: others.has(top) ? "other" : "out", note: others.has(top) ? "another task's" : "" });
   }
@@ -182,7 +185,8 @@ const family = (by: string) => by.split(":")[0]!;
 export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held" | "check">): { commands: string[]; words: string; note: string; outside: string } {
   if (s.allows && family(t.held.by) === family(s.executor)) {
     const commands = s.allows.filter((c) => !/^graphene (node|plan)\b/.test(c));
-    const check = commandChip((t.check ?? "").trim()), first = check.split(/\s+/)[0] ?? ""; // `./gradlew` of `cd app && ./gradlew test`
+    // `./gradlew` of `cd app && ./gradlew test`; `pytest` of `PYTHONPATH=. pytest -q`, not the setting before it
+    const check = commandChip((t.check ?? "").trim()), first = check.split(/\s+/).find((w) => !/^\w+=/.test(w)) ?? "";
     const can = !first || commands.some((c) => check.startsWith(c.replace(/:?\*$/, "").trim())); // `npm test *`, `npm run test:*`
     return { commands, words: commands.length ? "" : "no shell command", outside: OUTSIDE,
              note: can ? "" : `It cannot run ${first}: it writes its files, and Graphene runs the check after, in a clean copy.` };

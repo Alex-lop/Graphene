@@ -182,6 +182,9 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
   #details .d-body { flex: none; min-height: auto; overflow: visible; }
   /* and its act stays at its foot, as it does beside the canvas: never only past the whole Scope tab */
   #details .d-acts { position: sticky; bottom: 0; background: var(--panel); }
+  /* the body's own fade sticks to the same edge, under the acts: the acts wear one above them instead */
+  #details .d-acts::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 28px; pointer-events: none;
+    background: linear-gradient(to bottom, transparent, var(--panel)); }
   footer#hint.linking .hint-text { white-space: normal; } /* the ways out read whole: the line wraps */
   /* a canvas under 560 px shows the lanes, or the graph laid downward: the keys and the wheel zoom it. A
      graph drawn across (a canvas over 560 px) is fitted to its pane, so it keeps the buttons that say how far
@@ -300,16 +303,21 @@ button.tab.on { color: var(--fg); border-bottom-color: var(--fg); }
 }
 .nb { white-space: nowrap; } /* a short piece of a command held whole (seams in main.ts) */
 .sc small { display: block; color: var(--dim); margin-top: 2px; font-size: 11.5px; }
-.tree { font-family: var(--mono); font-size: 12px; line-height: 1.75; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
-/* a path wraps after a slash and hangs under its first line, so its file is not read as a sibling; its note follows
-   its name, on the file's own line */
+/* a long check, four lines of it until the link under it is pressed */
+.sc code.clamp { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+button.more-link { background: none; border: none; padding: 0 0 2px; font-size: 11.5px; color: var(--vscode-textLink-foreground, var(--fg)); }
+button.more-link:hover { background: none; text-decoration: underline; }
+.tree { font-family: var(--mono); font-size: 12px; line-height: 1.75; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px 6px 16px; }
+/* a path wraps after a slash and hangs under its first line, so its file is not read as a sibling; what is become
+   of it (+ new, ✎ written, ✕ outside) sits in the gutter before it, as a diff's mark does: it takes no room on the line */
 .tr-name { min-width: 0; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
 .tr.in1 .tr-name { padding-left: calc(14px + 2ch); }
+.tr-mark { position: absolute; width: 12px; margin-left: -15px; text-align: center; text-indent: 0; font-family: var(--font); color: var(--dim); }
+.tr-mark.wr { color: var(--running); }
 .tr.in { color: var(--fg); }
 .tr.out, .tr.other { color: var(--dim); opacity: 0.8; }
-.tr.bad, .tr.bad .tr-note { color: var(--came-back); }
+.tr.bad, .tr.bad .tr-mark { color: var(--came-back); }
 .tr-note { font-family: var(--font); font-size: 11.5px; color: var(--dim); white-space: nowrap; }
-.tr-note.wr { color: var(--running); }
 details.rest summary { font-family: var(--font); font-size: 11.5px; color: var(--dim); cursor: pointer; width: fit-content; }
 details.glob { margin-top: 6px; color: var(--dim); font-size: 11.5px; }
 details.glob summary { cursor: pointer; width: fit-content; }
