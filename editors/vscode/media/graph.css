@@ -344,7 +344,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .band { fill: var(--fill-1); stroke: var(--line-1); }
 /* a sub-goal's header: its ring, its title, its count, and in its mark's colour what wants you there */
 .band-head { pointer-events: none; }
-.band-head text { font-size: 12px; font-family: var(--font); fill: var(--dim); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; } /* its own ground: an edge may pass under it */
+.band-head text { font-size: 12px; font-family: var(--font); fill: var(--dim); }
+.band-head .plate { fill: color-mix(in srgb, var(--fg) 4%, var(--bg)); } /* the band's own ground, opaque: an edge passes under the header */
 .band-head .band-label { fill: var(--fg); font-size: 14px; font-weight: 600; }
 .band-head .band-want { fill: var(--c); font-weight: 600; }
 .mk.portion { --c: var(--done); }
@@ -461,7 +462,6 @@ button:disabled { opacity: 0.45; cursor: default; }
 .fork.kept .chip { stroke-width: 2; }
 /* from afar (the compact level) a card is a row, its state's mark and its title: the words are drawn larger,
    since the whole drawing is drawn smaller, and a sub-goal's name reads as a heading */
-#svg[data-level="compact"] .goal-title { font-size: 14px; }
 #svg[data-level="compact"] .band-head text { font-size: 13.5px; }
 #svg[data-level="compact"] .band-head .band-label { font-size: 15px; }
 #svg[data-level="compact"] .goal .sub { font-size: 12.5px; }
@@ -575,6 +575,10 @@ button:disabled { opacity: 0.45; cursor: default; }
 body.vscode-high-contrast, body.vscode-high-contrast-light { --edge: var(--border); --card: var(--bg); --card-border: var(--border); --tint: transparent; --dot: color-mix(in srgb, var(--fg) 20%, transparent);
   --wash: var(--bg); } /* what a state's tint is mixed from: here the canvas's own colour, so a row, a foot and a chip keep their border and their mark alone */
 body.vscode-high-contrast .band, body.vscode-high-contrast-light .band { fill: none; stroke: var(--border); stroke-dasharray: 4 3; }
+body.vscode-high-contrast .band-head .plate, body.vscode-high-contrast-light .band-head .plate { fill: var(--bg); }
+/* the goal the clearest node: the text colour round it; a cell not started an outline in its colour, not a faint fill */
+body.vscode-high-contrast .goal-box, body.vscode-high-contrast-light .goal-box { stroke: var(--fg); }
+:is(body.vscode-high-contrast, body.vscode-high-contrast-light) .cell:is([data-mark="yours"], [data-mark="ready"], [data-mark="waiting"], [data-mark="suggested"]) { fill: none; stroke: var(--c); stroke-width: 1; }
 body.vscode-high-contrast .region.away, body.vscode-high-contrast-light .region.away { fill: none; stroke: var(--review); }
 body.vscode-high-contrast .box, body.vscode-high-contrast .chip, body.vscode-high-contrast .goal-box,
 body.vscode-high-contrast-light .box, body.vscode-high-contrast-light .chip, body.vscode-high-contrast-light .goal-box { stroke-width: 1.5; filter: none; }

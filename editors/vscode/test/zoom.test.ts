@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { KEYS, twoLines } from "../src/graph/words.ts";
+import { KEYS } from "../src/graph/words.ts";
+import { wrap } from "../src/graph/marks.ts";
 import { CARD, CARD_TEXT, dotGap, FAR, fitPlan, fitView, FULL_FROM, FULL_KEEP, hold, ROWS_MOST, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, TO_COMPACT, TO_FULL, wheelK,
          ZOOM_MAX, ZOOM_MIN, zoomK } from "../src/graph/zoom.ts";
 
@@ -90,6 +91,7 @@ test("across a change of level a card covers as much of the screen, a row turned
     const k2 = switchK(k, from, to);
     const w = (CARD[to].w * k2) / (CARD[from].w * k), h = (CARD[to].h * k2) / (CARD[from].h * k);
     assert.ok(Math.abs(w * h - 1) < 1e-9, "the same area");
+    assert.ok(Math.abs(w - 1) <= 0.45 && Math.abs(h - 1) <= 0.45, `no side jumps by half: ${w.toFixed(2)} by ${h.toFixed(2)}`);
     assert.equal(levelFor(to, k2), to, `${to} at ${k2.toFixed(3)} does not turn straight back`);
     // nor on the next move the same way, nor on one move back
     assert.equal(levelFor(to, wheelK(k2, from === "full" ? 100 : -100)), to);
@@ -157,14 +159,14 @@ test("the minimap is the drawing's shape within 180 by 120; its frame is the par
   assert.deepEqual([f.x + f.w / 2, f.y + f.h / 2], [1309, 991]);
 });
 
-test("a row's title takes two lines: whole words on the first, the rest cut on the second", () => {
+test("a row's title takes two lines (marks.ts `wrap`): whole words on the first, the rest cut on the second", () => {
   const mono = (t: string) => t.length * 7;
-  assert.deepEqual(twoLines("greet route", 105, mono), ["greet route"]);
-  assert.deepEqual(twoLines("orders table and its migration", 105, mono), ["orders table", "and its migrat…"]);
-  assert.deepEqual(twoLines("repository reads and writes", 105, mono), ["repository", "reads and writ…"]);
-  assert.deepEqual(twoLines("bye says goodbye", 105, mono), ["bye says", "goodbye"], "the last word goes down, not off the row");
-  assert.deepEqual(twoLines("internationalisation everywhere", 105, mono), ["internationali…"], "a first word too long for a line is cut");
-  for (const lines of [twoLines("a b c d e f g h i j k l m n o p q r s t", 30, mono), twoLines("  spaced   out   words  ", 40, mono)]) {
+  assert.deepEqual(wrap("greet route", 105, mono, 2), ["greet route"]);
+  assert.deepEqual(wrap("orders table and its migration", 105, mono, 2), ["orders table", "and its migrat…"]);
+  assert.deepEqual(wrap("repository reads and writes", 105, mono, 2), ["repository", "reads and…"], "cut at a whole word where one fills most of the line");
+  assert.deepEqual(wrap("bye says goodbye", 105, mono, 2), ["bye says", "goodbye"], "the last word goes down, not off the row");
+  assert.deepEqual(wrap("internationalisation everywhere", 105, mono, 2), ["internationali…"], "a first word too long for a line is cut");
+  for (const lines of [wrap("a b c d e f g h i j k l m n o p q r s t", 30, mono, 2), wrap("  spaced   out   words  ", 40, mono, 2)]) {
     assert.ok(lines.length <= 2 && lines.every((l) => mono(l) <= 40 && l.trim() === l && l.length > 0), JSON.stringify(lines));
   }
 });
