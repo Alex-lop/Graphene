@@ -41,7 +41,7 @@ test("a fork the task has passes; so does an answer with one of the question's o
 test("a replay's host runs nothing that changes a plan or acts outside the replay; what reads still passes", () => {
   const replay = { state: { ...state, replay: { shown: "a scripted stand-in, no model ran", day: "", repository: "" } } };
   for (const act of CHANGES) {
-    const id = ["run", "stop", "auto", "cockpit", "add-under", "draw", "saveWorkflow"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
+    const id = ["run", "stop", "cockpit", "add-under", "draw", "saveWorkflow"].includes(act) ? "" : act === "answer" ? "which-port" : "farewell";
     const more = act === "set" ? { field: "title", value: "x" } : act === "draw" ? { draft: { key: " d1", title: "t", files: "a.py", check: "true", approve: false } }
       : act.startsWith("add-") ? { sentence: "a flag", key: " d1" } : act === "stopAfter" ? { value: false } : {};
     assert.ok(check({ type: "act", act, id, fork: act === "pickFork" ? "b" : undefined, target: act === "link" || act === "unlink" ? "hello" : undefined, ...more }, session),
@@ -64,7 +64,8 @@ test("the header's switch passes with the position it moves to, and nothing else
 test("with no plan read yet, only ready and the acts that take no id pass", () => {
   const none = (m: unknown) => check(m, { state: null });
   assert.equal(none({ type: "ready" })?.type, "ready");
-  assert.equal(none({ type: "act", act: "auto", id: "" })?.type, "act");
+  assert.equal(none({ type: "act", act: "run", id: "" })?.type, "act");
+  assert.equal(none({ type: "act", act: "auto", id: "" }), null); // Auto… is gone: the page has no such act
   assert.equal(none({ type: "act", act: "signOff", id: "farewell" }), null);
 });
 

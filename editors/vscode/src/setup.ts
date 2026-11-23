@@ -64,7 +64,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   }));
 
   // Set Up This Folder: planner, executor, then `graphene init --planner X --executor Y` in a terminal; once
-  // the store appears (uninitialised -> empty), Auto… is offered, once
+  // the store appears (uninitialised -> empty), a toast says the plan comes from your agent's chat, once
   let setUp = false;
   context.subscriptions.push(vscode.commands.registerCommand("graphene.init", async () => {
     // a folder with no plan is set up on Home, in one pick; the two picks here change who plans and who works
@@ -79,7 +79,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   context.subscriptions.push(session.onDidChange(() => {
     if (!setUp || session.status.kind !== "empty") return;
     setUp = false;
-    void vscode.window.showInformationMessage("This folder is set up. Say what you want done on Graphene's Home.", "Open Home")
+    void vscode.window.showInformationMessage("This folder is set up. Ask your coding agent for something, in its chat: its plan shows on the graph.", "Open Home")
       .then((pick) => { if (pick) void vscode.commands.executeCommand("graphene.home"); });
   }));
 

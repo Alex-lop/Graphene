@@ -11,13 +11,13 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 /** `stand_in`: every model call on record went to the scripted stand-in (the snapshot's, since 867c326c). */
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
-export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "run" | "stop" | "auto" | "cockpit"
+export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "run" | "stop" | "cockpit"
   | "openDiff" | "compareForks" | "pickFork" | "signOff" | "answer" | "handBack" | "set" | "draw" | "stopAfter" | "saveWorkflow" | "markDone";
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
  *  plan). That is every act: a replay is watched. The host refuses them too (check.ts). */
-export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop", "auto",
+export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlink", "drop", "accept", "tell", "run", "stop",
                                         "cockpit", "openDiff", "compareForks", "pickFork", "signOff", "answer", "handBack", "set", "draw", "stopAfter",
                                         "saveWorkflow", "markDone"];
 

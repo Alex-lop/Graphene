@@ -1,7 +1,7 @@
 // First run without hunting: find graphene on PATH, in ~/.local/bin or in `uv tool dir --bin`; use the one
 // found when graphene.path is unset and say where in the status bar; offer to install it when none is; Set
 // Up This Folder as a pair of quick picks, then `graphene init` in a terminal (an init that sees no terminal
-// leaves the gate open), then Auto…. Pure: no VS Code here; setup.ts does the asking.
+// leaves the gate open). Pure: no VS Code here; setup.ts does the asking.
 import * as path from "node:path";
 import { OLDER } from "./commands.ts";
 

@@ -1,9 +1,9 @@
 // Run inside the extension host by test/smoke.cjs: the extension is active (the workspace holds the store),
-// every contributed command is registered, and the two views resolve without throwing.
+// every contributed command is registered, and Home and the graph's tab resolve without throwing.
 const assert = require("node:assert/strict");
 const vscode = require("vscode");
 
-const COMMANDS = ["home", "showGraph", "openCockpit", "auto", "envelope", "runReady", "stop", "accept", "acceptAll", "addStep", "link",
+const COMMANDS = ["home", "showGraph", "openCockpit", "envelope", "runReady", "stop", "accept", "acceptAll", "addStep", "link",
                   "editStep", "dropStep", "tell", "init", "refresh", "answer", "handBack", "install", "markDone", "setKey", "openDiff",
                   "compareForks", "pickFork", "signOff", "editPlan", "addStepByHand", "watchDemo", "diffWithAgent"].map((c) => `graphene.${c}`);
 
@@ -18,7 +18,7 @@ exports.run = async () => {
   assert.deepEqual(contributed, [...COMMANDS].sort(), "package.json names exactly these commands");
   await vscode.commands.executeCommand("graphene.refresh"); // reads the plan: graphene may be missing here, and that is a state, not a throw
   await vscode.commands.executeCommand("graphene.showGraph"); // the panel opens
-  await vscode.commands.executeCommand("workbench.view.extension.graphene"); // the container with the tree and the graph view
+  await vscode.commands.executeCommand("workbench.view.extension.graphene"); // the container: Home, and the tree with graphene.advanced
   await vscode.commands.executeCommand("workbench.action.openWalkthrough", `${ext.id}#start`, false); // Get started
   await new Promise((r) => setTimeout(r, 1500));
 };
