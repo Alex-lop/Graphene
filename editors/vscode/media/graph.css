@@ -344,7 +344,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 .band { fill: var(--fill-1); stroke: var(--line-1); }
 /* a sub-goal's header: its ring, its title, its count, and in its mark's colour what wants you there */
 .band-head { pointer-events: none; }
-.band-head text { font-size: 12px; font-family: var(--font); fill: var(--dim); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; } /* its own ground: an edge may pass under it */
+.band-head text { font-size: 12px; font-family: var(--font); fill: var(--dim); }
+.band-head .plate { fill: color-mix(in srgb, var(--fg) 4%, var(--bg)); } /* the band's own ground, opaque: an edge passes under the header */
 .band-head .band-label { fill: var(--fg); font-size: 14px; font-weight: 600; }
 .band-head .band-want { fill: var(--c); font-weight: 600; }
 .mk.portion { --c: var(--done); }

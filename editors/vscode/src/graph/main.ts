@@ -532,8 +532,9 @@ function graph(s: StateX, dir: "across" | "down") {
     const title = goalTitle(s, band.id).replace(/^\? /, ""); // the plan text's mark for a suggestion, where a planner left it in a title
     const rect = bands.appendChild(el("rect", { class: "band", x: x0, y: band.y0, height: band.y1 - band.y0, rx: 10 }));
     rect.appendChild(el("title", {}, title));
-    const said = bandHead(heads, title, s.tasks.filter((t) => t.parent === band.id), x0 + 12, band.y0 + D.label / 2 + 1,
-                          Math.min(most, $("canvas").clientWidth / (opened?.zoom ?? zoom).k) - x0 - 24); // within the band's visible width
+    // its header has the band's room on to the trunk, wherever the plan is panned or zoomed: what is off screen is
+    // cut by the screen, and a redraw never cuts it to the part that was on it
+    const said = bandHead(heads, title, s.tasks.filter((t) => t.parent === band.id), x0 + 12, band.y0 + D.label / 2 + 1, most - x0 - 24);
     const end = Math.min(most, Math.max(x1, x0 + said + 24));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
@@ -804,6 +805,8 @@ function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: num
   put(name);
   if (count) put(count);
   wants.forEach(put);
+  // on a plate of the band's own ground, so a line crossing the band passes under the header and not through it
+  g.prepend(el("rect", { class: "plate", x: x - 6, y: y - 11, width: at - gap - x + 12, height: 22, rx: 6 }));
   return at - gap - x;
 }
 
