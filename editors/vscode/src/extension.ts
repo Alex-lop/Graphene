@@ -161,21 +161,6 @@ export function activate(context: vscode.ExtensionContext) {
   cmd("openCockpit", () => session.terminal("graphene watch", C.watch()));
   cmd("runReady", () => session.terminal("graphene run", C.runReady()));
   cmd("stop", () => session.act(C.stop()));
-  cmd("auto", async () => {
-    const goal = await vscode.window.showInputBox({ prompt: "The goal Graphene plans and runs on its own", placeHolder: "what you want, in a sentence",
-                                                   ignoreFocusOut: true, validateInput: (v) => (v.trim() ? undefined : "say what you want") });
-    if (!goal?.trim()) return;
-    const budget = await vscode.window.showInputBox({ prompt: "A budget in dollars for the whole run (empty: the configured one)", placeHolder: "2",
-                                                     ignoreFocusOut: true, validateInput: (v) => (!v.trim() || Number(v) > 0 ? undefined : "a number of dollars, or nothing") });
-    if (budget === undefined) return;
-    // Plan first comes first: with auto on, Plan and run lands the race before the person has seen the plan
-    const how = await vscode.window.showQuickPick(
-      [{ label: "Plan first", description: "--plan: see what your envelope accepts; Auto… again, or graphene auto, runs it", planOnly: true },
-       { label: "Plan and run", description: "plan, race, land, check the goal, fix", planOnly: false }],
-      { placeHolder: "look at the plan first, or run it now?" });
-    if (!how) return;
-    session.terminal("graphene auto", C.auto(goal.trim(), budget.trim() ? Number(budget) : null, how.planOnly));
-  });
   cmd("envelope", async () => {
     // the settings `graphene auto` and an agent's proposals stay inside, set once, as `graphene config set` does
     const e = session.state?.envelope;

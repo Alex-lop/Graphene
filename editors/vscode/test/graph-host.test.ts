@@ -27,7 +27,7 @@ export const Uri = { joinPath(...p) { return p.join("/"); } };
 export const ViewColumn = { Active: -1, Beside: -2 };
 export const workspace = { settings: {}, getConfiguration() { return { get: (k, d) => (k in workspace.settings ? workspace.settings[k] : d) }; } };
 export const commands = { ran: [], registered: [], fns: {}, registerCommand(id, fn) { this.registered.push(id); this.fns[id] = fn; return { dispose() {} }; },
-  getCommands() { return Promise.resolve(["graphene.runReady", "graphene.stop", "graphene.auto", "graphene.openCockpit", "graphene.addStep", ...this.registered]); },
+  getCommands() { return Promise.resolve(["graphene.runReady", "graphene.stop", "graphene.openCockpit", "graphene.addStep", ...this.registered]); },
   executeCommand(id, arg) { this.ran.push([id, arg]); return Promise.resolve(this.fns[id]?.(arg)); } };
 `;
 const hooks = `
@@ -160,7 +160,7 @@ test("by itself the tab opens beside what a person has in front, never over it; 
 test("a replay's host runs no command of the person's, even before its plan is read; the person's own host does", async () => {
   // a replay's state is null before its store reads (and after a read fails): check() lets the acts that
   // take no id through then, and every command they name acts on the person's folder
-  const acts = ["run", "stop", "auto", "cockpit", "add-under"];
+  const acts = ["run", "stop", "cockpit", "add-under"];
   const replay = new GraphHost(context, { ...(session as object), own: "/tmp/graphene-demo-x" } as never, "Graphene demo");
   replay.show();
   const w = vscode.panels.at(-1)!.w;

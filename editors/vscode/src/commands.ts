@@ -91,13 +91,6 @@ export function parseWorkflows(text: string): { workflows: Workflow[]; last: { n
 /** The one switch, Stop after the plan: on is `auto: off` (a plan waits for you), off is `auto: on`. */
 export const stopAfter = (on: boolean): string[] => setting("auto", on ? "off" : "on");
 
-export function auto(goal: string, budget?: number | null, planOnly = false): string[] {
-  const argv = ["auto"];
-  if (budget !== null && budget !== undefined && Number.isFinite(budget)) argv.push("--budget", String(budget));
-  if (planOnly) argv.push("--plan"); // the plan your envelope accepts, shown, and nothing run
-  return [...argv, "--", goal];
-}
-
 export function addStep(s: NewStep): string[] {
   const argv = ["node", "add"];
   if (s.parent) argv.push("--parent", s.parent);
