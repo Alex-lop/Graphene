@@ -403,6 +403,8 @@ function header(s: StateX, blank: boolean) {
     if (st.note) { const note = document.createElement("small"); note.textContent = st.note; stage.appendChild(note); }
     return stage;
   }));
+  // a narrow tab cuts the stage's note to its room: a note cut (`6…`) says nothing, so it goes, and the names stay
+  for (const note of Array.from($("stages").querySelectorAll("small"))) if (note.scrollWidth > note.clientWidth) note.hidden = true;
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
   if (blank) $("b-add").hidden = true; // the notice's own Add task is the act then
   if (!s.tasks.length) $("b-save").hidden = $("b-view").hidden = true; // no plan: nothing to save, or to see as lanes
@@ -2231,10 +2233,12 @@ function wire() {
     const b = actions.appendChild(document.createElement("button"));
     b.id = id;
     b.className = "quiet";
-    b.append(icon(ico), label);
+    b.append(icon(ico));
+    if (label) div("label", label, b); // a tab too narrow for it shows the icon alone (graph.css)
     b.title = title;
     b.addEventListener("click", on);
-    if (!label) { b.classList.add("icon"); b.setAttribute("aria-label", title.replace(/:.*| \(.*/, "")); }
+    b.setAttribute("aria-label", label || title.replace(/:.*| \(.*/, ""));
+    if (!label) b.classList.add("icon");
   };
   top("b-save", "", "save", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-view", "", "list-flat", "Lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
