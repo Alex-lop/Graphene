@@ -39,11 +39,13 @@ header {
 header::after { content: ""; order: 4; flex-basis: 100%; } /* where the second row starts */
 header:has(#pipe[hidden])::after { display: none; }
 /* a basis of 10em (or its own width, if less): a long goal is cut to the room its buttons leave; a tab that leaves
-   it less than that (narrow, beside an agent's chat) gives the goal its own row and the buttons the next */
-#goal { order: 1; flex: 1 1 10em; max-width: max-content; min-width: 0; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* a replay, or a live race against the stand-in: a pill beside the goal */
+   it less than that (narrow, beside an agent's chat) gives the goal its own row and the buttons the next. It takes
+   the room before the pill beside it does (1000 to 1): the pill is cut first */
+#goal { order: 1; flex: 1000 1 10em; max-width: max-content; min-width: 0; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* a replay, or a live race against the stand-in: a pill beside the goal, whole where there is room and else cut
+   (its hover says it whole), never the goal */
 #replay {
-  order: 2; flex: 0 1 auto; min-width: 0; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; color: var(--review);
+  order: 2; flex: 1 1 6em; max-width: max-content; min-width: 0; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 500; color: var(--review);
   background: color-mix(in srgb, var(--review) 13%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #replay[hidden] { display: none; }
@@ -195,6 +197,7 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
    between them, so the three names still fit whole */
 @media (max-width: 320px) {
   #b-add span { display: none; }
+  #canvas.lanes #need { position: static; height: auto; margin: 6px 16px 0 auto; } /* over the first lane's head it would cover it */
   #b-add { width: 28px; padding: 0; justify-content: center; }
   .stage { padding: 3px 6px 3px 2px; gap: 4px; }
   .stage + .stage { margin-left: 4px; }
