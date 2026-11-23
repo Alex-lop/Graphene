@@ -43,7 +43,8 @@ cursor --install-extension graphene-0.10.0.vsix   # VS Code: code --install-exte
 ```
 
 1. Click Graphene in the activity bar: the graph opens in an editor tab; **Home**, in the side bar, sets up the folder.
-2. Ask your agent for something, in its own chat. Graphene's hooks have it propose a plan first, on the graph.
+2. Ask Claude Code or Codex for something, in its own chat. Graphene's hooks have it propose a plan first, on the
+   graph. (Cursor's own Agent does not plan with Graphene yet.)
 3. Read it: click a task to change its files, check or attempts; answer its questions; **Add task** draws one.
 4. Click **Start**, then review each finished task: **Open changes**, then **Approve** or **Send back** with a note.
 

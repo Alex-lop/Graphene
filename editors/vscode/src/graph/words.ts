@@ -1,5 +1,6 @@
 // The graph's words, pure: what a box and a fork chip say, what the header says of a replay, which acts a
 // task offers, and the keys. No DOM here, so `node --test` reads them.
+import { ASK, NOT_CURSOR } from "../home/who.ts"; // Home's words for the agents, said the same on the graph
 import type { Layout } from "../layout.ts";
 import { inScope } from "../owners.ts";
 import { autoLine, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
@@ -191,7 +192,7 @@ export function heldWords(t: Pick<TaskX, "held">): { shield: boolean; line: stri
                                           proof: `Proven for every agent a run starts, ${by} too, by tests/test_every_agent.py: the finish checks what changed against its files.` };
   return { shield: false, line: "Not held: nothing stops a write outside its files.",
            proof: t.held.state === "none" ? "A task you do yourself, or give to an editor's own agent (Cursor, Copilot), is checked only when you mark it done."
-             : "This Graphene does not say how this task is held." };
+             : "This version of Graphene does not say how this task is held." };
 }
 
 /** Stopped: this step's refused writes against the run's, then each with its time as the clock here reads it. */
@@ -513,8 +514,8 @@ export function linkHint(title: string, dragging: boolean): string {
 
 /** The empty graph's words: who plans here, by name. Graphene's hooks reach Claude Code and Codex alone, not
  *  Cursor's own Agent: in Cursor that is said too, in the same words wherever a screen points to an agent. */
-export const ASK_AGENT = "Ask Claude Code or Codex for something in its chat: its plan appears here. Or draw the first task.";
-export const CURSOR_AGENT = "Cursor's own Agent does not plan with Graphene yet.";
+export const ASK_AGENT = `${ASK}: its plan appears here. Or draw the first task.`;
+export const CURSOR_AGENT = NOT_CURSOR;
 
 /** The question chip's words, its two halves as the tasks' chip has them: `1 question · answer`; none for none. */
 export const askLine = (n: number): string => (n ? `${n} question${n === 1 ? "" : "s"} · answer` : "");
