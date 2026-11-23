@@ -245,6 +245,11 @@ test("a check is cut at its words: its first and what it runs on, else that alon
   assert.deepEqual(["RecipeLookup", "Librarian", "Cook", "Planner", "Transformer"].map((x) => checkCut(`./gradlew test --tests 'app.cookyourbooks.services.impl.${x}ServiceImplTest'`, 21)),
                    ["RecipeLookupService…", "LibrarianServiceImpl…", "CookServiceImplTest", "PlannerServiceImpl…", "TransformerService…"]);
   assert.equal(checkCut("./gradlew test --tests 'app.cli.commands.GeneralCommandTests.unknownCommand_displaysUnknownMessage'", 21), "unknownCommand…");
+  // Alex's CLI task runs three tests of one class: its card names that class and how many, never the last test as if it were the check
+  const cli = "./gradlew test --tests 'app.cookyourbooks.cli.commands.GeneralCommandTests.quit_displaysGoodbyeAndExits' --tests 'app.cookyourbooks.cli.commands.GeneralCommandTests.exit_displaysGoodbyeAndExits' --tests 'app.cookyourbooks.cli.commands.GeneralCommandTests.unknownCommand_displaysUnknownMessage'";
+  assert.deepEqual([44, 30, 26, 21, 12].map((n) => checkCut(cli, n)),
+                   ["./gradlew … GeneralCommandTests · 3 tests", "GeneralCommandTests · 3 tests", "GeneralCommandTests", "GeneralCommandTests", "GeneralComm…"]);
+  assert.equal(checkCut("grep -q /greet README.md", 18), "grep … README.md", "a pattern with a slash is not a second test");
   assert.equal(checkCut("dotnet test App.Tests.csproj", 26), "dotnet … App.Tests.csproj", "a file's type is not a test's name");
   assert.equal(checkCut("grep -q greet README.md", 18), "grep … README.md");
   assert.equal(checkCut("grep -q greet README.md", 12), "README.md", "what it runs on alone, with no ellipsis before it");

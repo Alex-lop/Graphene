@@ -208,16 +208,22 @@ export function tailPath(p: string): string {
 /** A check cut to ``n`` characters at its words, never inside one while a whole one fits: its first word and
  *  what it runs on (`pytest … test_words.py`, `./gradlew … RecipeLookupServiceImplTest`), else that alone, cut at
  *  its end if it must. What it runs on is its last path or dotted name (else its last word that is no flag),
- *  quotes off: a path's file, a dotted test's own name. Short strings untouched; never longer than ``n``. */
+ *  quotes off: a path's file, a dotted test's own name. Several `--tests` of one class are that class and how many
+ *  (`GeneralCommandTests · 3 tests`, not the last test's name as if it were the check); short of room its first
+ *  word goes, then the count. Short strings untouched; never longer than ``n``. */
 export function checkCut(s: string, n: number): string {
   if (s.length <= n) return s;
   if (!(n >= 2)) return n >= 1 ? "…" : "";
   const words = s.split(/\s+/).filter(Boolean), back = words.slice(1).map((w) => w.replace(/^['"]|['"]$/g, "")).filter((w) => !w.startsWith("-")).reverse();
   const last = back.find((w) => /[/.]/.test(w)) ?? back[0] ?? words[0] ?? "";
   // a dotted name's last part is a test's own name when it says so (a capital, an underscore), not a file's type
-  const on = last.includes("/") ? last.slice(last.lastIndexOf("/") + 1) || last : /\.[^.\s]*[A-Z_][^.\s]*$/.test(last) ? last.slice(last.lastIndexOf(".") + 1) : last;
-  if (words.length > 1 && `${words[0]} … ${on}`.length <= n) return `${words[0]} … ${on}`;
-  return cutWhole(on, Math.floor(n));
+  const own = (w: string) => (w.includes("/") ? w.slice(w.lastIndexOf("/") + 1) || w : /\.[^.\s]*[A-Z_][^.\s]*$/.test(w) ? w.slice(w.lastIndexOf(".") + 1) : w);
+  const classOf = (w: string) => /\.[A-Z][^.]*\.[a-z_][^.]*$/.test(w) ? w.split(".").at(-2)! : ""; // `….GeneralCommandTests.quit_…`
+  const tests = [...s.matchAll(/--tests[=\s]+['"]?([^'"\s]+)/g)].map((m) => m[1]!);
+  const one = tests.length > 1 && tests.every((w) => classOf(w) && classOf(w) === classOf(tests[0]!));
+  const on = one ? classOf(last) : own(last), more = one ? ` · ${tests.length} tests` : "";
+  const said = [...(words.length > 1 ? [`${words[0]} … ${on}${more}`] : []), `${on}${more}`, ...(words.length > 1 && more ? [`${words[0]} … ${on}`] : []), on];
+  return said.find((x) => x.length <= n) ?? cutWhole(on, Math.floor(n));
 }
 
 /** What follows `done when` on a card's foot: the check, cut at its words to ``n`` characters; `it exits 0`
