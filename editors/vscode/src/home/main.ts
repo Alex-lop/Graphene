@@ -234,12 +234,14 @@ function path(p: string, parent: HTMLElement) {
 }
 
 /** A command, breakable where it reads as a seam: at its spaces, after a slash, and after the dots of a long
- *  dotted name (`app.cookyourbooks.services.impl.RecipeTest`). <wbr>, so a copied command is the command. */
+ *  dotted or snake_case name (`app.cookyourbooks.services.impl.RecipeTest`). <wbr>, so a copied command is the command; and a
+ *  short piece with a hyphen held whole, as the browser would break `--tests` after its dashes. */
 function code(v: string, parent: HTMLElement) {
   for (const w of v.split(/(\s+)/)) {
-    w.split(w.length >= 24 ? /(?<=[/.])/ : /(?<=\/)/).forEach((part, i) => {
+    w.split(w.length >= 24 ? /(?<=[/._])/ : /(?<=\/)/).forEach((part, i) => {
       if (i) parent.append(document.createElement("wbr"));
-      parent.append(part);
+      if (part.length < 24 && part.includes("-")) el("span", "nb", part, parent);
+      else parent.append(part);
     });
   }
 }
