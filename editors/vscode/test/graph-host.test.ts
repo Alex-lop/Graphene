@@ -165,6 +165,9 @@ test("by itself the tab opens beside what a person has in front, never over it; 
   host.show(); // Show graph, with the same file in front
   vscode.tabs.front = undefined;
   assert.deepEqual(vscode.panels.at(-1)!.show, { viewColumn: -1, preserveFocus: false }, "asked for, it opens where the person is and takes the keyboard");
+  vscode.env.appName = "Cursor";
+  assert.deepEqual(opened(file).show, { viewColumn: -1, preserveFocus: true }, "in Cursor, whose chat narrows the editor area, it opens in the file's group without the keyboard");
+  vscode.env.appName = "Visual Studio Code";
 });
 
 test("a replay's host runs no command of the person's, even before its plan is read; the person's own host does", async () => {

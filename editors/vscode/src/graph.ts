@@ -38,7 +38,7 @@ export class GraphHost {
   }
 
   /** The tab opens by itself, once for each start (the setting graphene.graph.openOnStart), without the
-   *  keyboard and beside what a person has in front, until a person closes it: then only asking opens it. A
+   *  keyboard and beside what a person has in front (in its group in Cursor), until a person closes it: then only asking opens it. A
    *  read that gave no plan is no snapshot: the next one is compared with the last that was, so a plan that
    *  could not be read for a moment is not a plan appearing. Never a replay's: Watch the Demo opens its own. */
   private start() {
@@ -61,12 +61,12 @@ export class GraphHost {
 
   /** The panel, made or revealed; with ``select`` the page selects that task. ``quiet``: nobody asked for it
    *  (it opens by itself), so it does not take the keyboard, and it opens beside a file that is in front, not
-   *  over it (open.ts says why). ``whole``: the side bar opened it, so the keyboard is there, not in the file,
+   *  over it, but in Cursor (open.ts says why). ``whole``: the side bar opened it, so the keyboard is there, not in the file,
    *  and it takes the active group's whole width (beside, it would be the narrow lanes). Asked for, it opens
    *  in front of the active group and takes the keyboard. */
   show(select?: string, quiet = false, whole = false) {
     if (!this.panel) {
-      const viewColumn = quiet && !whole && beside(front()) ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active;
+      const viewColumn = quiet && !whole && beside(front(), vscode.env.appName.includes("Cursor")) ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active;
       const panel = vscode.window.createWebviewPanel("graphene.graphPanel", this.title, { viewColumn, preserveFocus: quiet }, {
         enableScripts: true, retainContextWhenHidden: true,
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "dist"), vscode.Uri.joinPath(this.context.extensionUri, "media")],

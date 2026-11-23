@@ -95,6 +95,8 @@ test("it opens beside what a person has in front, and in the group when nothing 
   for (const front of [{ uri: "file:///repo/notes.md" }, { original: "a", modified: "b" }, {}, { viewType: "another.page" }]) assert.equal(beside(front), true);
   assert.equal(beside(undefined), false, "an empty group, or a page of VS Code's own (Welcome, Settings)");
   assert.equal(beside(null), false);
+  // Cursor's agent chat takes the right side: beside, the tab would halve a narrow editor area into the lanes
+  for (const front of [{ uri: "file:///repo/notes.md" }, undefined]) assert.equal(beside(front, true), false, "in Cursor, in the group, as the side bar's click");
 });
 
 test("the setting off opens nothing, and turning it on waits for the next start", () => {
