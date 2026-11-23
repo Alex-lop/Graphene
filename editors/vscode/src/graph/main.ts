@@ -1575,10 +1575,10 @@ function part(body: HTMLElement, title: string, aside = ""): HTMLElement {
 let restOpen = false; // May change's fold, as the person left it
 let wholeCheck = false; // a long check shown whole, as the person left it
 
-/** A command or a path, breakable where it reads as a seam, as Home's are (home/main.ts code()): its spaces; a path
- *  after its slashes; a long dotted name after its dots and underscores (`app.cookyourbooks.services.impl.` and
- *  `CookServiceImplTest`), never before its extension; a short piece with a hyphen held whole (`--tests`). <wbr>, so
- *  a copied command is the command. */
+/** A command or a path, breakable where it reads as a seam: its spaces; a path after its slashes; a long dotted name
+ *  after its dots and underscores (`app.cookyourbooks.services.impl.` and `CookServiceImplTest`), never before its
+ *  extension; a short piece with a hyphen held whole (`--tests`). <wbr>, so a copied command is the command. Home's
+ *  code() (home/main.ts) is a near copy that does break before an extension: they are to be one function. */
 function seams(text: string, parent: HTMLElement) {
   for (const w of text.split(/(\s+)/)) {
     w.split(w.includes("/") || w.length < 24 ? /(?<=\/)/ : /(?<=[._])(?![^._]{1,5}$)/).forEach((part, i) => {
