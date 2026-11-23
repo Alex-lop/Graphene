@@ -221,7 +221,11 @@ button.unlink:hover { color: var(--vscode-errorForeground, #f48771); }
 .d-menu:popover-open { display: flex; flex-direction: column; }
 .d-menu button { background: none; border: none; color: inherit; padding: 5px 10px; gap: 8px; border-radius: var(--r-sm); white-space: nowrap; }
 .d-menu button:is(:hover, :focus-visible) { background: var(--vscode-menu-selectionBackground, var(--hover)); color: var(--vscode-menu-selectionForeground, inherit); outline: none; }
-body.vscode-high-contrast .d-menu button:focus-visible, body.vscode-high-contrast-light .d-menu button:focus-visible { outline: 1px dashed var(--focus); outline-offset: -1px; }
+.d-menu button.danger:is(:hover, :focus-visible) { color: var(--vscode-errorForeground, var(--came-back)); }
+.d-sep { height: 1px; margin: 4px 6px; background: var(--vscode-menu-separatorBackground, var(--divider)); }
+/* high contrast has no hover colour: the item under the pointer or the focus is outlined, as the editor's own menus do */
+body.vscode-high-contrast .d-menu button:is(:hover, :focus-visible), body.vscode-high-contrast-light .d-menu button:is(:hover, :focus-visible) {
+  outline: 1px dashed var(--vscode-menu-selectionBorder, var(--focus)); outline-offset: -1px; }
 /* the body scrolls under a fade at its foot, so a line cut by the foot's edge never shows half of itself */
 .d-body { padding: 8px 16px 0; flex: 1; min-height: 0; overflow: auto; }
 .d-body::after { content: ""; display: block; position: sticky; bottom: 0; height: 18px; margin: 0 -16px; pointer-events: none;

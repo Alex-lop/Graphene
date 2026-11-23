@@ -1784,9 +1784,14 @@ function paneMenu(tools: HTMLElement, id: string, acts: Button[]) {
   menu.popover = "auto";
   menu.setAttribute("role", "menu");
   more.popoverTargetElement = menu;
-  for (const b of acts) {
+  const late = (b: Button) => (b.act === "drop" ? 2 : b.act === "tell" ? 1 : 0); // Message agent apart, Remove last, as the editor's own menus set them
+  let was = 0;
+  for (const b of [...acts].sort((x, y) => late(x) - late(y))) {
+    if (late(b) && !was && menu.childElementCount) div("d-sep", undefined, menu).setAttribute("role", "separator");
+    was = late(b);
     const item = document.createElement("button");
     item.setAttribute("role", "menuitem");
+    if (b.act === "drop") item.className = "danger";
     if (b.icon) item.appendChild(icon(b.icon));
     item.append(b.label);
     item.title = b.title;
