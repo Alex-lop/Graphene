@@ -114,9 +114,9 @@ try {
   // 3. attempts on one task: the stepper, and ×3 on its card before anything runs (the card's group says it: data-attempts)
   await box(first.id).locator("rect.box").click();
   await until(g, () => document.querySelector("#details button.tab.on")?.textContent === "Scope", null, "the pane to open on Scope");
-  if (await scopeParts() !== "May change, May run, Held by, Stopped, Done when, Tokens") throw new Error(`the Scope tab's parts are: ${await scopeParts()}`);
+  if (await scopeParts() !== "May change, Done when, May run, Held by, Stopped") // Tokens once metered throw new Error(`the Scope tab's parts are: ${await scopeParts()}`);
   if (!(await g.locator("#details .tree").textContent()).includes("cli.py")) throw new Error("May change does not show the task's file");
-  say("a task's pane opens on Scope: what it may change as a tree, may run, how it is held, what was stopped, its check, its tokens");
+  say("a task's pane opens on Scope: what it may change as a tree, its check right under, may run, how it is held, what was stopped");
   await openForm(first.id);
   await until(g, () => document.querySelector("#details .d-id")?.textContent.includes("ready"), null, "the first task's pane");
   for (let i = 0; i < 2; i++) {

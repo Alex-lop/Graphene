@@ -1403,7 +1403,7 @@ function form(body: HTMLElement, t: TaskX, s: StateX) {
         (v) => (!v.trim() || same(v, t.full || t.title) ? back() : setField(t, "title", v.trim())));
   field(body, "files", "Files", t.scope.join(" "), "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between",
         (v) => (!globs(v).length || globs(v).join(" ") === t.scope.join(" ") ? back() : setField(t, "scope", globs(v).join(" "))));
-  field(body, "check", "Check", t.check ?? "", "a command that passes when it is done", "the command that passes only when the task is done; empty: your approval finishes it",
+  field(body, "check", "Check", t.check ?? "", "pytest -q", "the command that passes only when the task is done; empty: your approval finishes it",
         (v) => (same(v, t.check ?? "") ? back() : setField(t, "check", v.trim())));
   const n = attemptsOf(t, s.envelope.forks);
   const r = div("row", undefined, body);
@@ -1452,7 +1452,7 @@ function draftPane(pane: HTMLElement, d: Draft) {
   const asked = offered.has(d.key) && !d.said; // graphene is deciding: what it was offered is not changed under it
   field(body, "title", "Title", d.title, "what this task does", "the task, in a line", (v) => (v.trim() ? redraw(d.key, { title: v.trim() }) : redraw(d.key, {}))).disabled = asked;
   field(body, "files", "Files", d.files, "src/api/** tests/test_api.py", "the files it may change: paths or globs, a space between", (v) => redraw(d.key, { files: v.trim() })).disabled = asked;
-  field(body, "check", "Check", d.check, "a command that passes when it is done", "the command that passes only when the task is done", (v) => redraw(d.key, { check: v.trim() })).disabled = asked;
+  field(body, "check", "Check", d.check, "pytest -q", "the command that passes only when the task is done", (v) => redraw(d.key, { check: v.trim() })).disabled = asked;
   tick(body, "signoff", "Wait for my approval", d.approve, "it lands only once you approve it", (on) => redraw(d.key, { approve: on }), asked);
   const after = d.after ? state?.tasks.find((t) => t.id === d.after)?.title : "";
   row("After", after ?? "", body);
@@ -1502,23 +1502,28 @@ let restOpen = false; // May change's fold, as the person left it
 const code = (text: string, parent: HTMLElement) => { const c = document.createElement("code"); c.textContent = text; parent.appendChild(c); return c; };
 const small = (text: string, parent: HTMLElement) => { const c = document.createElement("small"); c.textContent = text; parent.appendChild(c); return c; };
 
-/** Scope: what this step may do, in plain view. May change (a tree, the glob behind it), may run, outside,
- *  held by, stopped, done when, tokens. Every word is what the snapshot says; where it says nothing, so does this. */
+/** Scope: what this step may do, in plain view. May change (a tree, the glob behind it), done when, may run,
+ *  outside, held by, stopped, tokens. Every word is what the snapshot says; where it says nothing, so does this. */
 function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   if (t.command) return commandScope(body, t);
   const wrote = writtenOf(t);
-  const change = part(body, "May change", wrote ? `✎ ${wrote}` : "");
+  const change = part(body, "May change", wrote && !wrote.startsWith("0 ") ? `✎ ${wrote}` : ""); // a count once something is written
   const tree = div("tree", undefined, change);
   const rows = scopeTree(t, s);
+  // a deep path by its last two parts (`…/impl/LookupTest.java`), so a repository's nested files are told apart; whole on the hover
+  const short = (p: string) => { const at = p.split("/").filter(Boolean); return at.length > 3 ? `…/${at.slice(-2).join("/")}${p.endsWith("/") ? "/" : ""}` : p; };
   const line = (r: { name: string; kind: string; depth: number; note: string }, parent: HTMLElement) => {
     const row = div(`tr ${r.kind}${r.depth ? " in1" : ""}`, undefined, parent);
-    div("tr-name", r.name, row).title = r.name;
+    const name = div("tr-name", undefined, row);
+    name.title = r.name;
+    // it wraps after a slash, not inside a name
+    (r.depth ? r.name : short(r.name)).split("/").forEach((bit, i) => name.append(...(i ? ["/", document.createElement("wbr")] : []), bit));
     if (r.note) div(`tr-note${r.note === "written" ? " wr" : ""}`, r.note, row);
   };
   // its own files, then what it wrote outside them (as its card says it, in the came-back red); the rest of the
   // repository, which it may not change, folded under one line
   for (const r of rows.filter((x) => x.kind === "in")) line(r, tree);
-  for (const f of t.outside) line({ name: f, kind: "bad", depth: 0, note: "written outside its files" }, tree);
+  for (const f of t.outside) line({ name: f, kind: "bad", depth: 0, note: "outside its files" }, tree);
   const rest = rows.filter((x) => x.kind !== "in" && !t.outside.includes(x.name));
   if (!tree.childElementCount) div("tr out", "no files named", tree);
   if (rest.length) {
@@ -1541,25 +1546,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     for (const g of t.scope) code(g, glob);
     change.appendChild(glob);
   }
-  const run = part(body, "May run");
-  const kv = div("kv", undefined, run);
-  div("kv-k", "Commands", kv);
-  const cmds = div("kv-v", undefined, kv);
-  const may = mayRun(s, t);
-  for (const c of may.commands) code(c, cmds);
-  if (may.words) cmds.append(may.words);
-  if (t.check) div("kv-note", "Graphene itself runs its check, under Done when.", cmds); // the command once, there
-  div("kv-k", "Outside", kv);
-  div("kv-v", may.outside, kv);
-  const held = heldWords(t);
-  const hold = div(`held${held.shield ? "" : " none"}`, undefined, part(body, "Held by"));
-  div("shield", held.shield ? "⛉" : "○", hold).setAttribute("aria-hidden", "true");
-  const said = div("", held.line, hold);
-  small(held.proof, said);
-  const stops = stopsOf(t, s.tasks);
-  const stopped = part(body, "Stopped", stops.rows.length ? stops.count : ""); // no count of nothing
-  for (const x of stops.rows) small(x.note, div("stop", x.line, stopped));
-  if (!stops.rows.length) div("dim", "no write was refused", stopped);
+  // what decides Approve, Accept or Help it, next to the files: the rest is the same on most tasks
   const when = part(body, "Done when");
   if (t.check) code(t.check, div("", undefined, when));
   for (const c of checkLines(t)) { // the verdict after the work only where it stands, as the card's box wears it
@@ -1568,19 +1555,45 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
     row.append(c.line);
   }
   if (t.hollow && t.checked.before !== "passes") div("checkrow warn", "its check passed before the work too: it proves nothing new", when);
+  const run = part(body, "May run");
+  const kv = div("kv", undefined, run);
+  div("kv-k", "Commands", kv);
+  const cmds = div("kv-v", undefined, kv);
+  const may = mayRun(s, t);
+  for (const c of may.commands) code(c, cmds);
+  if (may.words) cmds.append(may.words);
+  div("kv-k", "Outside", kv);
+  div("kv-v", may.outside, kv);
+  const held = heldWords(t);
+  const hold = div(`held${held.shield ? "" : " none"}`, undefined, part(body, "Held by"));
+  div("shield", held.shield ? "⛉" : "○", hold).setAttribute("aria-hidden", "true");
+  const said = div("", held.line, hold);
+  small(held.proof, said);
+  // Stopped only where a write could be refused (a task nothing holds has nothing to refuse), and never as all
+  // clear under a write outside its files
+  const stops = stopsOf(t, s.tasks);
+  if (stops.rows.length || (held.shield && !t.outside.length)) {
+    const stopped = part(body, "Stopped", stops.rows.length ? stops.count : ""); // no count of nothing
+    for (const x of stops.rows) small(x.note, div("stop", x.line, stopped));
+    if (!stops.rows.length) div("dim", "no write was refused", stopped);
+  }
   const spent = tokenWords(t);
-  const tokens = part(body, "Tokens", spent?.total ?? "");
-  if (spent) {
-    const bar = div("bar", undefined, tokens);
-    div("read", undefined, bar).style.width = `${spent.read}%`;
-    div("wrote", undefined, bar).style.width = `${spent.written}%`;
-    div("checkrow dim", spent.line, tokens);
-  } else div("dim", t.attempts ? "this agent reports no tokens" : "nothing metered yet: Graphene counts the agents a run starts", tokens);
+  if (!spent) return; // nothing metered: no part to say so
+  const tokens = part(body, "Tokens", spent.total);
+  const bar = div("bar", undefined, tokens);
+  div("read", undefined, bar).style.width = `${spent.read}%`;
+  div("wrote", undefined, bar).style.width = `${spent.written}%`;
+  div("checkrow dim", spent.line, tokens);
 }
 
-/** Scope, for a command step: no agent and no file. What runs, whether it leaves this machine, and its exit code. */
+/** Scope, for a command step: no agent and no file. Its exit code, what runs, and whether it leaves this machine. */
 function commandScope(body: HTMLElement, t: TaskX) {
   div("dim", "nothing: a command task changes no file of the repository", part(body, "May change"));
+  const when = part(body, "Done when");
+  const row = (tone: string, line: string) => { const r = div("checkrow", undefined, when); div(`dot ${tone}`, undefined, r); r.append(line); };
+  row("dim", "its exit code is its check: 0 and it is done");
+  const c = checkMark(t); // its exit, as its card's box says it: no line where that says nothing
+  if (c.words) row(c.tone, c.words);
   const kv = div("kv", undefined, part(body, "May run"));
   div("kv-k", "Command", kv);
   const cmd = div("kv-v", undefined, kv);
@@ -1592,12 +1605,6 @@ function commandScope(body: HTMLElement, t: TaskX) {
   const hold = div("held none", undefined, part(body, "Held by"));
   div("shield", "○", hold).setAttribute("aria-hidden", "true");
   small("What it writes in its clean copy is thrown away.", div("", "No agent writes here: there is nothing to hold.", hold));
-  const when = part(body, "Done when");
-  const row = (tone: string, line: string) => { const r = div("checkrow", undefined, when); div(`dot ${tone}`, undefined, r); r.append(line); };
-  row("dim", "its exit code is its check: 0 and it is done");
-  const c = checkMark(t); // its exit, as its card's box says it: no line where that says nothing
-  if (c.words) row(c.tone, c.words);
-  div("dim", "no model: no tokens", part(body, "Tokens"));
 }
 
 /** Edit: the task's form (or, finished, a command step or in a replay, what it says), the sub-goal it is under and what it waits on. */
@@ -1636,7 +1643,7 @@ function activityTab(body: HTMLElement, t: TaskX) {
   row("Cost", usd(t.usd), body);
   row("Quiet", t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "", body);
   row("Note", t.note, body);
-  row("Wanted", t.outside.join("  "), body, true);
+  row("Wrote outside", t.outside.join("  "), body, true); // as Scope says it, in red
   if (t.forks.length) {
     const r = div("row", undefined, body);
     div("k", "Attempts", r);
@@ -1678,6 +1685,7 @@ function pane() {
     return;
   }
   paneLast = key;
+  if (selected !== paneOf) menuOf = null; // another task, or none (× and Esc hide the pane with no event): its … starts closed
   paneOf = selected;
   const t = state?.tasks.find((x) => x.id === selected);
   if (!state || (!t && !d) || !key) { pane.hidden = true; pane.replaceChildren(); return; }
@@ -1697,13 +1705,14 @@ function pane() {
   });
   if (d) return draftPane(pane, d);
   if (!t) return;
-  // the head: what it is, its state and who is on it; the id, the CLI's word for it, on the title's hover
+  // the head: what it is, its state and who is on it (or, nobody on it yet, who it is for); the id, the CLI's
+  // word for it, on the title's hover
   const head = div("d-head", undefined, pane);
   div(`d-title ${cls(t.state)}`, t.title, head).title = `${t.full || t.title} (${t.id})`;
   const meta = div("d-id", undefined, head);
   div("d-state", SAY[t.state], meta);
-  const by = t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : who(t, s.executor).label;
-  if (by) meta.append(` · ${by}`);
+  const w = who(t, s.executor);
+  meta.append(` · ${t.agent ? `agent ${t.agent}${t.model ? ` · ${t.model}` : ""}` : w.kind === "you" || t.command ? w.label : `for ${w.label}`}`);
   // one act is the pane's to offer at its foot (the state's own, and the look at its work); the rest wait in the …
   const all = actsFor(t, replaying());
   const inFoot = (b: Button) => b.main || b.act === "openDiff" || b.act === "compareForks";
@@ -1716,14 +1725,15 @@ function pane() {
   if (q) { // its question, with the options to answer inline
     const ask = div("ask", undefined, body);
     div("ask-text", q.text, ask);
-    if (q.default) div("ask-if", `If unanswered: ${q.default}`, ask);
-    if (!replaying()) { // every answer quiet: the default filled would read as already chosen
+    if (q.default && replaying()) div("ask-if", `If unanswered: ${q.default}`, ask); // no answers to wear it
+    if (!replaying()) { // every answer quiet: the default filled would read as already chosen, so it says so on itself
       const opts = div("ask-opts", undefined, ask);
       const options = [...new Set([...(q.default ? [q.default] : []), ...q.options])];
       for (const o of options) {
         const b = document.createElement("button");
         b.className = "quiet";
-        b.textContent = o;
+        const words = div("", o, b);
+        if (o === q.default) div("dim", "if unanswered", words); // the default says so under its words
         b.title = o === q.default ? "the default: what happens unanswered" : "answer with this";
         b.addEventListener("click", () => api.postMessage({ type: "act", act: "answer", id: q.id, target: o }));
         opts.appendChild(b);
@@ -1753,7 +1763,10 @@ function pane() {
   else if (tab() === "edit") editTab(body, t, s);
   else activityTab(body, t);
   const foot = all.filter(inFoot);
-  if (foot.length) { const acts = div("d-acts", undefined, pane); for (const b of foot) button(b, t.id, acts); }
+  if (foot.length) { // Compare, in a word, so the two looks fit one row under the act; its hover says it whole
+    const acts = div("d-acts", undefined, pane);
+    for (const b of foot) button(b.act === "compareForks" ? { ...b, label: "Compare", title: `Compare attempts: ${b.title}` } : b, t.id, acts);
+  }
 }
 
 let menuOf: string | null = null; // the task whose … is open: open again when its pane is rebuilt under it
@@ -1772,25 +1785,33 @@ function paneMenu(tools: HTMLElement, id: string, acts: Button[]) {
   menu.popover = "auto";
   menu.setAttribute("role", "menu");
   more.popoverTargetElement = menu;
-  for (const b of acts) {
+  const late = (b: Button) => (b.act === "drop" ? 2 : b.act === "tell" ? 1 : 0); // Message agent apart, Remove last, as the editor's own menus set them
+  let was = 0;
+  for (const b of [...acts].sort((x, y) => late(x) - late(y))) {
+    if (late(b) && !was && menu.childElementCount) div("d-sep", undefined, menu).setAttribute("role", "separator");
+    was = late(b);
     const item = document.createElement("button");
     item.setAttribute("role", "menuitem");
+    if (b.act === "drop") item.className = "danger";
     if (b.icon) item.appendChild(icon(b.icon));
     item.append(b.label);
     item.title = b.title;
-    item.addEventListener("click", () => { menuOf = null; menu.hidePopover(); press(b, id); });
+    item.addEventListener("click", () => { menu.hidePopover(); press(b, id); });
     menu.appendChild(item);
   }
   menu.addEventListener("beforetoggle", (e) => {
-    if ((e as ToggleEvent).newState !== "open") return;
+    // closed by the person: this fires at once, while the menu is still here; a rebuild takes it away with no event
+    if ((e as ToggleEvent).newState !== "open") { menuOf = null; return; }
     const r = more.getBoundingClientRect(); // under the …, its right edge on the …'s
     menu.style.top = `${r.bottom + 4}px`;
     menu.style.right = `${Math.max(8, innerWidth - r.right)}px`;
+    // narrow, the whole pane scrolls and would leave it behind: it closes, as the editor's own menus do
+    $("details").addEventListener("scroll", () => menu.hidePopover(), { once: true, passive: true });
   });
   menu.addEventListener("toggle", (e) => {
-    const open = (e as ToggleEvent).newState === "open";
-    if (open && menuOf !== id) menu.querySelector("button")?.focus(); // opened by the person, not again after a rebuild
-    if (open || menu.isConnected) menuOf = open ? id : null; // a rebuild takes it away: not closed by the person
+    if ((e as ToggleEvent).newState !== "open") return;
+    if (menuOf !== id) menu.querySelector("button")?.focus(); // opened by the person, not again after a rebuild
+    menuOf = id;
   });
   menu.addEventListener("keydown", (e) => {
     if (e.key === "Escape") { e.stopPropagation(); return; } // the menu's Esc, not the pane's
