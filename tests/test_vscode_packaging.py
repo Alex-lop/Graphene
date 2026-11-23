@@ -79,12 +79,12 @@ def test_the_activity_bar_shows_the_brand_mark_and_a_plan_view():
     assert icon == brand  # the mark as the brand draws it, in currentColor so the bar's own colour paints it
     views = {v["id"]: v for v in MANIFEST["contributes"]["views"]["graphene"]}
     assert views["graphene.plan"]["name"] == "Plan"
-    assert "graphene.graph" not in views  # the graph is a tab of its own, opened when Home is (graph.ts sidebar())
+    assert "graphene.graph" not in views  # the graph is a tab of its own (graph.ts sidebar())
 
 
 def test_the_first_open_view_says_what_to_do_before_there_is_a_plan():
-    # Home is the side bar's one page, and draws its own Set Up for a folder with no plan; the other views show
-    # only with graphene.advanced, and Plan and Rounds start collapsed there too.
+    # Home is the side bar's one page, and draws its own Set Up for a folder with no plan; the other views
+    # show only with graphene.advanced, and Plan and Rounds start collapsed there too.
     views = MANIFEST["contributes"]["views"]["graphene"]
     assert views[0]["id"] == "graphene.home" and views[0]["type"] == "webview"
     assert all(v["when"] == ADVANCED for v in views[1:])
