@@ -116,7 +116,7 @@ body.vscode-high-contrast .switch i, body.vscode-high-contrast-light .switch i {
 .tick.exact { gap: 8px; margin: 0; width: fit-content; }
 .tick.exact input { width: 14px; margin: 0 7px; }
 .foot { margin-top: 14px; }
-.foot button.quiet { background: none; padding: 2px 0; color: var(--vscode-textLink-foreground, var(--fg)); }
+.foot button.quiet { background: none; border-color: transparent; padding: 2px 0; color: var(--vscode-textLink-foreground, var(--fg)); } /* a link, not a box */
 .foot button.quiet:hover { background: none; text-decoration: underline; }
 
 /* Set Up, and the screens with no plan to show */
