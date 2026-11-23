@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import * as C from "../src/commands.ts";
-import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, CURSOR_AGENT, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
-         checkWords, heldWords, linkHint, mainAct, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
+import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, CURSOR_AGENT, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
+         checkWords, heldWords, linkHint, mainAct, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, startAnswers, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
          whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
@@ -116,9 +116,16 @@ test("the header's one act: Start a suggested plan (held by a question with no d
   assert.match(mainAct({ ...plan, questions: [{ ...plan.questions[0]!, default: null }] })!.title, /question with no default/);
   assert.deepEqual([mainAct(plan, true)!.off, mainAct(plan, true)!.title], [true, "Exact is on: it waits for your answers"], "Exact: any question holds it, as Home's");
   assert.equal(mainAct({ ...plan, questions: [] }, true)!.main, true, "Exact with nothing asked: nothing to wait for");
-  assert.equal(say({ ...plan, tasks: [...plan.tasks, { ...plan.tasks[0]!, id: "r", state: "ready" }] }), "Run run main", "something ready: Run, the suggestion waits on Home");
+  const accepted = { ...plan, tasks: plan.tasks.map((t, i) => (i ? t : { ...t, state: "ready" as const })) }; // one accepted in its pane
+  assert.equal(say(accepted), "Start start main", "one task accepted alone: Start still takes the rest, not a Run that leaves them behind");
+  assert.equal(say({ ...accepted, questions: [], tasks: accepted.tasks.map((t) => ({ ...t, state: "ready" as const })) }), "Run run main", "nothing suggested: Run");
+  const stopped = { ...fx("running"), run: { going: false, pid: null } };
+  const readied = { ...stopped, tasks: stopped.tasks.map((t) => (t.state === "running" ? { ...t, state: "ready" as const } : t)) };
+  assert.equal(say(readied), "Run run main", "something ready, nothing working: Run");
+  assert.equal(say({ ...readied, questions: [{ ...plan.questions[0]!, default: null }] }), "Run run off", "a question with no default holds Run as it holds Start");
+  assert.match(mainAct({ ...readied, questions: [{ ...plan.questions[0]!, default: null }] })!.title, /question with no default/);
   assert.equal(say(fx("running")), "Stop stop", "a run going: Stop, never filled");
-  assert.equal(say({ ...fx("running"), run: { going: false, pid: null } }), "Run run off", "nothing ready: Run is there, held");
+  assert.equal(say(stopped), "Run run off", "nothing ready: Run is there, held");
   assert.equal(say(fx("empty")), null, "no plan: nothing to start");
   assert.equal(say({ ...plan, tasks: plan.tasks.map((t) => ({ ...t, state: "done" as const })) }), null, "all done: nothing to start");
 });
@@ -282,6 +289,12 @@ test("one pipeline, the plan first: Plan, Run, Review, and where the work is in 
   assert.deepEqual(at({ ...fx("drafting"), drafting: { by: "codex", live: false, steps: [] } }), ["Plan now: the planner is writing", "Run next", "Review next"]);
   assert.deepEqual(at(fx("proposals")), ["Plan now: 4 tasks", "Run next", "Review next"]); // suggested: it waits for Start; its question is said once, by its chip
   assert.equal(askLine(fx("proposals").questions.length), "1 question · answer");
+  // Start takes the open questions' defaults (plan accept on the whole plan): said in its hover and under the chip
+  const plan = fx("proposals");
+  assert.match(mainAct(plan)!.title, /^accept the 4 suggested, answer the open question with its default \(“8000, as the README says”\), then start/);
+  assert.equal(startAnswers({ questions: [plan.questions[0]!, plan.questions[0]!] }), "answer the 2 open questions with their defaults");
+  assert.equal(startAnswers({ questions: [{ ...plan.questions[0]!, default: null }] }), "", "one with no default holds Start: it takes nothing");
+  assert.deepEqual([askNote(1), askNote(2)], ["or Start takes its default", "or Start takes their defaults"]);
   assert.deepEqual([askLine(2), askLine(0)], ["2 questions · answer", ""]);
   assert.deepEqual(at(state), ["Plan done: 7 tasks", "Run now: 1 working", "Review next: 2 to review"]); // what waits for you is said while the rest runs
   const all = (word: TaskX["state"]) => ({ ...state, questions: [], run: { going: false, pid: null }, tasks: state.tasks.map((t) => ({ ...t, state: word })) });

@@ -401,23 +401,36 @@ export interface Button {
   off?: boolean; // shown, and not pressed: its hover says why
 }
 
-/** The header's one act on the whole plan: Stop while a run goes; Start while the plan is a suggestion (Home's
- *  Start: every suggested task accepted, then the run), held as Home's is: while a question with no default is
- *  open, and with Exact on (the host says) while any question is; else Run, filled while a task is ready and held
- *  while none is. None for no plan, or one all done: nothing to start. */
+/** The header's one act on the whole plan: Stop while a run goes; Start while any task is a suggestion and none
+ *  works (Home's Start: every suggested task accepted, the plan's open questions answered with their defaults,
+ *  then the run), so a task accepted alone in its pane does not turn it into a Run that leaves the rest behind;
+ *  else Run, filled while a task is ready. Both are held as Home's Start is: while a question with no default is
+ *  open (it stops a run), and Start with Exact on (the host says) while any question is. None for no plan, or
+ *  one all done: nothing to start. */
 export function mainAct(s: Pick<StateX, "run" | "tasks" | "questions">, exact = false): Button | null {
   if (!s.tasks.length || (!s.run.going && s.tasks.every((t) => t.state === "done"))) return null;
   if (s.run.going) return { label: "Stop", act: "stop", icon: "debug-stop", title: "stop every agent: their tasks go back to the plan" };
   const n = (k: TaskX["state"]) => s.tasks.filter((t) => t.state === k).length;
-  if (n("proposed") && !n("ready") && !n("running")) {
-    const waits = exact && s.questions.length > 0, held = waits || s.questions.some((q) => !q.default); // home/cards.ts `unanswered`: such a question stops a run
+  const blank = s.questions.some((q) => !q.default); // home/cards.ts `unanswered`: such a question stops a run
+  const waitsWhy = "it waits for an answer: a question with no default is open";
+  if (n("proposed") && !n("running")) {
+    const waits = exact && s.questions.length > 0, held = waits || blank;
     return { label: "Start", act: "start", icon: "play", main: !held, off: held,
-             title: waits ? "Exact is on: it waits for your answers" : held ? "it waits for an answer: a question with no default is open"
-               : `accept the ${n("proposed")} suggested, then start an agent on each that is ready` };
+             title: waits ? "Exact is on: it waits for your answers" : held ? waitsWhy
+               : `accept the ${n("proposed")} suggested${startAnswers(s) ? `, ${startAnswers(s)}` : ""}, then start an agent on each that is ready` };
   }
   const ready = n("ready");
-  return { label: "Run", act: "run", icon: "play", main: ready > 0, off: !ready,
-           title: ready ? "start an agent on every task that is ready" : "nothing is ready to run" };
+  return { label: "Run", act: "run", icon: "play", main: ready > 0 && !blank, off: !ready || blank,
+           title: !ready ? "nothing is ready to run" : blank ? waitsWhy : "start an agent on every task that is ready" };
+}
+
+/** What Start does to the plan's open questions, all with a default (one without holds Start): it takes their
+ *  defaults, as accepting the whole plan does. Said in Start's hover and under the question's chip, so a click
+ *  on Start is not an answer nobody saw. */
+export function startAnswers(s: Pick<StateX, "questions">): string {
+  const q = s.questions;
+  if (!q.length || q.some((x) => !x.default)) return "";
+  return q.length === 1 ? `answer the open question with its default (“${cut(q[0]!.default!, 60)}”)` : `answer the ${q.length} open questions with their defaults`;
 }
 
 /** The buttons a task's pane offers, in order. A replay offers none: its pane reads. A step past the line
@@ -509,6 +522,8 @@ export const CURSOR_AGENT = NOT_CURSOR;
 
 /** The question chip's words, its two halves as the tasks' chip has them: `1 question · answer`; none for none. */
 export const askLine = (n: number): string => (n ? `${n} question${n === 1 ? "" : "s"} · answer` : "");
+/** The line under that chip while Start would take the defaults (`startAnswers`). */
+export const askNote = (n: number): string => (n === 1 ? "or Start takes its default" : "or Start takes their defaults");
 
 /** The first-time hint under the graph. */
 export const FIRST_HINT = "click a task to change it · + draws a new one · drag a dot onto another task to link them · ? lists every key";
