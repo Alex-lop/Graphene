@@ -22,6 +22,7 @@
   --claude: var(--vscode-charts-orange, #d18616);
   --ease: 0.25s ease;
 }
+:root:has(> body.vscode-light) { --card: var(--bg); } /* light: a white card, lifted by its shadow and its border */
 html, body { height: 100%; margin: 0; }
 body {
   display: flex; flex-direction: column; background: var(--bg); color: var(--fg);
@@ -79,14 +80,17 @@ main { flex: 1; display: flex; min-height: 0; }
 }
 #canvas.dragging { cursor: grabbing; }
 #canvas.lanes { cursor: default; overflow: auto; background-image: none; }
-/* the zoom's buttons and the legend, at the canvas's foot */
-#zoom { position: absolute; left: 13px; bottom: 11px; display: flex; gap: 4px; z-index: 2; padding: 3px; border-radius: 8px; background: var(--bg); } /* its own ground, as the legend has: a card may pass under it */
-#zoom button { width: 28px; height: 28px; padding: 0; justify-content: center; font-size: 14px; }
-#zoom #zoom-pct { width: 48px; font-size: 12px; font-variant-numeric: tabular-nums; } /* how big a card is drawn; a click is 100% */
+/* what floats over the canvas is one family: a card's ground (a card may pass under it), a hairline ring and a
+   soft shadow (tokens.css `--pop`): the zoom, the legend, the minimap, the notice, and the chip for what needs you */
+#zoom, #legend, #minimap, #notice { background: var(--card); border-radius: var(--r-lg); box-shadow: var(--pop); }
+/* the zoom, at the canvas's foot: one segmented control */
+#zoom { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 2px; z-index: 2; padding: 2px; }
+#zoom button { width: 28px; height: 28px; padding: 0; justify-content: center; font-size: 14px; background: none; border: none; color: var(--dim); }
+#zoom button:hover:not(:disabled) { background: var(--hover); color: var(--fg); }
+#zoom #zoom-pct { width: 46px; font-size: 12px; color: var(--fg); font-variant-numeric: tabular-nums; } /* how big a card is drawn; a click is 100% */
 /* the minimap, over the legend while part of the plan is off screen: a rect a card in its mark's colour (a step
    of your own outlined, as its diamond is hollow), the sub-goals as outlines, and a frame for what is in view */
-#minimap { position: absolute; right: 16px; bottom: 46px; z-index: 2; padding: 4px; line-height: 0; cursor: pointer;
-           background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 2px 8px var(--shadow); }
+#minimap { position: absolute; right: 12px; bottom: 52px; z-index: 2; padding: 4px; line-height: 0; cursor: pointer; }
 #minimap[hidden] { display: none; }
 .mm-band { fill: none; stroke: var(--card-border); vector-effect: non-scaling-stroke; }
 .mm-box { fill: var(--c); }
@@ -94,11 +98,11 @@ main { flex: 1; display: flex; min-height: 0; }
 .mm-box[data-mark="goal"] { fill: none; stroke: var(--done); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .mm-frame { fill: color-mix(in srgb, var(--focus) 14%, transparent); stroke: var(--focus); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 /* the legend: the marks the plan has, as its cards wear them, each with its word and its count */
-#legend { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 14px; font-size: 11.5px; color: var(--dim); pointer-events: none;
-          padding: 3px 9px; border-radius: 6px; background: var(--bg); white-space: nowrap; } /* its own ground: a region or an edge may pass under it */
+#legend { position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; gap: 14px; height: 32px; box-sizing: border-box;
+          padding: 0 12px; font-size: 12px; color: var(--dim); pointer-events: none; white-space: nowrap; }
 #legend[hidden] { display: none; }
 #legend div { display: flex; align-items: center; gap: 5px; }
-#legend b { color: var(--fg); font-weight: 600; }
+#legend b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
 #legend svg, #need svg { flex: none; overflow: visible; }
 #legend .spin, .band-head .mk .spin { animation: none; } /* a mark in a count is not the work: only a card's own ring turns (over `.mk .spin`, which comes later) */
 #canvas.lanes #zoom, #canvas.lanes #legend, #canvas.lanes #planning, #canvas.lanes #minimap, #canvas.lanes #need { display: none; }
@@ -112,14 +116,14 @@ main { flex: 1; display: flex; min-height: 0; }
 #svg.cut .task, #svg.cut .goal, #svg.cut .edge { transition: none; } /* whole cards to rows, or back: another drawing, at once */
 #notice {
   position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); max-width: 70%;
-  text-align: center; color: var(--dim); font-size: 1.05em; line-height: 1.5; padding: 12px 16px;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; white-space: pre-wrap;
+  text-align: center; color: var(--dim); font-size: 13px; line-height: 1.5; padding: 16px 20px; white-space: pre-wrap;
 }
 #notice[hidden] { display: none; }
-#to-goal, #need { position: absolute; right: 10px; top: 10px; z-index: 2; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); white-space: nowrap; }
+#to-goal, #need { position: absolute; right: 12px; top: 12px; z-index: 2; height: 28px; font-size: 12px; box-shadow: var(--pop); white-space: nowrap; }
 #to-goal.below { top: auto; bottom: 10px; }
 /* while a step wants you: how many, and a click (or n) shows the next. The goal's chip stands beside it */
-#need { border-color: color-mix(in srgb, var(--review) 65%, transparent); }
+#need { border-color: color-mix(in srgb, var(--review) 55%, transparent); background: color-mix(in srgb, var(--review) 12%, var(--card)); box-shadow: 0 8px 24px -6px var(--shadow); }
+#need:hover { background: color-mix(in srgb, var(--review) 20%, var(--card)); }
 #need b { font-weight: 600; }
 #to-goal.below .ico { transform: rotate(90deg); }
 #notice.missing, #notice.error { color: var(--came-back); }
