@@ -2,7 +2,7 @@
 // in the order a person acts on them (what needs you, the suggested plan, who is working, what is up next, what
 // is done); each card says what its task is for and what proves it, with its buttons. No VS Code and no DOM
 // here: home.ts sends what this returns, home/main.ts draws it, and checkHome reads what the page sends back.
-import { checkCut, tailPath } from "../graph/marks.ts";
+import { checkCut } from "../graph/marks.ts";
 import { filesChip, forkWord, pipeline, PROVES_NOTHING, stopAfterPlan, type Stage } from "../graph/words.ts";
 import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
@@ -16,11 +16,13 @@ export type Act = (typeof ACTS)[number];
 /** ``main``: the card's one filled button, if any. ``note``: a dim word after the label (a question's default). */
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean; note?: string }
 /** ``paths``: the value is these files, drawn one a line, a deep one from its last folder (``v`` says them all).
- *  A ``v`` of several lines (attempts, last actions) is drawn a line each. ``hover``: the whole, where ``v`` is short. */
-export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[]; hover?: string }
+ *  A ``v`` of several lines (attempts, last actions) is drawn a line each. ``hover``: the whole, where ``v`` is short.
+ *  ``short``: the label where a side bar has no row for it, run into the value (`glance`). */
+export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[]; hover?: string; short?: string }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
-/** ``tag``: the state in a word, where its section does not say it already (Needs you, Up next); else empty. */
-export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
+/** ``tag``: the state in a word, where its section does not say it already (Needs you, Up next); else empty.
+ *  ``task``: its title opens this task in the graph's pane, where a card says its files and check short. */
+export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[]; task?: string }
 export interface Section { key: string; title: string; note: string; buttons: Btn[]; cards: Card[]; folded: boolean }
 /** ``stages``: Plan, Run, Review, and where the work is. ``stopAfter``: the one switch, on by default. */
 export interface Home { banner: string; goal: string; counts: string; stages: Stage[]; stopAfter: boolean; sections: Section[]; empty: boolean }
@@ -43,14 +45,14 @@ export function banner(s: State): string {
 }
 
 /** `3 of 6 done · $0.42 at list price`: who is working and what needs you are said just under it, by the stages
- *  and the Needs you section. The cost is what the agents' calls would cost at list price, as the CLI says it: on
- *  a subscription nothing is billed, so it is never "spent"; before Start it is the planner's call alone. A
- *  practice run spends nothing, so it shows no cost: the stand-in's is a list price. */
+ *  and the Needs you section. The cost is everything this repository's planners and agents have cost so far, a
+ *  dropped plan's included, at list price as the CLI says it: on a subscription nothing is billed, so it is never
+ *  "spent", nor "planned for" (the snapshot cannot tell the planner's share). A practice run spends nothing, so
+ *  it shows no cost: the stand-in's is a list price. */
 export function countsLine(s: State): string {
   const sb = s.scoreboard;
   const cost = s.stand_in ? "" : usd(s.spent);
-  const planned = s.tasks.length > 0 && s.tasks.every((t) => t.state === "proposed");
-  return [sb.total ? `${sb.proven} of ${sb.total} done` : "", cost ? `${planned ? "planned for " : ""}${cost} at list price` : ""].filter(Boolean).join(" · ");
+  return [sb.total ? `${sb.proven} of ${sb.total} done` : "", cost ? `${cost} at list price` : ""].filter(Boolean).join(" · ");
 }
 
 /** The open questions with no default: one stops the run either way, so Start waits for its answer as auto does. */
@@ -72,11 +74,20 @@ function whatFor(t: Task): string {
 
 /** A mono line cut short, the whole on hover when it says more. */
 const brief1 = (k: string, v: string, whole: string): Line[] => [{ k, v, mono: true, ...(whole !== v ? { hover: whole } : {}) }];
+/** A scope by its last name (`CookServiceImpl.java`, `api` for `src/api/`); a glob from its last plain folder on
+ *  (`docs/**\/*.md`), so two tasks' Markdown in two folders do not read the same. */
+function tail(p: string): string {
+  const d = p.replace(/\/+$/, "").split("/");
+  let i = d.length - 1;
+  while (i > 0 && /[*?]/.test(d[i]!)) i--;
+  return d.slice(i).join("/");
+}
 
 /** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes.
  *  ``brief``, for a task not started (Suggested plan, Up next): a line each, as the graph's card says them, its
  *  files by name (`CookServiceImpl.java +2`) and its check by what it runs on, the whole of each on hover and in
- *  the graph's pane; a side bar is for a glance, and a whole gradlew command wraps there over four lines. */
+ *  the graph's pane, which the card's title opens; a side bar is for a glance, and a whole gradlew command wraps
+ *  there over four lines. */
 function contract(t: Task, name: (id: string) => string, brief = false): Line[] {
   if (t.command) return [ // a command step: no agent and no files; what runs, and whether it asks first
     { k: "Runs", v: t.command, mono: true },
@@ -86,7 +97,7 @@ function contract(t: Task, name: (id: string) => string, brief = false): Line[] 
   ];
   return [
     ...line("What for", whatFor(t)),
-    ...(brief && t.scope.length ? brief1("May change", filesChip(t.scope.map((p) => tailPath(p).replace(/^…\//, ""))), t.scope.join("\n"))
+    ...(brief && t.scope.length ? brief1("May change", filesChip(t.scope.map(tail)).replace(/ (?=\+\d+$)/, " "), t.scope.join("\n")) // no +2 alone
       : fileLine("May change", t.scope, "no files named")),
     ...(brief && t.check ? brief1("Done when", `${checkCut(t.check, 28)} passes`, `${t.check} passes`)
       : [{ k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) }]),
@@ -94,6 +105,12 @@ function contract(t: Task, name: (id: string) => string, brief = false): Line[] 
     ...line("After", t.needs.map(name).join(", ")),
   ];
 }
+
+/** A task not started, at a glance: in Cursor's side bar beside its chat a label has no room beside its value
+ *  (home.css), and a row of its own each made six cards a page and a half. There each line runs on from a short
+ *  label instead, as the graph's card says it: What for with none, its files after ▤, its check after done when. */
+const SHORT: Record<string, string> = { "What for": "", "May change": "▤", Runs: "$" };
+const glance = (ls: Line[]): Line[] => ls.map((l) => (l.k ? { ...l, short: SHORT[l.k] ?? l.k.toLowerCase() } : l));
 
 /** A finished task's evidence: what changed, the check that proved it, and the attempt that was kept. */
 function evidence(t: Task): Line[] {
@@ -110,7 +127,7 @@ function question(q: Question, name: (id: string) => string): Card {
   const options = [...new Set([...(q.default ? [q.default] : []), ...q.options])];
   return {
     key: `q:${q.id}`, tone: "question", title: q.text, tag: "question",
-    lines: line("About", q.about ? name(q.about) : ""),
+    lines: q.about ? [{ v: `About ${name(q.about)}` }] : [], // one row: a label column for one short word leaves a hole
     // none filled: a default that looks chosen is skipped past; it says it is the default instead
     buttons: [
       ...options.map((o) => ({ label: cut(o, 80), act: "answer" as const, id: q.id, arg: o, ...(o === q.default ? { note: "default" } : {}),
@@ -152,7 +169,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   const waiting: Card[] = [];
   for (const n of needs(s)) {
     if (n.kind === "auto") {
-      waiting.push({ key: "auto", tone: "came-back", title: "Auto mode is waiting for you", tag: "auto", lines: [{ v: n.why }],
+      waiting.push({ key: "auto", tone: "came-back", title: "Auto mode is waiting for you", tag: "", lines: [{ v: n.why }],
                      buttons: n.key ? [{ label: "Set API key", act: "setKey", arg: n.endpoint ?? undefined, main: true }] : [] });
     } else if (n.kind === "question") {
       waiting.push(question(n.q, name));
@@ -203,7 +220,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
 
   const suggested = s.tasks.filter((t) => t.state === "proposed");
   section("suggested", `Suggested plan · ${plural(suggested.length, "task")}`, suggested.map((t) => ({
-    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: "", lines: contract(t, name, true),
+    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: "", lines: glance(contract(t, name, true)), task: t.id,
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "leave this task out of the plan" }],
   })), {
     note: exact && s.questions.length
@@ -232,8 +249,8 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
 
   const next = s.tasks.filter((t) => t.state === "ready" || t.state === "waiting");
   section("next", `Up next · ${next.length}`, next.map((t) => ({
-    key: `n:${t.id}`, tone: t.state === "ready" ? "ready" as const : "waiting" as const, title: t.title, tag: SAY[t.state],
-    lines: [...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name, true).filter((l) => l.k !== "After")],
+    key: `n:${t.id}`, tone: t.state === "ready" ? "ready" as const : "waiting" as const, title: t.title, tag: SAY[t.state], task: t.id,
+    lines: glance([...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name, true).filter((l) => l.k !== "After")]),
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "take this task out of the plan" }],
   })), { buttons: [{ label: "Run", act: "run", main: !s.run.going, title: s.run.going ? "hand these to the run that is going"
                                                                             : "start an agent on every task that is ready" }] });

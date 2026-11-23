@@ -121,7 +121,7 @@ function render(m: Model) {
   goal.textContent = h.goal || (h.empty ? "No plan yet" : "");
   goal.title = h.goal; // three lines at most on the page
   goal.hidden = !goal.textContent; // a plan whose ask is no longer known: no headline rather than a wrong one
-  // each of its parts wraps as a whole first (`0 of 6 done ·`, then `planned for $1.34 at list price`)
+  // each of its parts wraps as a whole first (`0 of 6 done ·`, then `$1.34 at list price`)
   counts.replaceChildren(...h.counts.split(" · ").flatMap((p, i, all) => [el("span", "part", glue(p) + (i < all.length - 1 ? "\u00a0·" : "")), " "]));
   counts.hidden = !h.counts || h.empty;
   pipe.replaceChildren(...h.stages.map((st) => {
@@ -194,12 +194,18 @@ function drawCard(c: Card, stack: boolean): HTMLElement {
     x.classList.add("remove");
     x.setAttribute("aria-label", b.label);
   }
-  el("div", "c-title", c.title, card);
+  // a task not started says its files and check short: its title is the way to the whole, in the graph's pane
+  if (c.task) button({ label: c.title, act: "showGraph", id: c.task, title: "open it on the graph: its files and check in full" }, card).classList.add("c-title");
+  else el("div", "c-title", c.title, card);
   if (c.lines.length) {
     const dl = el("dl", stack ? "c-lines stack" : "c-lines", undefined, card);
     for (const l of c.lines) {
-      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}`, undefined, dl);
-      if (l.k) el("dt", "", l.k, r);
+      const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}${l.short === undefined ? "" : " run"}`, undefined, dl);
+      if (l.k) {
+        const dt = el("dt", "", l.short === undefined ? l.k : undefined, r);
+        if (l.short !== undefined) el("span", "long", l.k, dt); // the label, or its short form: home.css shows one
+        if (l.short) el("span", "short", `${l.short}\u00a0`, dt); // held to its value: no ▤ alone at a line's end
+      }
       const dd = el("dd", l.mono ? "mono" : "", undefined, r);
       if (l.hover) dd.title = l.hover;
       if (l.paths) for (const p of l.paths) path(p, dd);
@@ -238,11 +244,12 @@ function path(p: string, parent: HTMLElement) {
 }
 
 /** A command, breakable where it reads as a seam: at its spaces, after a slash, and after the dots or before the
- *  humps of a long dotted, snake_case or camelCase name (`app.cookyourbooks.services.impl.RecipeLookupServiceImplTest`). <wbr>, so a copied command is the command; and a
- *  short piece with a hyphen held whole, as the browser would break `--tests` after its dashes. */
+ *  humps of a long dotted, snake_case or camelCase name (`app.cookyourbooks.services.impl.RecipeLookupServiceImplTest`),
+ *  never before a file's extension (`Impl.java`, not `Impl.` and `java`). <wbr>, so a copied command is the
+ *  command; and a short piece with a hyphen held whole, as the browser would break `--tests` after its dashes. */
 function code(v: string, parent: HTMLElement) {
   for (const w of v.split(/(\s+)/)) {
-    w.split(w.length >= 24 ? /(?<=[/._])|(?<=[a-z0-9])(?=[A-Z])/ : /(?<=\/)/).forEach((part, i) => {
+    w.split(w.length >= 16 ? /(?<=[/_])|(?<=\.)(?![A-Za-z]{1,5}\W*$)|(?<=[a-z0-9])(?=[A-Z])/ : /(?<=\/)/).forEach((part, i) => {
       if (i) parent.append(document.createElement("wbr"));
       if (part.length < 24 && part.includes("-")) el("span", "nb", part, parent);
       else parent.append(part);

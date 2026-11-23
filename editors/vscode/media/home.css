@@ -58,8 +58,10 @@ button.open svg { width: 14px; height: 14px; flex: none; fill: currentColor; }
 }
 .said.bad { color: var(--bad); background: color-mix(in srgb, var(--bad) 9%, transparent); border-color: color-mix(in srgb, var(--bad) 35%, transparent); }
 .said button { margin-top: 6px; }
+.said > div + div { margin-top: 4px; } /* a line each thing it says, apart: four run together read as one block */
 
-/* sections: a quiet label, as VS Code's own; Needs you in the review colour */
+/* sections: a quiet label, as VS Code's own; Needs you in the review colour, Working now in the amber of an
+   agent at work on the graph (its cards wear no tag: the head says it once) */
 .sec { margin: 18px 0 0; }
 .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; min-height: 26px; }
 .sec-acts { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -70,25 +72,25 @@ button.fold, .prefs-head {
 button.fold:hover { background: none; color: var(--fg); }
 .chev { display: inline-block; width: 12px; }
 .sec-needs button.fold { color: var(--review); }
+.sec-working button.fold { color: var(--running); }
+body.vscode-light .sec-working button.fold { color: color-mix(in srgb, var(--running) 55%, var(--fg)); } /* as a tag's, below */
 .sec-note { color: var(--dim); font-size: 12px; margin: 6px 0 8px; }
 
 /* cards: what it is called, the lines a person reads before saying yes, and its state in a word in its colour
    only where the section's head does not say it (Needs you, Up next): a state is said once, so no edge */
 .card {
-  --tone: var(--line-3);
   position: relative; margin: 8px 0; padding: 10px 12px; background: var(--card); border: 1px solid var(--line-1); border-radius: var(--r);
 }
 .card:has(> .remove) > .c-title { padding-right: 18px; } /* clear of the × */
 .tone-question, .tone-review, .tone-yours { --tone: var(--review); }
 .tone-came-back { --tone: var(--came-back); }
-.tone-proposed { --tone: var(--proposed); }
-.tone-running { --tone: var(--running); }
-.tone-done { --tone: var(--done); }
-.tone-ready { --tone: color-mix(in srgb, var(--fg) 45%, transparent); } /* Cursor's dim grey is brighter than its purple */
 .c-tag { color: var(--tone); font-size: 12px; font-weight: 600; } /* in words, as the graph's cards say it: capitals are the section heads' */
 .card.tone-waiting .c-tag, .card.tone-ready .c-tag { color: var(--dim); } /* outranks the light rule below */
 body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg)); } /* a chart yellow is ~2.5:1 on a light card */
 .c-title { font-weight: 600; margin-top: 2px; word-break: break-word; }
+/* a title that opens its task on the graph: the title still, a link only on hover */
+.card button.c-title { display: block; padding: 0; border: none; background: none; color: var(--fg); line-height: inherit; text-align: left; }
+.card button.c-title:hover { background: none; text-decoration: underline; }
 /* one grid for every line: the labels' column is as wide as the widest, so none wraps ("Last actions"), and
    at least as wide as most, so the values of one card line up with the next one's */
 .c-lines { display: grid; grid-template-columns: minmax(72px, max-content) minmax(0, 1fr); gap: 3px 10px; margin: 8px 0 0; font-size: 12px; }
@@ -98,7 +100,7 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
 .c-line dd { margin: 0; overflow-wrap: break-word; }
 /* a command or a file breaks at its seams (main.ts), mid-word only when one is wider than the card, and what it
    wraps onto is indented, so a file that wraps does not read as two */
-.c-line dd.mono { overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+.c-line dd.mono { overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; text-wrap: wrap; } /* not pretty: it would split a name that fits to even its last line */
 .nb { white-space: nowrap; }
 .c-line .row { display: block; } /* a file, an attempt, an action: a line each */
 .row .dir { color: var(--dim); }
@@ -107,9 +109,18 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
   .c-lines.stack { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
   .c-lines.stack .c-line + .c-line > :first-child { margin-top: 5px; }
 }
+.c-line .short { display: none; }
 @media (max-width: 260px) { /* Cursor's side bar beside its chat: no value fits beside its label */
   .c-lines { grid-template-columns: minmax(0, 1fr); row-gap: 1px; }
   .c-lines .c-line + .c-line > :first-child { margin-top: 5px; }
+  /* a task not started, as the graph's card: each line runs on from its short label (cards.ts glance), and
+     what wraps of a file or a check hangs under it */
+  .c-lines .c-line.run { display: block; }
+  .c-lines .c-line.run + .c-line.run { margin-top: 3px; }
+  .c-line.run :is(dt, dd, .row, .short) { display: inline; margin: 0; }
+  .c-line.run .long { display: none; }
+  .c-line.run:has(dd.mono) { padding-left: 2ch; text-indent: -2ch; text-wrap: wrap; }
+  .c-line.run dd.mono { padding: 0; text-indent: 0; }
 }
 .c-line.warn dd { color: var(--warn); }
 .mono { font-family: var(--mono); font-size: 0.95em; }
