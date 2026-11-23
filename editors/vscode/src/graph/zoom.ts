@@ -43,8 +43,9 @@ export const levelFor = (level: Level, k: number): Level =>
 /** How many times its drawn size a card of one level is, against the other, to cover as much of the screen. */
 const ratio = (from: Size, to: Size) => Math.sqrt((from.w * from.h) / (to.w * to.h));
 
-/** The scale across a change of level: the card covers as much of the screen after as before, so neither of
- *  its sides moves by more than about 15%, and the scale lands well inside the level it turned to. */
+/** The scale across a change of level: the card covers as much of the screen after as before, and the scale lands
+ *  well inside the level it turned to. A row is its title alone, so it is wider and shorter than its card on screen,
+ *  by under half either way. */
 export const switchK = (k: number, from: Level, to: Level) => zoomK(k * ratio(CARD[from], CARD[to]));
 
 /** The zoom as a person reads it: a card's size on screen against a whole card at its own size. One number

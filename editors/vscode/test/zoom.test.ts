@@ -90,6 +90,7 @@ test("across a change of level a card covers as much of the screen, a row turned
     const k2 = switchK(k, from, to);
     const w = (CARD[to].w * k2) / (CARD[from].w * k), h = (CARD[to].h * k2) / (CARD[from].h * k);
     assert.ok(Math.abs(w * h - 1) < 1e-9, "the same area");
+    assert.ok(Math.abs(w - 1) <= 0.45 && Math.abs(h - 1) <= 0.45, `no side jumps by half: ${w.toFixed(2)} by ${h.toFixed(2)}`);
     assert.equal(levelFor(to, k2), to, `${to} at ${k2.toFixed(3)} does not turn straight back`);
     // nor on the next move the same way, nor on one move back
     assert.equal(levelFor(to, wheelK(k2, from === "full" ? 100 : -100)), to);
