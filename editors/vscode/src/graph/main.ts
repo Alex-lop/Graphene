@@ -1574,12 +1574,13 @@ function part(body: HTMLElement, title: string, aside = ""): HTMLElement {
 
 let restOpen = false; // May change's fold, as the person left it
 
-/** A command or a path, breakable where it reads as a seam, as Home's are (home/main.ts code()): its spaces, after a
- *  slash, after the dots and underscores of a long name (`app.cookyourbooks.services.impl.CookServiceImplTest`); a
- *  short piece with a hyphen held whole (`--tests`). <wbr>, so a copied command is the command. */
+/** A command or a path, breakable where it reads as a seam, as Home's are (home/main.ts code()): its spaces; a path
+ *  after its slashes; a long dotted name after its dots and underscores (`app.cookyourbooks.services.impl.` and
+ *  `CookServiceImplTest`), never before its extension; a short piece with a hyphen held whole (`--tests`). <wbr>, so
+ *  a copied command is the command. */
 function seams(text: string, parent: HTMLElement) {
   for (const w of text.split(/(\s+)/)) {
-    w.split(w.length >= 24 ? /(?<=[/._])/ : /(?<=\/)/).forEach((part, i) => {
+    w.split(w.includes("/") || w.length < 24 ? /(?<=\/)/ : /(?<=[._])(?![^._]{1,5}$)/).forEach((part, i) => {
       if (i) parent.append(document.createElement("wbr"));
       if (part.length < 24 && part.includes("-")) { const nb = document.createElement("span"); nb.className = "nb"; nb.textContent = part; parent.append(nb); }
       else parent.append(part);

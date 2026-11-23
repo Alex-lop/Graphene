@@ -247,7 +247,7 @@ body.vscode-high-contrast .d-menu button:is(:hover, :focus-visible), body.vscode
   outline: 1px dashed var(--vscode-menu-selectionBorder, var(--focus)); outline-offset: -1px; }
 /* the body scrolls under a fade at its foot, so a line cut by the foot's edge never shows half of itself */
 .d-body { padding: 8px 16px 0; flex: 1; min-height: 0; overflow: auto; }
-.d-body::after { content: ""; display: block; position: sticky; bottom: 0; height: 18px; margin: 0 -16px; pointer-events: none;
+.d-body::after { content: ""; display: block; position: sticky; bottom: 0; height: 28px; margin: 0 -16px; pointer-events: none;
   background: linear-gradient(to bottom, transparent, var(--panel)); }
 .d-head, .d-acts { flex: none; }
 /* a line of the Edit and Activity tabs: its label as the Scope tab's are (dim, sentence case), its value in the
