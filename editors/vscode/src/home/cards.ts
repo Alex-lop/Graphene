@@ -18,6 +18,7 @@ export interface Btn { label: string; act: Act; id?: string; arg?: string; main?
  *  A ``v`` of several lines (attempts, last actions) is drawn a line each. */
 export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[] }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
+/** ``tag``: the state in a word, where its section does not say it already (Needs you, Up next); else empty. */
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
 export interface Section { key: string; title: string; note: string; buttons: Btn[]; cards: Card[]; folded: boolean }
 /** ``stages``: Plan, Run, Review, and where the work is. ``stopAfter``: the one switch, on by default. */
@@ -193,7 +194,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
 
   const suggested = s.tasks.filter((t) => t.state === "proposed");
   section("suggested", `Suggested plan · ${plural(suggested.length, "task")}`, suggested.map((t) => ({
-    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: SAY.proposed, lines: contract(t, name),
+    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: "", lines: contract(t, name),
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "leave this task out of the plan" }],
   })), {
     note: exact && s.questions.length
@@ -210,7 +211,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   section("working", `Working now · ${working.length}`, working.map((t) => {
     const quiet = t.idle !== null && t.idle > 8 ? `${Math.round(t.idle)} s` : "";
     return {
-      key: `w:${t.id}`, tone: "running" as const, title: t.title, tag: SAY.running,
+      key: `w:${t.id}`, tone: "running" as const, title: t.title, tag: "",
       lines: [...line("Agent", `${t.agent || "?"}${t.model ? ` · ${t.model}` : ""}`), ...line("Now", t.tail[t.tail.length - 1] ?? "", { mono: true }),
               ...line("Quiet for", quiet), ...line("Cost", s.stand_in ? "" : usd(t.usd)), ...line("Attempts", attempts(t)),
               ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : [])],
@@ -229,7 +230,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
                                                                             : "start an agent on every task that is ready" }] });
 
   section("workflows", `Workflows · ${workflows.length}`, workflows.map((w) => ({
-    key: `wf:${w.name}`, tone: "ready" as const, title: w.name, tag: "workflow",
+    key: `wf:${w.name}`, tone: "ready" as const, title: w.name, tag: "",
     lines: w.error ? [{ v: w.error, warn: true }]
       : [...line("Does", w.goal), ...line("Asks for", w.inputs.map((i) => (i.default === null ? i.name : `${i.name} (${i.default})`)).join(", "))],
     buttons: w.error ? [] : [{ label: "Run", act: "runWorkflow" as const, arg: w.name, main: true, title: "fill its inputs and propose its plan: no planner is called" }],
@@ -238,7 +239,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
 
   const done = s.tasks.filter((t) => t.state === "done");
   section("done", `Done · ${done.length}`, done.map((t) => ({
-    key: `d:${t.id}`, tone: "done" as const, title: t.title, tag: SAY.done, lines: evidence(t),
+    key: `d:${t.id}`, tone: "done" as const, title: t.title, tag: "", lines: evidence(t),
     buttons: [{ label: "Open changes", act: "openDiff" as const, id: t.id },
               { label: "Send back…", act: "sendBack" as const, id: t.id, title: "say what is wrong; an agent takes it again" }],
   })), { folded: true });

@@ -18,7 +18,7 @@ test("a suggested plan is read before it starts: each task says what for, what i
   assert.equal(s.title, "Suggested plan · 4 tasks");
   assert.deepEqual(s.buttons.map((b) => [b.label, b.act, Boolean(b.main)]), [["Start", "startAll", true], ["Discard all", "discardAll", false]]);
   const hello = card(h, "p:hello");
-  assert.equal(hello.tag, "suggested");
+  assert.equal(hello.tag, "", "its section says suggested: the card does not say it again");
   assert.deepEqual(hello.lines, [
     { k: "What for", v: "hello says hello to the person by name" },
     { k: "May change", v: "words.py", mono: true, paths: ["words.py"] },
@@ -104,7 +104,8 @@ test("who is working, what is up next, and what is done, each in its own section
   assert.ok(greet.lines.some((l) => l.k === "Attempts"));
   assert.deepEqual(labels(greet), ["Open changes so far", "Message agent…", "Compare attempts"]);
   assert.deepEqual(section(h, "working")!.buttons.map((b) => b.act), ["stop"]);
-  assert.equal(card(h, "n:ship").tag, "waiting");
+  assert.equal(card(h, "n:ship").tag, "waiting"); // Up next holds ready and waiting: its cards say which
+  assert.equal(greet.tag, "", "Working now says it");
   assert.equal(section(h, "done")!.folded, true);
   assert.deepEqual(labels(card(h, "d:hello")), ["Open changes", "Send back…"]);
   // Run is always there: while a run goes, `graphene run` hands the ready tasks to it (a run fixes its set at start)

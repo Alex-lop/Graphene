@@ -180,7 +180,7 @@ function drawSection(s: Section): HTMLElement {
 
 function drawCard(c: Card): HTMLElement {
   const card = el("article", `card tone-${c.tone}`);
-  el("div", "c-tag", c.tag, card); // what it is, in its state's colour, above what it is called
+  if (c.tag) el("div", "c-tag", c.tag, card); // what it is, in its state's colour, above what it is called
   // Remove is a small × in the corner, never the biggest thing on a card about work to come (its host asks first)
   for (const b of c.buttons.filter((x) => x.act === "drop")) {
     const x = button({ ...b, label: "×", title: b.title ? `${b.label}: ${b.title}` : b.label }, card);
