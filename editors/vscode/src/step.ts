@@ -25,12 +25,12 @@ export async function addStep(session: Session, arg?: Arg): Promise<boolean> {
   const where = !id ? {} : given?.under || goal ? { under: id } : { after: id };
   const near = task?.title ?? goal?.title;
   const sentence = given?.sentence ?? await vscode.window.showInputBox({
-    prompt: near ? `The new step, in a sentence (${where.after ? "after" : "under"} “${near}”)` : "The new step, in a sentence",
+    prompt: near ? `The new task, in a sentence (${where.after ? "after" : "under"} “${near}”)` : "The new task, in a sentence",
     placeHolder: "a --json flag on the list command, with a test", ignoreFocusOut: true,
-    validateInput: (v) => (v.trim() ? undefined : "say what the step should do"),
+    validateInput: (v) => (v.trim() ? undefined : "say what the task should do"),
   });
   if (!sentence?.trim()) return false;
-  const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Graphene plans the step…" },
+  const out = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "Graphene plans the task…" },
                                                () => session.run(C.askStep(sentence.trim(), where)));
   void session.refresh();
   if (out.code !== 0) {
@@ -55,7 +55,7 @@ export async function addStep(session: Session, arg?: Arg): Promise<boolean> {
 export async function addByHand(session: Session, arg?: Arg) {
   const id = typeof arg === "string" ? arg : arg?.task?.id ?? arg?.id;
   const near = id ? session.tasks().find((t) => t.id === id) : undefined;
-  const title = await vscode.window.showInputBox({ prompt: "The new step, as a title", ignoreFocusOut: true,
+  const title = await vscode.window.showInputBox({ prompt: "The new task, as a title", ignoreFocusOut: true,
                                                   validateInput: (v) => (v.trim() ? undefined : "a title") });
   if (!title?.trim()) return;
   let parent: string | null = near?.parent ?? null;
@@ -72,9 +72,9 @@ export async function addByHand(session: Session, arg?: Arg) {
     parent = where.id;
   }
   // the CLI refuses a leaf with no scope, and one with neither a check nor a sign-off: the prompts say so
-  const scope = await vscode.window.showInputBox({ prompt: "The files it may write: a step needs a scope (globs, spaces or commas between)",
+  const scope = await vscode.window.showInputBox({ prompt: "The files it may write: a task needs a scope (globs, spaces or commas between)",
                                                   placeHolder: "app.py tests/test_app.py", ignoreFocusOut: true,
-                                                  validateInput: (v) => (C.globs(v).length ? undefined : "a step needs a scope: the paths it may touch") });
+                                                  validateInput: (v) => (C.globs(v).length ? undefined : "a task needs a scope: the paths it may touch") });
   if (scope === undefined) return;
   const check = await vscode.window.showInputBox({ prompt: "The command that passes only when it is done; leave it empty and your sign-off finishes it",
                                                   placeHolder: "pytest -q tests/test_app.py", ignoreFocusOut: true });

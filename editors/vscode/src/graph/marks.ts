@@ -75,10 +75,10 @@ export const wanting = (tasks: readonly (Stated & Pick<TaskX, "id">)[]): string[
  *  first when none of them is selected. Null when no step wants the person. */
 export const nextWanting = (ids: readonly string[], selected: string | null): string | null => ids[(ids.indexOf(selected ?? "") + 1) % ids.length] ?? null;
 
-/** The chip's words: `3 steps need you · show the next`, `1 step needs you · show it`; nothing for none. It
+/** The chip's words: `3 tasks need you · show the next`, `1 task needs you · show it`; nothing for none. It
  *  names what it counts, the steps to act on: the header's `4 need you` (words.ts `counts`) is the engine's
  *  sum, with every suggested step and every open question in it, so the same words would carry two numbers. */
-export const wantingLine = (n: number): string => (n > 1 ? `${n} steps need you · show the next` : n === 1 ? "1 step needs you · show it" : "");
+export const wantingLine = (n: number): string => (n > 1 ? `${n} tasks need you · show the next` : n === 1 ? "1 task needs you · show it" : "");
 
 /** The legend's rows, loudest first, only the marks the plan has: the mark, its word, how many. Two words
  *  where its steps say two (`to review / asks you`). ``drafts``: the hand-drawn drafts and the planner's

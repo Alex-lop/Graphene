@@ -79,12 +79,12 @@ test("the steps that want the person, in plan order, and the next one round agai
   assert.equal(nextWanting(["cache"], "cache"), "cache", "the only one: itself, brought on screen");
   assert.deepEqual([wanting([]), nextWanting([], null), nextWanting([], "cache")], [[], null, null]);
   assert.deepEqual(wanting(calm), []);
-  assert.deepEqual([wantingLine(3), wantingLine(1), wantingLine(0)], ["3 steps need you · show the next", "1 step needs you · show it", ""]);
-  assert.equal(wantingLine(wanting(plan).length), "4 steps need you · show the next");
+  assert.deepEqual([wantingLine(3), wantingLine(1), wantingLine(0)], ["3 tasks need you · show the next", "1 task needs you · show it", ""]);
+  assert.equal(wantingLine(wanting(plan).length), "4 tasks need you · show the next");
   // the header's own words (`counts`: `4 need you`) are the engine's sum, suggested steps and questions in it: never those words for this count
   for (let n = 0; n < 30; n++) assert.doesNotMatch(wantingLine(n), /^\d+ needs? you/, `${n}`);
   assert.equal(wantingLine(3).split(" · ").length, 2, "the chip's two halves: narrow, it keeps the count alone");
-  assert.match(KEYS.find(([k]) => k === "n")?.[1] ?? "", /next step that needs you/, "the keys' list says the key that walks them");
+  assert.match(KEYS.find(([k]) => k === "n")?.[1] ?? "", /next task that needs you/, "the keys' list says the key that walks them");
 });
 
 test("the legend lists the marks the plan has, loudest first, each with its word and its count", () => {
@@ -390,7 +390,7 @@ test("the repo-sized fixture shows every mark, from what a current snapshot says
   ]);
   assert.deepEqual(wanting(big.tasks), ["cache", "cancel", "a11y"]);
   // two counts on one canvas, each by its own rule (the header's has the suggested changelog in it), so in two wordings
-  assert.deepEqual([counts(big), wantingLine(wanting(big.tasks).length)], ["3 working · 4 need you · 5 of 26 done · $0.12", "3 steps need you · show the next"]);
+  assert.deepEqual([counts(big), wantingLine(wanting(big.tasks).length)], ["3 working · 4 need you · 5 of 26 done · $0.12", "3 tasks need you · show the next"]);
   // the check's box, by state: landed and to review ticked, at work and ready telling, one ready step hollow, the rest not run
   const boxes = (state: Word) => [...new Set(big.tasks.filter((t) => t.state === state && t.check).map((t) => checkMark(t).box))].sort();
   assert.deepEqual([boxes("done"), boxes("review"), boxes("running"), boxes("came back"), boxes("ready"), boxes("waiting")],

@@ -143,7 +143,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
         continue;
       }
       waiting.push({ key: `review:${t.id}`, tone: "review", title: t.title, tag: SAY.review,
-                     lines: [...evidence(t), ...line("Last steps", t.tail.slice(-3).join(" · "), { mono: true }), // did it run its check itself?
+                     lines: [...evidence(t), ...line("Last actions", t.tail.slice(-3).join(" · "), { mono: true }), // did it run its check itself?
                              { v: opened ? "You opened these changes." : "You have not opened these changes yet.", warn: !opened }],
                      buttons: [{ label: "Open changes", act: "openDiff", id: t.id, main: !opened },
                                { label: "Approve", act: "approve", id: t.id, main: opened, title: "it lands in your repository" }, back] });
@@ -162,7 +162,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
     } else if (n.kind === "yours" && n.t.leaves && n.t.command) { // a step past the line: approving it runs its command
       const t = n.t;
       waiting.push({ key: `yours:${t.id}`, tone: "yours", title: t.title, tag: "asks you",
-                     lines: [{ v: "This step leaves your machine, so it asks you first. Approving it runs its command, with no agent." },
+                     lines: [{ v: "This task leaves your machine, so it asks you first. Approving it runs its command, with no agent." },
                              { k: "Runs", v: t.command!, mono: true }, ...failed(t), ...line("After", t.needs.map(name).join(", "))],
                      buttons: [{ label: "Approve and run", act: "markDone", id: t.id, main: true, title: "graphene node done runs the command, in a terminal you can watch" }] });
     } else if (n.kind === "yours") {
@@ -198,7 +198,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
               ...line("Quiet for", quiet), ...line("Cost", usd(t.usd)), ...line("Attempts", attempts(t)),
               ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : [])],
       buttons: [{ label: "Open changes so far", act: "openDiff" as const, id: t.id },
-                { label: "Message agent…", act: "message" as const, id: t.id, title: "it reads your line with its next step" },
+                { label: "Message agent…", act: "message" as const, id: t.id, title: "it reads your line with its next move" },
                 ...(t.forks.length > 1 ? [{ label: "Compare attempts", act: "compare" as const, id: t.id }] : [])],
     };
   }), { buttons: [{ label: "Stop all", act: "stop", title: "stop every agent: their tasks go back to the plan" }] });

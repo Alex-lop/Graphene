@@ -153,7 +153,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
     // and with no id a lone step that leaves is still picked by hand, its command beside it
     const t = id ? yours.find((x) => x.id === id) : yours.length === 1 && !yours[0]!.leaves ? yours[0]
       : (await vscode.window.showQuickPick(yours.map((x) => ({ label: C.plain(x.title), description: x.leaves ? C.plain(yoursWords(x).description) : "", t: x })),
-                                           { placeHolder: "your task that is done, or the step to approve" }))?.t;
+                                           { placeHolder: "your task that is done, or the task to approve" }))?.t;
     if (t) session.terminal("graphene node done", markDone(t.id));
   });
 

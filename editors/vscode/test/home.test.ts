@@ -215,7 +215,7 @@ test("a step past the line asks you on Home: what leaves your machine, the comma
   const h = home(s);
   const c = card(h, "yours:pr-48");
   assert.equal(c.tag, "asks you");
-  assert.match(c.lines[0]!.v, /^This step leaves your machine, so it asks you first\./);
+  assert.match(c.lines[0]!.v, /^This task leaves your machine, so it asks you first\./);
   assert.deepEqual(c.lines[1], { k: "Runs", v: "git push -u origin HEAD && gh pr create --draft --fill", mono: true });
   assert.deepEqual(c.buttons.map((b) => [b.label, b.act, b.id]), [["Approve and run", "markDone", "pr-48"]]);
   // before Start, the suggested plan is where each step is read: a command step says what runs, with no agent,
