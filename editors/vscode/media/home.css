@@ -119,7 +119,7 @@ body.vscode-light .c-tag { color: color-mix(in srgb, var(--tone) 55%, var(--fg))
   .c-lines .c-line.run + .c-line.run { margin-top: 3px; }
   .c-line.run :is(dt, dd, .row, .short) { display: inline; margin: 0; }
   .c-line.run .long { display: none; }
-  .c-line.run:has(dd.mono) { padding-left: 2ch; text-indent: -2ch; }
+  .c-line.run:has(dd.mono) { padding-left: 2ch; text-indent: -2ch; text-wrap: wrap; }
   .c-line.run dd.mono { padding: 0; text-indent: 0; }
 }
 .c-line.warn dd { color: var(--warn); }
