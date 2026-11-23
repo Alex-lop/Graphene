@@ -1,6 +1,6 @@
 // The graph, in the webview: boxes for the tasks coloured by their state, bands for the sub-goals, the goal
 // at the right (or at the foot, when the view is narrow), a forked task fanning out into its forks; or, in
-// the sidebar, the same plan as lanes, one row a task, wave by wave. A click selects and opens the details
+// the sidebar, the same plan as lanes, one row a task, grouped by sub-goal. A click selects and opens the details
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
 import { layout, modeFor, rounded, route, step, type Box, type Edge, type Layout } from "../layout.ts";
@@ -1088,7 +1088,7 @@ function drawPlanned(grp: SVGGElement, d: DraftStep, down: boolean) {
   grp.appendChild(el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? BOX_H : BOX_H / 2, r: 5 }));
 }
 
-// ---- the lanes: one row a task, wave by wave ----
+// ---- the lanes: one row a task, grouped by sub-goal ----
 
 const laneEls = new Map<string, { el: HTMLElement; key: string }>();
 let lanesKey = "";
@@ -1099,8 +1099,8 @@ function lanes(s: StateX) {
   const order = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H });
   lay = null; // arrows walk the rows, not a drawing
   // a sub-goal a group, headed as its band is on the canvas, in the graph's order, its tasks in the order they
-  // start; tasks in none (or in auto's root, which is the goal) last, over the goal, with no heading; a step past
-  // the line after them all, under its own
+  // start; tasks in none (or in auto's root, which is the goal) last, over the goal, headed only where groups
+  // stand above them, so they never read as the last group's; a step past the line after them all, under its own
   const AWAY = " away", groups = new Map<string, TaskX[]>(order.bands.filter((b) => b.id && goalTitle(s, b.id) !== s.goal).map((b) => [b.id, []]));
   groups.set("", []).set(AWAY, []);
   for (const t of s.tasks) groups.get(t.leaves ? AWAY : groups.has(t.parent ?? "") ? t.parent ?? "" : "")!.push(t);
@@ -1113,7 +1113,8 @@ function lanes(s: StateX) {
   const seen = new Set<string>();
   for (const [id, ts, n] of heads) {
     if (id === AWAY) rows.push(div("wave", n));
-    else if (id) {
+    else if (!id) { if (heads.some(([h]) => h && h !== AWAY)) rows.push(div("wave", "in no sub-goal")); }
+    else {
       const { name, whole } = bandName(goalTitle(s, id)), head = div("wave");
       div("w-name", name, head).title = whole;
       head.append(n);

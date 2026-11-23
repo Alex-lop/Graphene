@@ -458,7 +458,7 @@ button:disabled { opacity: 0.45; cursor: default; }
    corner, as the suggestion it becomes (blue round a card is the selection's); the + past a card's out port draws one after it */
 .draft .box, .drafted .box { stroke-dasharray: 5 4; fill: color-mix(in srgb, var(--card) 55%, var(--bg)); filter: none; }
 .task.drafted { cursor: default; }
-.wave.planning { color: var(--proposed); text-transform: none; letter-spacing: 0; font-size: 12px; }
+.wave.planning { color: var(--proposed); }
 .wave.planning::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 8px; background: var(--proposed); animation: blink 1s infinite; }
 .lane.drafted { border-style: dashed; border-color: var(--proposed); cursor: default; }
 .lane.drafted .l-stripe { background: none; }
@@ -538,7 +538,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 .fork-row.st-passed, .fork-row.kept { border-color: var(--done); }
 .fork-row.st-gave-up, .fork-row.st-failed, .fork-row.st-ended { border-color: var(--came-back); }
 
-/* the lanes: the narrow view, one row a task, wave by wave; HTML, so every word wraps and nothing shrinks */
+/* the lanes: the narrow view, one row a task, grouped by sub-goal; HTML, so every word wraps and nothing shrinks */
 #lanes { padding: 6px 8px 12px; max-width: 760px; margin: 0 auto; } /* a list, not a stretched table: a row reads across at a glance */
 #lanes[hidden] { display: none; }
 /* a group's head, as its band's on the canvas: the sub-goal's name, then how many of its tasks are done */
