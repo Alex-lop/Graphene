@@ -121,7 +121,8 @@ function render(m: Model) {
   goal.textContent = h.goal || (h.empty ? "No plan yet" : "");
   goal.title = h.goal; // three lines at most on the page
   goal.hidden = !goal.textContent; // a plan whose ask is no longer known: no headline rather than a wrong one
-  counts.textContent = glue(h.counts);
+  // each of its parts wraps as a whole first (`0 of 6 done ·`, then `planned for $1.34 at list price`)
+  counts.replaceChildren(...h.counts.split(" · ").flatMap((p, i, all) => [el("span", "part", glue(p) + (i < all.length - 1 ? "\u00a0·" : "")), " "]));
   counts.hidden = !h.counts || h.empty;
   pipe.replaceChildren(...h.stages.map((st) => {
     const stage = el("span", `stage ${st.at}`);
@@ -174,11 +175,17 @@ function drawSection(s: Section): HTMLElement {
   for (const b of s.buttons) button(b, acts);
   if (!open) return sec;
   if (s.note) el("p", "sec-note", s.note, sec);
-  for (const c of s.cards) sec.appendChild(drawCard(c));
+  // one long value puts every label of the section's cards over its value in a narrow side bar (home.css), so a
+  // card's values never zigzag between beside their label and under it, nor one card from the next
+  const stack = s.cards.some((c) => c.lines.some((l) => l.k && size(l) > (l.mono ? 26 : 40)));
+  for (const c of s.cards) sec.appendChild(drawCard(c, stack));
   return sec;
 }
 
-function drawCard(c: Card): HTMLElement {
+/** A line's longest row, as drawn: of files, the longest one shown. */
+const size = (l: Line) => Math.max(...(l.paths ? l.paths.map(short) : l.v.split("\n")).map((x) => x.length));
+
+function drawCard(c: Card, stack: boolean): HTMLElement {
   const card = el("article", `card tone-${c.tone}`);
   if (c.tag) el("div", "c-tag", c.tag, card); // what it is, in its state's colour, above what it is called
   // Remove is a small × in the corner, never the biggest thing on a card about work to come (its host asks first)
@@ -189,15 +196,12 @@ function drawCard(c: Card): HTMLElement {
   }
   el("div", "c-title", c.title, card);
   if (c.lines.length) {
-    // one long value puts every label of the card over its value in a narrow side bar (home.css), so a card's
-    // values never zigzag between beside their label and under it; of files, the longest one shown counts
-    const size = (l: Line) => Math.max(...(l.paths ? l.paths.map(short) : l.v.split("\n")).map((x) => x.length));
-    const stack = c.lines.some((l) => l.k && size(l) > (l.mono ? 26 : 40));
     const dl = el("dl", stack ? "c-lines stack" : "c-lines", undefined, card);
     for (const l of c.lines) {
       const r = el("div", `c-line${l.warn ? " warn" : ""}${l.k ? "" : " wide"}`, undefined, dl);
       if (l.k) el("dt", "", l.k, r);
       const dd = el("dd", l.mono ? "mono" : "", undefined, r);
+      if (l.hover) dd.title = l.hover;
       if (l.paths) for (const p of l.paths) path(p, dd);
       else for (const v of l.v.split("\n")) {
         const row = el("span", "row", undefined, dd);
@@ -233,12 +237,12 @@ function path(p: string, parent: HTMLElement) {
   code(s.slice(cut), row);
 }
 
-/** A command, breakable where it reads as a seam: at its spaces, after a slash, and after the dots of a long
- *  dotted or snake_case name (`app.cookyourbooks.services.impl.RecipeTest`). <wbr>, so a copied command is the command; and a
+/** A command, breakable where it reads as a seam: at its spaces, after a slash, and after the dots or before the
+ *  humps of a long dotted, snake_case or camelCase name (`app.cookyourbooks.services.impl.RecipeLookupServiceImplTest`). <wbr>, so a copied command is the command; and a
  *  short piece with a hyphen held whole, as the browser would break `--tests` after its dashes. */
 function code(v: string, parent: HTMLElement) {
   for (const w of v.split(/(\s+)/)) {
-    w.split(w.length >= 24 ? /(?<=[/._])/ : /(?<=\/)/).forEach((part, i) => {
+    w.split(w.length >= 24 ? /(?<=[/._])|(?<=[a-z0-9])(?=[A-Z])/ : /(?<=\/)/).forEach((part, i) => {
       if (i) parent.append(document.createElement("wbr"));
       if (part.length < 24 && part.includes("-")) el("span", "nb", part, parent);
       else parent.append(part);

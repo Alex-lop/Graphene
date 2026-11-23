@@ -2,7 +2,8 @@
 // in the order a person acts on them (what needs you, the suggested plan, who is working, what is up next, what
 // is done); each card says what its task is for and what proves it, with its buttons. No VS Code and no DOM
 // here: home.ts sends what this returns, home/main.ts draws it, and checkHome reads what the page sends back.
-import { forkWord, pipeline, PROVES_NOTHING, stopAfterPlan, type Stage } from "../graph/words.ts";
+import { checkCut, tailPath } from "../graph/marks.ts";
+import { filesChip, forkWord, pipeline, PROVES_NOTHING, stopAfterPlan, type Stage } from "../graph/words.ts";
 import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
 import { WHO } from "./who.ts";
@@ -15,8 +16,8 @@ export type Act = (typeof ACTS)[number];
 /** ``main``: the card's one filled button, if any. ``note``: a dim word after the label (a question's default). */
 export interface Btn { label: string; act: Act; id?: string; arg?: string; main?: boolean; title?: string; off?: boolean; note?: string }
 /** ``paths``: the value is these files, drawn one a line, a deep one from its last folder (``v`` says them all).
- *  A ``v`` of several lines (attempts, last actions) is drawn a line each. */
-export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[] }
+ *  A ``v`` of several lines (attempts, last actions) is drawn a line each. ``hover``: the whole, where ``v`` is short. */
+export interface Line { k?: string; v: string; mono?: boolean; warn?: boolean; paths?: string[]; hover?: string }
 export type Tone = "question" | "proposed" | "running" | "review" | "came-back" | "ready" | "waiting" | "done" | "yours";
 /** ``tag``: the state in a word, where its section does not say it already (Needs you, Up next); else empty. */
 export interface Card { key: string; tone: Tone; title: string; tag: string; lines: Line[]; buttons: Btn[] }
@@ -69,8 +70,14 @@ function whatFor(t: Task): string {
   return rest && rest[0]!.toUpperCase() + rest.slice(1);
 }
 
-/** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes. */
-function contract(t: Task, name: (id: string) => string): Line[] {
+/** A mono line cut short, the whole on hover when it says more. */
+const brief1 = (k: string, v: string, whole: string): Line[] => [{ k, v, mono: true, ...(whole !== v ? { hover: whole } : {}) }];
+
+/** What a task is for, what it may change, and what proves it: the three lines a person reads before saying yes.
+ *  ``brief``, for a task not started (Suggested plan, Up next): a line each, as the graph's card says them, its
+ *  files by name (`CookServiceImpl.java +2`) and its check by what it runs on, the whole of each on hover and in
+ *  the graph's pane; a side bar is for a glance, and a whole gradlew command wraps there over four lines. */
+function contract(t: Task, name: (id: string) => string, brief = false): Line[] {
   if (t.command) return [ // a command step: no agent and no files; what runs, and whether it asks first
     { k: "Runs", v: t.command, mono: true },
     { v: t.leaves ? "It leaves your machine, so it asks you before it runs." : "A command, with no agent: its exit code is its check." },
@@ -79,8 +86,10 @@ function contract(t: Task, name: (id: string) => string): Line[] {
   ];
   return [
     ...line("What for", whatFor(t)),
-    ...fileLine("May change", t.scope, "no files named"),
-    { k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) },
+    ...(brief && t.scope.length ? brief1("May change", filesChip(t.scope.map((p) => tailPath(p).replace(/^…\//, ""))), t.scope.join("\n"))
+      : fileLine("May change", t.scope, "no files named")),
+    ...(brief && t.check ? brief1("Done when", `${checkCut(t.check, 28)} passes`, `${t.check} passes`)
+      : [{ k: "Done when", v: t.check ? `${t.check} passes` : "you approve it", mono: Boolean(t.check) }]),
     ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : []), // the check ran once on the code as it is, before the run
     ...line("After", t.needs.map(name).join(", ")),
   ];
@@ -194,7 +203,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
 
   const suggested = s.tasks.filter((t) => t.state === "proposed");
   section("suggested", `Suggested plan · ${plural(suggested.length, "task")}`, suggested.map((t) => ({
-    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: "", lines: contract(t, name),
+    key: `p:${t.id}`, tone: "proposed" as const, title: t.title, tag: "", lines: contract(t, name, true),
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "leave this task out of the plan" }],
   })), {
     note: exact && s.questions.length
@@ -224,7 +233,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   const next = s.tasks.filter((t) => t.state === "ready" || t.state === "waiting");
   section("next", `Up next · ${next.length}`, next.map((t) => ({
     key: `n:${t.id}`, tone: t.state === "ready" ? "ready" as const : "waiting" as const, title: t.title, tag: SAY[t.state],
-    lines: [...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name).filter((l) => l.k !== "After")],
+    lines: [...line("Waits for", t.state === "waiting" ? t.needs.map(name).join(", ") : ""), ...contract(t, name, true).filter((l) => l.k !== "After")],
     buttons: [{ label: "Remove", act: "drop" as const, id: t.id, title: "take this task out of the plan" }],
   })), { buttons: [{ label: "Run", act: "run", main: !s.run.going, title: s.run.going ? "hand these to the run that is going"
                                                                             : "start an agent on every task that is ready" }] });
