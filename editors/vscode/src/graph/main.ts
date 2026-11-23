@@ -19,7 +19,7 @@ import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, neares
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
 
 type Status = { kind: "reading" | "missing" | "uninitialised" | "error" | "nofolder"; text: string };
-type Incoming = { type: "state"; state: StateX } | { type: "status"; status: Status } | { type: "select"; id: string }
+type Incoming = { type: "state"; state: StateX; exact?: boolean } | { type: "status"; status: Status } | { type: "select"; id: string }
   | { type: "drafts"; drafts: Draft[] }
   | { type: "said"; id?: string; key?: string; ok: boolean; line: string; made?: string }; // graphene's answer to a change made here
 type View = "auto" | "graph" | "lanes";
@@ -52,6 +52,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const svgNS = "http://www.w3.org/2000/svg";
 
 let state: StateX | null = null;
+let exact = false; // Exact is on (the host reads `board`): Start waits for every answer, as Home's
 let lastJson = "";
 let lay: Layout | null = null;
 let selected: string | null = null;
@@ -342,13 +343,13 @@ function chips(s: StateX) {
   if (!asks) asking = false;
   $("b-ask").setAttribute("aria-expanded", String(asking));
   $("need").hidden = $("b-next").hidden && $("b-ask").hidden;
-  const card = $("asked"), q = s.questions[0];
+  const card = $("asked"), n = s.questions.length, q = s.questions.find((x) => !x.default) ?? s.questions[0]; // the one that holds Start first
   card.hidden = !asking || !q;
   if (card.hidden || !q || card.dataset.key === JSON.stringify(q)) return;
   card.dataset.key = JSON.stringify(q);
   const on = q.about ? (s.tasks.find((t) => t.id === q.about)?.title ?? goalTitle(s, q.about)).replace(/^\?\s+/, "") : ""; // a sub-goal's `? ` says it asks: the card says so
   card.replaceChildren();
-  div("q-on", on ? `Question on “${on}”` : "Question on the plan", card);
+  div("q-on", `Question${n > 1 ? ` 1 of ${n}` : ""} on ${on ? `“${on}”` : "the plan"}`, card); // answered, the next follows
   div("q-text", q.text, card);
   const opts = div("q-opts", undefined, card);
   const answer = (label: string, target?: string) => {
@@ -391,7 +392,7 @@ function header(s: StateX, blank: boolean) {
   if (!s.tasks.length) $("b-save").hidden = $("b-view").hidden = true; // no plan: nothing to save, or to see as lanes
   else $("b-view").hidden = false;
   // the one act on the whole plan: Start a suggestion, Run what is ready, Stop a run (words.ts `mainAct`)
-  const act = mainAct(s), run = $<HTMLButtonElement>("b-run");
+  const act = mainAct(s, exact), run = $<HTMLButtonElement>("b-run");
   if (!act) run.hidden = true;
   else {
     run.replaceChildren(icon(act.icon), document.createTextNode(act.label));
@@ -1316,18 +1317,14 @@ function hint() {
     cancel.addEventListener("click", () => { disarm(); render(); });
     h.replaceChildren(div("hint-text", linkHint(a?.title ?? from, Boolean(wiring))), cancel);
     h.className = "linking";
-  } else if (state?.questions.length && view() === "lanes") { // the lanes have no chip: an open question outranks the news
-    const q = state.questions[0]!;
-    const about = q.about ? state.tasks.find((t) => t.id === q.about)?.title : "";
-    h.textContent = `question${about ? ` on “${about}”` : ""}: ${q.text}${q.default ? ` (if unanswered: ${q.default})` : ""}`;
-    h.className = "asks";
   } else if (!state?.tasks.length && !drawn().length) { // nothing drawn to click, link or follow: no line
     h.hidden = true;
   } else if (!saved.hinted) {
     h.textContent = FIRST_HINT;
     h.className = "";
-  } else { // the news
-    h.textContent = state ? screenWords(state.news[state.news.length - 1] ?? "") : "";
+  } else { // the news, but the plan's open question: its chip says it, once
+    const asked = (line: string) => Boolean(state?.questions.length) && /^asks: |\bquestions? waits? for you\b/.test(line);
+    h.textContent = screenWords([...state?.news ?? []].reverse().find((line) => !asked(line)) ?? "");
     h.className = "";
   }
 }
@@ -1783,10 +1780,11 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
   const m = e.data;
   if (!m || typeof m !== "object") return;
   if (m.type === "state") {
-    const json = JSON.stringify(m.state);
+    const json = JSON.stringify([m.state, m.exact === true]);
     if (json === lastJson) return; // nothing changed: nothing moves
     lastJson = json;
     state = m.state;
+    exact = m.exact === true;
     const has = (id: string | null) => state!.tasks.some((t) => t.id === id);
     if (arriving && has(arriving)) { selected = arriving; arriving = null; }
     if (selected && !has(selected) && !isDraft(selected)) selected = null;
@@ -2037,6 +2035,7 @@ function wire() {
   key.setAttribute("aria-hidden", "true"); // each card says its state in words
   const need = div("", undefined, canvas); // what needs you (`chips`): the tasks, then the plan's questions and the card of the first
   need.id = "need";
+  canvas.prepend(need); // first: over the lanes, which scroll, it stays at their head (graph.css)
   need.hidden = true;
   const chip = (id: string, title: string, on: () => void) => {
     const b = need.appendChild(document.createElement("button"));
@@ -2078,7 +2077,14 @@ function wire() {
   top("b-view", "", "list-flat", "Lanes (v)", () => { remember({ view: view() === "lanes" ? "graph" : "lanes" }); fitted = false; render(); });
   top("b-help", "", "question", "Keys (?)", () => help($("help").hidden));
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
-  top("b-run", "Run", "play", "", () => { const a = state && mainAct(state); if (a) api.postMessage({ type: "act", act: a.act, id: "" }); });
+  top("b-run", "Run", "play", "", () => {
+    const a = state && mainAct(state, exact), run = $<HTMLButtonElement>("b-run");
+    if (!a) return;
+    api.postMessage({ type: "act", act: a.act, id: "" });
+    // Start accepts the plan before the run's terminal opens: said, as Home's is, until the host's next state
+    // redraws it, the same state too (a refused accept changes nothing; the host pushes once Start is over)
+    if (a.act === "start") { run.disabled = true; run.replaceChildren(icon(a.icon), document.createTextNode("Starting…")); lastJson = ""; }
+  });
   // under the goal: the pipeline's three stages (made here, so the preview's shell has them too). Stop after the
   // plan is Home's, under its Settings: beside Start and Stop here it read as a third way to stop
   const pipe = div("", undefined, document.querySelector("header")!);

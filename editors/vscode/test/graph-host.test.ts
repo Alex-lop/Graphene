@@ -293,10 +293,35 @@ test("the header's Start is Home's: every suggested task accepted, then the run;
   await page({ ...plan, questions: plan.questions.map((q) => ({ ...q, default: null })) }).receive({ type: "act", act: "start", id: "" });
   const exact = { ...plan, envelope: { ...plan.envelope, review: "every", auto: "off" } };
   await page(exact, "on").receive({ type: "act", act: "start", id: "" });
-  assert.deepEqual([ran, started() - n], [[["config"]], 1], "held: nothing accepted, nothing run");
+  assert.deepEqual([ran.filter((argv) => argv[0] !== "config"), started() - n], [[], 1], "held: nothing accepted, nothing run");
+  const told = page(exact, "on") as unknown as { sent: { type: string; exact?: boolean }[]; receive(m: unknown): Promise<unknown> };
+  await told.receive({ type: "ready" });
+  await new Promise((r) => setTimeout(r, 0)); // `graphene config` answered
+  assert.equal(told.sent.filter((m) => m.type === "state").at(-1)?.exact, true, "the page is told, so its Start is held before a click, as Home's");
   ran.length = 0;
   await page(exact, "off").receive({ type: "act", act: "start", id: "" });
-  assert.deepEqual([ran.at(-1), started() - n], [C.acceptAll(), 2], "Exact off: the default answers, as Home's Start takes it");
+  assert.deepEqual([ran.filter((argv) => argv[0] !== "config"), started() - n], [[C.acceptAll()], 2], "Exact off: the default answers, as Home's Start takes it");
+});
+
+test("Home's Stop after the plan, turned off with Exact on: Exact's three settings go back first, then auto turns on", async () => {
+  const { HomeHost } = await import("../src/home.ts");
+  const { parseState } = await import("../src/state.ts");
+  const state = parseState(JSON.stringify({ envelope: { review: "every", auto: "off" } }));
+  const ran: string[][] = [];
+  const fake = { ...(session as object), state, seen: new Set(), onDidSee: () => ({ dispose() {} }), refresh: async () => {},
+    run: async (argv: string[]) => { ran.push(argv); return argv.length === 1 ? { code: 0, stdout: "board: on\n", stderr: "" } : { code: argv[0] === "config" ? 0 : 1, stdout: "", stderr: "" }; },
+    act: async (argv: string[]) => { ran.push(argv); return true; } } as never;
+  let said: (m: unknown) => void = () => {};
+  const page = { html: "", cspSource: "", options: {}, asWebviewUri: (u: unknown) => u, postMessage: () => Promise.resolve(true),
+    onDidReceiveMessage(h: (m: unknown) => void) { said = h; return { dispose() {} }; } };
+  new HomeHost(context, fake).resolveWebviewView({ webview: page, onDidDispose: () => ({ dispose() {} }), onDidChangeVisibility: () => ({ dispose() {} }), visible: true } as never);
+  const settled = async () => { for (let i = 0; i < 50; i++) await new Promise((r) => setTimeout(r, 0)); };
+  said({ type: "ready" }); // Home reads `board:` as it opens
+  await settled();
+  said({ type: "act", act: "stopAfter", flag: false });
+  await settled();
+  assert.deepEqual(ran.filter((argv) => argv[0] === "config" && argv.length > 1), [["config", "set", "board", "auto"], ["config", "set", "review", "every"], ["config", "set", "auto", "off"],
+                                                                                  ["config", "set", "auto", "on"]], "Exact's three go back together, then the switch moves");
 });
 
 test("Home disables Start while it is busy (a workflow proposing), so a plan that appears cannot swallow the click", async () => {

@@ -131,10 +131,29 @@ export class GraphHost {
   }
 
   private push(only?: vscode.Webview) {
-    const message = this.session.state // an empty plan is a state too: the page says so under the goal
-      ? { type: "state", state: this.session.state }
+    const s = this.session.state;
+    const message = s // an empty plan is a state too: the page says so under the goal
+      ? { type: "state", state: s, exact: this.exact }
       : { type: "status", status: this.session.status };
     for (const w of only ? [only] : this.views) void w.postMessage(message);
+    // ponytail: `graphene config` is read again at each push while Exact could hold Start (a suggestion, a
+    // question, review every, auto off): the snapshot does not carry `board`, so Home's switch is followed so
+    if (s && !this.session.own && s.questions.length && s.envelope.review === "every" && s.envelope.auto === "off"
+        && s.tasks.some((t) => t.state === "proposed")) void this.readBoard();
+  }
+
+  /** `board:` as `graphene config` last said it: on, with every task to review and auto off, is Exact (home.ts). */
+  private board = "";
+  private boarding: Promise<void> | null = null; // one read at a time, as the session's own
+  private get exact(): boolean {
+    const e = this.session.state?.envelope;
+    return this.board === "on" && e?.review === "every" && e.auto === "off";
+  }
+  private readBoard(): Promise<void> {
+    return this.boarding ??= this.session.run(["config"]).then((out) => {
+      const board = out.code === 0 ? /^board:\s*(\S+)/m.exec(out.stdout)?.[1] ?? "" : this.board;
+      if (board !== this.board) { this.board = board; this.push(); } // the page's Start follows it
+    }).finally(() => { this.boarding = null; });
   }
 
   /** What graphene answered to a change made on a page, for that page to show beside it: on the task's form
@@ -185,18 +204,19 @@ export class GraphHost {
 
   /** Start, as Home's (home.ts `start`): every suggested task accepted, then an agent on each that is ready, in a
    *  terminal. A question with no default stops it; with Exact on (Home's box: board on, every task reviewed, auto
-   *  off) so does any open question, as Home's Start waits for every answer. */
+   *  off) so does any open question, as Home's Start waits for every answer. The page holds its Start then too:
+   *  this is for a board switched on since the page last heard. */
   private async startPlan() {
     const s = this.session.state;
     if (this.starting || !s || unanswered(s)) return;
     this.starting = true;
     try {
-      const exact = s.questions.length > 0 && s.envelope.review === "every" && s.envelope.auto === "off"
-        && /^board:\s*on\b/m.test((await this.session.run(["config"])).stdout);
-      if (exact) return void vscode.window.showInformationMessage("Exact is on: Start waits for your answer to the plan's question.");
+      if (s.questions.length && s.envelope.review === "every" && s.envelope.auto === "off") await this.readBoard();
+      if (this.exact && s.questions.length) return void vscode.window.showInformationMessage("Exact is on: Start waits for your answer to the plan's question.");
       if (await this.session.act(C.acceptAll())) await run("runReady");
     } finally {
       this.starting = false;
+      this.push(); // the page said Starting…: whatever happened, it draws the header again
     }
   }
 
