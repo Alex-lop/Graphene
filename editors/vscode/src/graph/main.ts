@@ -354,10 +354,10 @@ function chips(s: StateX) {
   if (!asks) asking = false;
   $("b-ask").setAttribute("aria-expanded", String(asking));
   $("need").hidden = $("b-next").hidden && $("b-ask").hidden;
-  // Start takes the defaults of what is asked: said under the chip, so a click on Start is no answer unseen
+  // Start and Run take the defaults of what is asked: said under the chip, so a click on either is no answer unseen
   const act = mainAct(s, exact);
-  $("ask-note").textContent = askNote(asks);
-  $("ask-note").hidden = !asks || asking || act?.act !== "start" || Boolean(act.off) || !startAnswers(s);
+  $("ask-note").textContent = act ? askNote(s.questions.filter((q) => q.default).length, act.label) : "";
+  $("ask-note").hidden = !asks || asking || !act || act.act === "stop" || Boolean(act.off) || !startAnswers(s);
   const card = $("asked"), n = s.questions.length, q = s.questions.find((x) => !x.default) ?? s.questions[0]; // the one that holds Start first
   card.hidden = !asking || !q;
   if (card.hidden || !q || card.dataset.key === JSON.stringify(q)) return;
