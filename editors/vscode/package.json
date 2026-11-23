@@ -180,8 +180,8 @@
       },
       {
         "command": "graphene.showGraph",
-        "title": "Graphene: Show Graph",
-        "icon": "$(type-hierarchy-sub)"
+        "title": "Graphene: Open the Graph",
+        "icon": "$(screen-full)"
       },
       {
         "command": "graphene.openCockpit",
@@ -643,7 +643,7 @@
           {
             "id": "review",
             "title": "Review before it lands",
-            "description": "Each finished task shows what changed and the check that passed. Open its changes, then Approve it, or Send it back with what is wrong. The graph shows the whole plan.\n[Show Graph](command:graphene.showGraph)",
+            "description": "Each finished task shows what changed and the check that passed. Open its changes, then Approve it, or Send it back with what is wrong. The graph shows the whole plan.\n[Open the Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/graph.png",
               "altText": "a race in the graph: three tasks, each with three attempts racing, the goal on the right"
@@ -686,7 +686,7 @@
         "graphene.graph.openOnStart": {
           "type": "boolean",
           "default": true,
-          "description": "Open the graph as a tab by itself when you open Graphene's side bar, and when work starts: the window opens on a plan with work left, a plan appears, or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over it. A tab you close stays closed in that window until you ask for it with Show graph. Off, Show graph opens it."
+          "description": "Open the graph as a tab by itself when you open Graphene's side bar, and when work starts: the window opens on a plan with work left, a plan appears, or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over it. A tab you close stays closed in that window until you ask for it with Open the graph, on Home or in the palette. Off, only that opens it."
         }
       }
     }

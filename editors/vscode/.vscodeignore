@@ -3,6 +3,8 @@
 !dist/graph.js
 !dist/home.js
 !media/graphene.svg
+!media/graphene-dark.svg
+!media/graphene-light.svg
 !media/graph.css
 !media/tokens.css
 !media/home.css
