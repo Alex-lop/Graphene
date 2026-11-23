@@ -4,7 +4,7 @@ import { test } from "node:test";
 import * as C from "../src/commands.ts";
 import { actsFor, asksYou, attemptsOf, CHANGES, commandChip, commandWord, cornerWord, counts, draftedSteps, edgeKind, editable, filesChip, fitWidth, fitWords, forkActs, forkWords, HEADER_ACTS, headerFor,
          checkWords, heldWords, linkHint, mayRun, OUTSIDE, OUTSIDE_OWN, paneKey, pipeline, planningLine, provesNothing, replayLine, scopeTree, stopAfterPlan, stopsOf, sub, tabOrder, tokenWords, topLine,
-         whenEdit, who, worktrees, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
+         whenEdit, who, writtenOf, type StateX, type TaskX } from "../src/graph/words.ts";
 import { SAY, WORDS } from "../src/state.ts";
 import { ICONS } from "../src/graph/icons.ts";
 import { layout } from "../src/layout.ts";
@@ -195,14 +195,6 @@ test("an edge moves where an agent is working, is green where the work landed, a
   assert.equal(edgeKind(task("logs"), task("docs")), "wait");
   // the edge that crosses the line starts at the goal, which is no task: green once the step past it has run
   assert.deepEqual([edgeKind(undefined, { state: "done" }), edgeKind(undefined, { state: "yours" })], ["done", "wait"]);
-});
-
-test("this machine counts a worktree for each agent at work: each running attempt's, or the task's own", () => {
-  const greet = task("greet");
-  const running = { ...greet, forks: greet.forks.map((f, i) => ({ ...f, checkout: i < 2 ? `/tmp/w${i}` : null })) };
-  assert.equal(worktrees([running]), 2);
-  assert.equal(worktrees([{ ...greet, forks: [], checkout: "/tmp/w" }]), 1);
-  assert.equal(worktrees([{ ...greet, forks: [], checkout: null }]), 0);
 });
 
 test("while a planner writes, its finished steps are drawn: tasks only, and none the plan already has", () => {
