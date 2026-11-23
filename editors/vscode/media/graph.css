@@ -60,9 +60,9 @@ header:has(#pipe[hidden])::after { display: none; }
 /* one pipeline, the plan first: Plan, Run, Review */
 #pipe { display: contents; }
 #pipe[hidden] { display: none; }
-#stages { order: 5; display: flex; align-items: center; }
+#stages { order: 5; display: flex; align-items: center; margin-right: 10px; } /* a margin, not auto's: wrapped, auto's line starts under Plan */
 #auto { /* what auto is at: a line, its dot amber */
-  order: 7; flex: 1 1 0; min-width: 160px; margin-left: 18px; /* it takes the row's room and is cut to it before it wraps */
+  order: 7; flex: 1 1 0; min-width: 160px; /* it takes the row's room and is cut to it before it wraps */
   color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 #auto::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--running); }
@@ -122,7 +122,8 @@ main { flex: 1; display: flex; min-height: 0; }
 #svg.glide { transition: transform var(--ease); } /* the plan grew: it glides to the middle again */
 #svg.cut .task, #svg.cut .goal, #svg.cut .edge { transition: none; } /* whole cards to rows, or back: another drawing, at once */
 #notice {
-  position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); max-width: min(70%, 460px); text-wrap: balance;
+  /* centred by its margins, not by left: 50%, which would cap its width at half the canvas's */
+  position: absolute; left: 0; right: 0; margin-inline: auto; width: fit-content; top: 40%; transform: translateY(-50%); max-width: min(70%, 460px); text-wrap: balance;
   text-align: center; color: var(--dim); font-size: 13px; line-height: 1.5; padding: 16px 20px; white-space: pre-wrap;
 }
 #notice[hidden] { display: none; }
@@ -130,7 +131,7 @@ main { flex: 1; display: flex; min-height: 0; }
 .notice-aside { font-size: 12px; margin-top: 6px; opacity: 0.8; } /* in Cursor: its own Agent is not one Graphene reaches */
 /* what needs you, at the canvas's top right: the tasks (a click shows the next), then the plan's questions (a
    click opens the first under its chip, to answer there), purple as the person's marks are */
-#need { position: absolute; right: 12px; top: 12px; z-index: 3; display: flex; gap: 8px; }
+#need { position: absolute; right: 16px; top: 12px; z-index: 3; display: flex; gap: 8px; }
 #need[hidden] { display: none; }
 #canvas.lanes #need { position: sticky; top: 6px; height: 0; width: max-content; margin: 0 16px 0 auto; } /* the lanes scroll: it stays at their head */
 #need > button { height: 28px; font-size: 12px; white-space: nowrap; color: var(--fg); border-color: color-mix(in srgb, var(--review) 55%, transparent);
@@ -177,6 +178,11 @@ footer#hint button { padding: 1px 8px; font-size: 1em; }
      graph drawn across (a canvas over 560 px) is fitted to its pane, so it keeps the buttons that say how far
      out it is and bring it back, and its minimap */
   #legend, #need span, body:not([data-mode="across"]) :is(#zoom, #minimap) { display: none; }
+  /* the stages keep their row: only the stage the work is at says its note, cut to the room there is */
+  #stages, .stage.now, .stage.now small { min-width: 0; }
+  .stage:not(.now) small { display: none; }
+  .stage.now small { overflow: hidden; text-overflow: ellipsis; }
+  .stage .n { flex: none; }
   #minimap { bottom: 14px; } /* no legend here to stand on; and smaller, as its canvas is */
   #minimap svg { max-width: 120px; height: auto; }
   body:not([data-mode="across"]) #planning { left: 12px; bottom: 8px; } /* no buttons here to sit above */
