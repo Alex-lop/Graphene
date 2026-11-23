@@ -837,17 +837,17 @@ function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h
 }
 
 /** The card's one act, a real button at the status line's right end: Tab stops on it after the card, Enter and
- *  Space press it, and a click on it is the pane's button's click (`press`) and not the card's: it selects
- *  nothing. Its left edge, where the status line's room ends. */
-function actButton(grp: SVGGElement, act: Button, id: string, title: string): number {
+ *  Space press it, and a click on it is the pane's button's click (`press`, unless ``go`` says otherwise) and not
+ *  the card's. Its left edge, where the status line's room ends. */
+function actButton(grp: SVGGElement, act: Button, id: string, title: string, go = () => press(act, id)): number {
   const b = grp.appendChild(el("g", { class: "act", role: "button", tabindex: 0, "aria-label": `${act.label}: ${title}` }));
   const label = b.appendChild(el("text", { y: STATUS_Y }, act.label));
   const w = Math.ceil(label.getComputedTextLength() || act.label.length * 7) + 16, x = BOX_W - PAD - w;
   b.prepend(el("rect", { x, y: STATUS_Y - 14, width: w, height: 20, rx: 5 }));
   label.setAttribute("x", String(x + 8));
   b.appendChild(el("title", {}, act.title));
-  b.addEventListener("click", (e) => { e.stopPropagation(); if (e.detail < 2) press(act, id); }); // a double click presses it once
-  b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); press(act, id); } });
+  b.addEventListener("click", (e) => { e.stopPropagation(); if (e.detail < 2) go(); }); // a double click presses it once
+  b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); go(); } });
   return x;
 }
 
@@ -959,7 +959,10 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   const act = cardAct(t, replaying());
   let right = BOX_W - PAD;
   if (act) right = actButton(grp, act, t.id, t.title);
-  else {
+  else if (asked && stateMark(t) === "you" && !replaying()) { // it wants you for its question: its answers are in its pane, the first one focused
+    right = actButton(grp, { label: "Answer…", act: "answer", icon: "", main: true, title: `its answers, in its pane: ${asked}` }, t.id, t.title,
+                      () => { select(t.id); document.querySelector<HTMLElement>("#details .ask-opts button")?.focus(); });
+  } else {
     const tail = t.state === "running" && t.model && t.forks.length < 2 ? cut(t.model, 14) : times;
     const end = tail ? grp.appendChild(el("text", { class: tail === times ? "times" : "model", x: right, y: STATUS_Y, "text-anchor": "end" }, tail)) : null;
     if (end) right -= (end.getComputedTextLength() || tail.length * 7) + 8;
