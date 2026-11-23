@@ -25,7 +25,8 @@ export const CHANGES: readonly Act[] = ["add-after", "add-under", "link", "unlin
  *  Home's and the palette's (with graphene.advanced), not the graph's. */
 export const HEADER_ACTS: readonly [string, Act][] = [["b-add", "add-under"], ["b-run", "run"], ["b-save", "saveWorkflow"]];
 
-export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+/** ``s`` cut to ``n`` characters, the ellipsis one of them; no space or stop left before it (`1.…` is `1…`). */
+export const cut = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).replace(/[\s.,:;·-]+$/, "") + "…" : s);
 
 /** Text cut with an ellipsis to ``max`` px as ``width`` measures it (the drawn text's own length): a guess
  *  from the whole text's width, then a character off at a time until it fits. A few measures, never empty. */

@@ -161,13 +161,14 @@ test("text is cut to a measured width, with an ellipsis, in a few measures", () 
   assert.ok(out.endsWith("…") && out.length >= 5, out);
   assert.ok(measures <= 8, `${measures} measures`);
   assert.equal(fitWidth("abc", 1, mono), "a…"); // never empty: one character and the ellipsis at least
+  assert.equal(fitWidth("ship orders 1.0: a store", 100, mono), "ship orders 1…"); // no stop left before the ellipsis
 });
 
 test("a lane's corner word is the running task's model, cut to about six characters, and nothing else", () => {
   const greet = task("greet"); // running, Nano
   assert.equal(cornerWord(greet), "Nano");
   assert.equal(cornerWord({ ...greet, model: "claude-sonnet-4-5" }), "claude…");
-  assert.equal(cornerWord({ ...greet, model: "qwen3-coder-480b" }), "qwen3-…");
+  assert.equal(cornerWord({ ...greet, model: "qwen3-coder-480b" }), "qwen3…"); // no dash left before the ellipsis
   assert.equal(cornerWord(task("farewell")), ""); // in review: its mark says so, and that is marks.ts's (`cornerMark`)
   assert.equal(cornerWord(task("hello")), "");
 });
