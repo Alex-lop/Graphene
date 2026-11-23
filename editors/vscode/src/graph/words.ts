@@ -76,7 +76,7 @@ export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | nul
   if (t.command) return { kind: "cmd", mark: commandWord(t.command).slice(0, 3), label: "a command, with no agent" }; // a workflow's `run:` step
   if (t.state === "yours" || (t.owner && t.owner !== "agent")) return { kind: "you", mark: "◆", label: "you" };
   const words = executor.trim().split(/\s+/).filter(Boolean);
-  const name = (words[0] ?? "").split("/").pop() ?? "";
+  const name = family((words[0] ?? "").split("/").pop() ?? ""); // `claude` of the setting's `claude:opus`
   if (name === "claude") return { kind: "claude", mark: "C", label: "Claude Code" };
   if (name === "codex") return { kind: "codex", mark: "X", label: "Codex" };
   if (!name) return { kind: "agent", mark: "?", label: "an agent" };
@@ -182,7 +182,8 @@ const family = (by: string) => by.split(":")[0]!;
 export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held" | "check">): { commands: string[]; words: string; note: string; outside: string } {
   if (s.allows && family(t.held.by) === family(s.executor)) {
     const commands = s.allows.filter((c) => !/^graphene (node|plan)\b/.test(c));
-    const check = commandChip((t.check ?? "").trim()), first = check.split(/\s+/)[0] ?? ""; // `./gradlew` of `cd app && ./gradlew test`
+    // `./gradlew` of `cd app && ./gradlew test`; `pytest` of `PYTHONPATH=. pytest -q`, not the setting before it
+    const check = commandChip((t.check ?? "").trim()), first = check.split(/\s+/).find((w) => !/^\w+=/.test(w)) ?? "";
     const can = !first || commands.some((c) => check.startsWith(c.replace(/:?\*$/, "").trim())); // `npm test *`, `npm run test:*`
     return { commands, words: commands.length ? "" : "no shell command", outside: OUTSIDE,
              note: can ? "" : `It cannot run ${first}: it writes its files, and Graphene runs the check after, in a clean copy.` };

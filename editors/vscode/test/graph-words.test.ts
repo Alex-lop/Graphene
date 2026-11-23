@@ -227,6 +227,8 @@ test("a card's tile says who does the step: you, the executor by its letter, or 
   assert.equal(who(greet, "nemotron").mark, "N");
   assert.deepEqual(who(greet, "stand-in"), { kind: "agent", mark: "S", label: "Stand-in" }, "the demo's scripted stand-in");
   assert.equal(who(greet, "nemotron").label, "Nemotron", "a name as a person writes it, not the setting's word");
+  assert.deepEqual(who(greet, "claude:opus"), { kind: "claude", mark: "C", label: "Claude Code" }, "the setting names the model too: the family is who");
+  assert.equal(who(greet, "nemotron:super").label, "Nemotron");
   assert.deepEqual(who(greet, "/usr/local/bin/aider --yes {prompt}"), { kind: "cmd", mark: "ai", label: "aider" });
   assert.equal(who(greet, "").mark, "?");
   assert.equal(who({ ...greet, owner: "alex" }, "claude").kind, "you", "a task you took is yours, whoever the executor is");
@@ -393,6 +395,7 @@ test("May run, Held by, Stopped, Done when and Tokens say what is known, and no 
   assert.equal(mayRun(npm, { ...step("rows"), check: null }).note, "", "no check: nothing it cannot run");
   assert.match(mayRun(npm, { ...step("rows"), check: "cd app && npm test table" }).note, /^$/, "the command a check runs, not the cd before it");
   assert.match(mayRun(scoped, { ...step("rows"), check: "cd app && ./gradlew test" }).note, /^It cannot run \.\/gradlew:/);
+  assert.match(mayRun(scoped, { ...step("rows"), check: "PYTHONPATH=. pytest -q" }).note, /^It cannot run pytest:/, "the command, not the setting before it");
   assert.match(mayRun({ allows: null, executor: "claude" }, step("rows")).words, /^any command: what a command writes is still held/);
   // the list is the repository's executor's: a step Codex holds, or one that is yours, is not under it
   assert.deepEqual(mayRun(scoped, step("button")), { commands: [], words: "any command: what a command writes is still held to its files", note: "", outside: OUTSIDE_OWN });
