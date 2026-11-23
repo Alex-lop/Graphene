@@ -135,7 +135,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
       const passed = t.forks.filter((f) => f.state === "passed");
       if (passed.length > 1 && !t.kept) { // its check could not choose between them: the person keeps one first
         waiting.push({ key: `review:${t.id}`, tone: "review", title: t.title, tag: SAY.review,
-                       lines: [{ k: "Attempts", v: attempts(t), mono: true },
+                       lines: [{ k: "Attempts", v: attempts(t) },
                                { v: `${plural(passed.length, "attempt")} passed the check. Compare them and keep one, then approve it.`, warn: true }],
                        buttons: [{ label: "Compare attempts", act: "compare", id: t.id, main: true },
                                  ...passed.map((f) => ({ label: `Keep ${f.letter}`, act: "keep" as const, id: t.id, arg: f.letter, title: `attempt ${f.letter} becomes this task's work` })),
@@ -195,7 +195,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
     return {
       key: `w:${t.id}`, tone: "running" as const, title: t.title, tag: SAY.running,
       lines: [...line("Agent", `${t.agent || "?"}${t.model ? ` · ${t.model}` : ""}`), ...line("Now", t.tail[t.tail.length - 1] ?? "", { mono: true }),
-              ...line("Quiet for", quiet), ...line("Cost", usd(t.usd)), ...line("Attempts", attempts(t), { mono: true }),
+              ...line("Quiet for", quiet), ...line("Cost", usd(t.usd)), ...line("Attempts", attempts(t)),
               ...(t.hollow ? [{ v: PROVES_NOTHING, warn: true }] : [])],
       buttons: [{ label: "Open changes so far", act: "openDiff" as const, id: t.id },
                 { label: "Message agent…", act: "message" as const, id: t.id, title: "it reads your line with its next step" },
