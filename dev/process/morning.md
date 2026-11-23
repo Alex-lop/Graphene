@@ -56,8 +56,12 @@ and five, then this brief and a last look's fix (pushed commits are not rewritte
 
 - Nothing ran with a real agent tonight: every walk drove VS Code against the scripted stand-in, and your own
   plan was only read (`graphene state --json`), never run.
-- `E2E_APP=cursor node test.mjs` fails its first check (the tab that opens by itself at Cursor's start takes the
-  keyboard), exactly as it did before tonight; every other step passes in Cursor.
+- In Cursor, `E2E_APP=cursor node test.mjs` stops at its first check, as before tonight: the tab that opens by itself
+  at Cursor's start takes the keyboard (nothing held it). Run past its stops (a scratch copy, 09:00): the tab opens
+  over the file in front, not beside it (decision 2), so a person typing in that file loses the keyboard (it goes
+  neither to the graph nor back to the file, which is behind the tab). Typing in Cursor's chat was not measured (the
+  throwaway profile is not signed in). If that bothers you, open beside a text editor that holds the keyboard, as VS
+  Code does: `show()` in `src/graph.ts` and `beside()` in `src/open.ts`.
 - Cursor's own Agent cannot plan with Graphene: `graphene init` installs Claude Code's and Codex's hooks only.
   Cursor now has hooks of the same shape (`.cursor/hooks.json`: `preToolUse` can deny a write, `sessionStart` can
   add context), so this is buildable; it was not built, because no Cursor agent CLI is on this Mac to test it.
