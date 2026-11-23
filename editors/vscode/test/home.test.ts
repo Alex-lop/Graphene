@@ -39,12 +39,12 @@ test("a suggested plan is read before it starts: each task says what for, what i
 test("a question offers its default first, each option, and the person's own words; none looks chosen", () => {
   const q = card(home(fixture("proposals")), "q:which-port");
   assert.equal(q.title, "which port does the dev server take?");
-  assert.deepEqual(q.lines, [{ k: "About", v: "greet route" }]); // the default's button says it is the default
+  assert.deepEqual(q.lines, [{ v: "About greet route" }]); // the default's button says it is the default
   // about a sub-goal: its name, never its id, and no "? " nor what follows its first ": "
   const s = fixture("proposals");
   const services = { ...s, goals: [...s.goals, { id: "services", title: "? Application services: replace every throw", parent: null, state: "proposed", check: null }],
                      questions: s.questions.map((x) => ({ ...x, about: "services" })) };
-  assert.deepEqual(card(home(services), "q:which-port").lines, [{ k: "About", v: "Application services" }]);
+  assert.deepEqual(card(home(services), "q:which-port").lines, [{ v: "About Application services" }]);
   assert.deepEqual(q.buttons.map((b) => [b.label, b.arg, b.note, Boolean(b.main)]),
                    [["8000, as the README says", "8000, as the README says", "default", false],
                     ["pick a free one at start", "pick a free one at start", undefined, false], ["In your own words…", undefined, undefined, false]]);

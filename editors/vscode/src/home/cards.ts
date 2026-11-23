@@ -110,7 +110,7 @@ function question(q: Question, name: (id: string) => string): Card {
   const options = [...new Set([...(q.default ? [q.default] : []), ...q.options])];
   return {
     key: `q:${q.id}`, tone: "question", title: q.text, tag: "question",
-    lines: line("About", q.about ? name(q.about) : ""),
+    lines: q.about ? [{ v: `About ${name(q.about)}` }] : [], // one row: a label column for one short word leaves a hole
     // none filled: a default that looks chosen is skipped past; it says it is the default instead
     buttons: [
       ...options.map((o) => ({ label: cut(o, 80), act: "answer" as const, id: q.id, arg: o, ...(o === q.default ? { note: "default" } : {}),
@@ -152,7 +152,7 @@ export function home(s: State, seen: ReadonlySet<string> = new Set(), exact = fa
   const waiting: Card[] = [];
   for (const n of needs(s)) {
     if (n.kind === "auto") {
-      waiting.push({ key: "auto", tone: "came-back", title: "Auto mode is waiting for you", tag: "auto", lines: [{ v: n.why }],
+      waiting.push({ key: "auto", tone: "came-back", title: "Auto mode is waiting for you", tag: "", lines: [{ v: n.why }],
                      buttons: n.key ? [{ label: "Set API key", act: "setKey", arg: n.endpoint ?? undefined, main: true }] : [] });
     } else if (n.kind === "question") {
       waiting.push(question(n.q, name));
