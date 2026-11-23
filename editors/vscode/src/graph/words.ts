@@ -182,7 +182,7 @@ const family = (by: string) => by.split(":")[0]!;
 export function mayRun(s: Pick<StateX, "allows" | "executor">, t: Pick<TaskX, "held" | "check">): { commands: string[]; words: string; note: string; outside: string } {
   if (s.allows && family(t.held.by) === family(s.executor)) {
     const commands = s.allows.filter((c) => !/^graphene (node|plan)\b/.test(c));
-    const check = (t.check ?? "").trim(), first = check.split(/\s+/)[0] ?? "";
+    const check = commandChip((t.check ?? "").trim()), first = check.split(/\s+/)[0] ?? ""; // `./gradlew` of `cd app && ./gradlew test`
     const can = !first || commands.some((c) => check.startsWith(c.replace(/:?\*$/, "").trim())); // `npm test *`, `npm run test:*`
     return { commands, words: commands.length ? "" : "no shell command", outside: OUTSIDE,
              note: can ? "" : `It cannot run ${first}: it writes its files, and Graphene runs the check after, in a clean copy.` };
