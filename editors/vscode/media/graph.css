@@ -254,13 +254,13 @@ button.tab {
 }
 button.tab:hover { background: none; color: var(--fg); }
 button.tab.on { color: var(--fg); border-bottom-color: var(--fg); }
-/* the Scope tab's seven parts, as the target's pane sets them */
+/* the Scope tab's parts; mono only for a path or a command, which wraps rather than being cut */
 .sc { margin: 0 0 16px; }
 .sc h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
 .sc h3 em { font-style: normal; text-transform: none; letter-spacing: 0; color: var(--fg); white-space: nowrap; }
 .sc code {
   font-family: var(--mono); font-size: 12px; background: var(--tint); padding: 1px 5px; border-radius: 4px; margin: 0 4px 3px 0;
-  display: inline-block; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom;
+  display: inline-block; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; vertical-align: bottom;
 }
 .sc small { display: block; color: var(--dim); margin-top: 2px; font-size: 11.5px; }
 .tree { font-family: var(--mono); font-size: 12px; line-height: 1.75; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; }
@@ -269,15 +269,16 @@ button.tab.on { color: var(--fg); border-bottom-color: var(--fg); }
 .tr.in1 .tr-name { padding-left: 14px; }
 .tr.in { color: var(--fg); }
 .tr.out, .tr.other { color: var(--dim); opacity: 0.8; }
+.tr.bad, .tr.bad .tr-note { color: var(--came-back); }
 .tr-note { font-family: var(--font); font-size: 11.5px; color: var(--dim); flex: none; }
 .tr-note.wr { color: var(--running); }
+details.rest summary { font-family: var(--font); font-size: 11.5px; color: var(--dim); cursor: pointer; width: fit-content; }
 details.glob { margin-top: 6px; color: var(--dim); font-size: 11.5px; }
 details.glob summary { cursor: pointer; width: fit-content; }
 details.glob code { display: inline-block; margin-top: 4px; }
 .kv { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 6px 10px; font-size: 12.5px; }
 .kv-k { color: var(--dim); }
 .kv-v { min-width: 0; overflow-wrap: anywhere; }
-.kv-v > code { white-space: normal; } /* a command you are asked to approve is read whole, not cut */
 .kv-note { color: var(--dim); font-size: 11.5px; margin-top: 4px; }
 .held { display: flex; gap: 10px; align-items: flex-start; border-radius: 8px; padding: 9px 10px; font-size: 12.5px;
   background: color-mix(in srgb, var(--done) 8%, transparent); border: 1px solid color-mix(in srgb, var(--done) 30%, transparent); }

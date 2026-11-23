@@ -1496,6 +1496,8 @@ function part(body: HTMLElement, title: string, aside = ""): HTMLElement {
   return sec;
 }
 
+let restOpen = false; // May change's fold, as the person left it
+
 const code = (text: string, parent: HTMLElement) => { const c = document.createElement("code"); c.textContent = text; parent.appendChild(c); return c; };
 const small = (text: string, parent: HTMLElement) => { const c = document.createElement("small"); c.textContent = text; parent.appendChild(c); return c; };
 
@@ -1507,12 +1509,28 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   const change = part(body, "May change", wrote ? `✎ ${wrote}` : "");
   const tree = div("tree", undefined, change);
   const rows = scopeTree(t, s);
-  for (const r of rows) {
-    const row = div(`tr ${r.kind}${r.depth ? " in1" : ""}`, undefined, tree);
-    div("tr-name", r.name, row);
+  const line = (r: { name: string; kind: string; depth: number; note: string }, parent: HTMLElement) => {
+    const row = div(`tr ${r.kind}${r.depth ? " in1" : ""}`, undefined, parent);
+    div("tr-name", r.name, row).title = r.name;
     if (r.note) div(`tr-note${r.note === "written" ? " wr" : ""}`, r.note, row);
+  };
+  // its own files, then what it wrote outside them (as its card says it, in the came-back red); the rest of the
+  // repository, which it may not change, folded under one line
+  for (const r of rows.filter((x) => x.kind === "in")) line(r, tree);
+  for (const f of t.outside) line({ name: f, kind: "bad", depth: 0, note: "written outside its files" }, tree);
+  const rest = rows.filter((x) => x.kind !== "in" && !t.outside.includes(x.name));
+  if (!tree.childElementCount) div("tr out", "no files named", tree);
+  if (rest.length) {
+    const fold = document.createElement("details");
+    fold.className = "rest";
+    fold.open = restOpen; // kept open through a rebuild while a run writes the store
+    fold.addEventListener("toggle", () => { restOpen = fold.open; });
+    const sum = document.createElement("summary");
+    sum.textContent = `and ${rest.length} it may not change`;
+    fold.appendChild(sum);
+    for (const r of rest) line(r, fold);
+    tree.appendChild(fold);
   }
-  if (!rows.length) div("tr out", "no files named", tree);
   if (t.scope.length) { // the glob is the plan's own word for it: shown when asked
     const glob = document.createElement("details");
     glob.className = "glob";
@@ -1529,7 +1547,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   const may = mayRun(s, t);
   for (const c of may.commands) code(c, cmds);
   if (may.words) cmds.append(may.words);
-  if (t.check) { const its = div("kv-note", undefined, cmds); its.append("Graphene itself runs its check: "); code(t.check, its); }
+  if (t.check) div("kv-note", "Graphene itself runs its check, under Done when.", cmds); // the command once, there
   div("kv-k", "Outside", kv);
   div("kv-v", may.outside, kv);
   const held = heldWords(t);
@@ -1538,7 +1556,7 @@ function scopeTab(body: HTMLElement, t: TaskX, s: StateX) {
   const said = div("", held.line, hold);
   small(held.proof, said);
   const stops = stopsOf(t, s.tasks);
-  const stopped = part(body, "Stopped", stops.count);
+  const stopped = part(body, "Stopped", stops.rows.length ? stops.count : ""); // no count of nothing
   for (const x of stops.rows) small(x.note, div("stop", x.line, stopped));
   if (!stops.rows.length) div("dim", "no write was refused", stopped);
   const when = part(body, "Done when");
