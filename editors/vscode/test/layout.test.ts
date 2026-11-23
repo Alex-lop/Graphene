@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { layout, modeFor, order, ranks, rounded, route, spread, step, type Edge } from "../src/layout.ts";
+import { layout, modeFor, order, ranks, rounded, route, routeDown, spread, step, type Edge } from "../src/layout.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
@@ -104,9 +104,42 @@ test("downward: waves are rows top to bottom, a row wraps at the width, the goal
   assert.notEqual(lay.boxes.bye!.y, lay.boxes.greet!.y);
   const wide = layout(boxes, edges, { goal: " goal", boxW: 184, boxH: 48, down: true, width: 600 });
   assert.equal(wide.boxes.bye!.y, wide.boxes.greet!.y);
+  // each row in the middle of the width, as a column of cards down a page is: none left at the side
+  for (const y of new Set(Object.values(wide.boxes).map((p) => p.y))) {
+    const row = Object.values(wide.boxes).filter((p) => p.y === y);
+    const left = Math.min(...row.map((p) => p.x)), right = Math.max(...row.map((p) => p.x + p.w));
+    assert.ok(Math.abs(left - (600 - right)) <= 1, `the row at ${y} stands at the side`);
+  }
   assert.equal(lay.boxes[" goal"]!.x, (320 - 200) / 2);
   assert.equal(lay.width, 320);
   assert.ok(lay.height > lay.boxes[" goal"]!.y + 66);
+});
+
+test("downward, a line runs in the gaps between rows, a wave's wrapped rows too: through no box but its two ends", () => {
+  // four at once wrap two to a row at 680, one of them taller (its attempts) than the card beside it
+  const boxes = [{ id: "a", band: "" }, { id: "b", band: "", h: 200 }, { id: "c", band: "" }, { id: "d", band: "" }, { id: "e", band: "" }, { id: "f", band: "" }, { id: "g", band: "" }];
+  const edges: Edge[] = [["a", "e"], ["a", "f"], ["b", "e"], ["c", "f"], ["d", "e"], ["d", "f"], ["e", "g"], ["f", "g"]];
+  const lay = layout(boxes, edges, { goal: "g", boxW: 200, boxH: 116, down: true, width: 680 });
+  assert.notEqual(lay.boxes.a!.y, lay.boxes.c!.y, "the wave wraps");
+  const all = Object.values(lay.boxes);
+  for (const [a, b] of edges) {
+    const p = lay.boxes[a]!, q = lay.boxes[b]!, pts = routeDown(lay, p, p.x + p.w / 2, q, q.x + q.w / 2, all);
+    pts.slice(1).forEach(([x2, y2], i) => {
+      const [x1, y1] = pts[i]!;
+      for (const r of all.filter((r) => r !== p && r !== q)) {
+        const inX = Math.max(Math.min(x1, x2), r.x + 1) <= Math.min(Math.max(x1, x2), r.x + r.w - 1);
+        const inY = Math.max(Math.min(y1, y2), r.y + 1) <= Math.min(Math.max(y1, y2), r.y + r.h - 1);
+        assert.ok(!(inX && inY), `${a}>${b} runs through ${r.id}`);
+      }
+    });
+  }
+  // a line out of a card shorter than its row sets out under the row: turning under its own card, it would run
+  // through the taller one beside it
+  const at = (id: string, x: number, y: number, h = 116) => ({ id, x, y, w: 200, h, rank: 0, band: "" });
+  const rows = [at("a", 118, 16), at("b", 350, 16, 200), at("c", 582, 16), at("d", 118, 260), at("e", 350, 260), at("f", 582, 260), at("x", 118, 420)];
+  const hand = { boxes: Object.fromEntries(rows.map((p) => [p.id, p])), bands: [], columns: [], width: 900, height: 552, ranks: 2, down: true };
+  const out = routeDown(hand, hand.boxes.c!, 682, hand.boxes.x!, 218, rows);
+  assert.ok(out.every(([, y], i) => i < 2 || y >= 216 + 8), `c>x turns inside b: ${JSON.stringify(out)}`);
 });
 
 test("downward, the arrows walk the rows: down and up across the waves, left and right along one", () => {
@@ -122,7 +155,7 @@ test("downward, the arrows walk the rows: down and up across the waves, left and
   assert.equal(step(lay, row1[0]!, "up"), "hello");
 });
 
-test("a sub-goal's loose tasks stand side by side past `stack`, row by row; tied ones and a nameless band's stay one column", () => {
+test("a sub-goal's loose tasks stand side by side past `stack`, row by row; tied ones keep one column, and a nameless band's unless asked", () => {
   const five = ["a", "b", "c", "d", "e"].map((id) => ({ id, band: "s" }));
   const lay = layout([...five, { id: "g", band: "" }], five.map((b) => [b.id, "g"] as Edge), { goal: "g", boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 3 });
   const at = (id: string) => [lay.boxes[id]!.x, lay.boxes[id]!.y];
@@ -140,6 +173,9 @@ test("a sub-goal's loose tasks stand side by side past `stack`, row by row; tied
   assert.deepEqual(["c", "d", "e"].map((id) => tied.boxes[id]!.x), [0, 0, 0]);
   const loose = layout(five.map((b) => ({ ...b, band: "" })), [], { boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 3 });
   assert.ok(Object.values(loose.boxes).every((p) => p.x === 0));
+  // a plan with no sub-goals in a canvas wider than tall: its loose tasks a block, not a tower in the middle
+  const block = layout(five.map((b) => ({ ...b, band: "" })), [], { boxW: 100, boxH: 40, gapX: 20, gapY: 10, padX: 0, padY: 0, stack: 3, stackAll: true });
+  assert.deepEqual(five.map((b) => block.boxes[b.id]!.x), [0, 120, 0, 120, 0]);
   assert.ok(Object.values(layout(five, [], { boxW: 100, boxH: 40, padX: 0 }).boxes).every((p) => p.x === 0), "unset, a rank is one column");
   // a band with nothing past that rank stands in the next ranks' columns, so another band's rank 1 is not pushed
   // a card further out, leaving a hole
@@ -176,6 +212,19 @@ test("an edge across is square and in the gaps: along, down the gap before its t
   assert.equal(rounded([[0, 0], [16, 0], [16, 4], [32, 4]]), "M0,0 L14,0 Q16,0 16,2 L16,2 Q16,4 18,4 L32,4");
 });
 
+test("a line inside a sub-goal past a card on its last row goes round it under it, inside the band: the band has the room", () => {
+  const three = ["a", "b", "c"].map((id) => ({ id, band: "s" }));
+  const chain: Edge[] = [["a", "b"], ["b", "c"]], o = { boxW: 100, boxH: 40, gapX: 32, gapY: 12, labelH: 20 };
+  const plain = layout(three, chain, o), skip = layout(three, [...chain, ["a", "c"]], o);
+  const band = skip.bands.find((b) => b.id === "s")!, b = skip.boxes.b!;
+  assert.ok(band.y1 - band.y0 > plain.bands[0]!.y1 - plain.bands[0]!.y0, "no room was made");
+  // what the graph routes it round: each box, the band's header row, and its foot, which a line is never drawn along
+  const pts = route(skip.boxes.a!.x + 100, skip.boxes.a!.y + 20, skip.boxes.c!.x, skip.boxes.c!.y + 20, 32, 12,
+                    [...Object.values(skip.boxes), { x: 0, y: band.y0, w: 500, h: 20 }, { x: 0, y: band.y1 - 1, w: 500, h: 2 }]);
+  const low = Math.max(...pts.map(([, y]) => y));
+  assert.ok(low > b.y + b.h && low < band.y1, `the line at ${low} is not inside the band's foot (${b.y + b.h} to ${band.y1})`);
+});
+
 test("lines into two cards never share a trunk where they meet: the one going further down stands left; one card's lines share its own", () => {
   // the running plan: bye (50) into farewell (150), and greet (150, beside farewell) into README (250), one gap
   const toFarewell = route(100, 50, 132, 150, 32, 16, []), toReadme = route(100, 150, 132, 250, 32, 16, []);
@@ -186,6 +235,9 @@ test("lines into two cards never share a trunk where they meet: the one going fu
   assert.deepEqual([r![1]![0], r![2]![0]], [also![1]![0], also![2]![0]], "README's lines share its trunk");
   assert.equal(away![1]![0], 116, "a trunk with none beside it keeps the gap's middle");
   assert.deepEqual([f![0], f![3]], [toFarewell[0], toFarewell[3]], "the ports do not move");
+  // lines out of one card into several: one trunk, the card's own, branching into each, not one a card side by side
+  const fan = spread([route(100, 150, 132, 50, 32, 16, []), route(100, 150, 132, 150, 32, 16, []), route(100, 150, 132, 250, 32, 16, [])], 12);
+  assert.equal(new Set(fan.flatMap((p) => p.length > 2 ? [p[1]![0]] : [])).size, 1);
   // more trunks than room: closer together, inside it
   const many = spread([0, 1, 2, 3].map((i) => route(100, 50 + i * 10, 132, 400 - i * 10, 32, 16, [])), 12).map((p) => p[1]![0]);
   assert.ok(Math.max(...many) - Math.min(...many) <= 12 && new Set(many).size === 4);

@@ -185,10 +185,9 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
   #details .d-acts::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: 28px; pointer-events: none;
     background: linear-gradient(to bottom, transparent, var(--panel)); }
   footer#hint.linking .hint-text { white-space: normal; } /* the ways out read whole: the line wraps */
-  /* a canvas under 560 px shows the lanes, or the graph laid downward: the keys and the wheel zoom it. A
-     graph drawn across (a canvas over 560 px) is fitted to its pane, so it keeps the buttons that say how far
-     out it is and bring it back, and its minimap */
-  #legend, #b-next span, body:not([data-mode="across"]) :is(#zoom, #minimap) { display: none; }
+  /* under 700 px the graph keeps its zoom buttons (a graph laid downward too); only under 560 px, lanes or a
+     graph laid downward, do the keys and the wheel zoom it alone (below) */
+  #legend, #b-next span { display: none; }
   /* the question's chip keeps what Start or Run picks for it unanswered, cut to its room: no answer is taken unseen */
   #b-ask span { min-width: 0; max-width: calc(100vw - 320px); overflow: hidden; text-overflow: ellipsis; }
   /* the stages keep their row: only the stage the work is at says its note, cut to the room there is */
@@ -198,6 +197,12 @@ footer#hint.sr { position: absolute; width: 1px; height: 1px; min-height: 0; pad
   .stage .n { flex: none; }
   #minimap { bottom: 14px; } /* no legend here to stand on; and smaller, as its canvas is */
   #minimap svg { max-width: 120px; height: auto; }
+}
+/* a canvas under 560 px shows the lanes, or the graph laid downward: the keys and the wheel zoom it. A graph in a
+   wider canvas (across, or downward in a tab taller than wide) is fitted to its pane, so it keeps the buttons that
+   say how far out it is and bring it back, and its minimap */
+@media (max-width: 559px) {
+  body:not([data-mode="across"]) :is(#zoom, #minimap) { display: none; }
   body:not([data-mode="across"]) #planning { left: 12px; bottom: 8px; } /* no buttons here to sit above */
 }
 @media (max-width: 480px) { #b-ask span { display: none; } } /* no room left to say it: its hover does */

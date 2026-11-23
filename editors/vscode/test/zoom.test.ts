@@ -118,8 +118,14 @@ test("a plan wider than its tab is never cut to a sliver at its sides: the goal 
   // the first column's card chosen: it stays, and the goal goes off the edge whole, not as a sliver
   const first = settle(fit, canvas, drawing, boxes, cols[0], goal);
   assert.ok(clean(first.tx) && seen(cols[0]!, first.tx) === 1 && seen(goal, first.tx) === 0);
+  // one pushed off goes past its ring (its border, its ports), which on the edge reads as a coloured bar
+  const ringOff = (t: number) => boxes.every((b) => seen(b, t) > 0 || (b.x + b.w) * k + t <= -6 || b.x * k + t >= 680 + 6);
+  assert.ok(ringOff(on.tx) && ringOff(first.tx));
   // a plan that fits across is left as it is
   assert.deepEqual(settle({ k: 0.5, tx: 70, ty: 0 }, canvas, drawing, boxes, cols[0], goal), { k: 0.5, tx: 70, ty: 0 });
+  // nor is a card cut through its words where a pan can help it: the canvas's side falls between two columns
+  const cut = (t: number) => boxes.filter((b) => seen(b, t) > 0 && seen(b, t) < 1).length;
+  assert.equal(cut(settle({ k, tx: -100, ty: 0 }, canvas, drawing, boxes, cols[2]).tx), 0, "no column cut at either side");
 });
 
 test("whole cards turn to rows under 0.55 and rows to whole cards over 1.2; between the two a level holds", () => {

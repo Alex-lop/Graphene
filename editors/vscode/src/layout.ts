@@ -52,6 +52,9 @@ export interface Options {
    *  high; more stand side by side in that rank, row by row, so a sub-goal of many tasks at once is a block and
    *  not a tower. Across only; unset, a rank is one column. */
   stack?: number;
+  /** The nameless band's loose boxes too: for a plan with no sub-goals whose tower a canvas wider than tall would
+   *  not hold whole, fitted small in the middle of an empty canvas (the graph's `place` says when). */
+  stackAll?: boolean;
   /** Lay the ranks out as rows, top to bottom, each row's boxes left to right and wrapping at ``width``
    *  (the canvas's width): the narrow drawing, with no bands. */
   down?: boolean;
@@ -160,7 +163,7 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
     const groups = new Map<string, string[]>();
     for (const id of col) if (id !== goal) groups.set(by.get(id)!.band, [...(groups.get(by.get(id)!.band) ?? []), id]);
     for (const [band, g] of groups) {
-      const n = band && o.stack && g.length > o.stack && g.every(loose) ? Math.ceil(g.length / o.stack) : 1;
+      const n = (band || o.stackAll) && o.stack && g.length > o.stack && g.every(loose) ? Math.ceil(g.length / o.stack) : 1;
       if (n > 1 && lastOf.get(band) === k && k + n - 1 < last) g.forEach((id) => spread.add(id));
       else wide[k] = Math.max(wide[k]!, n);
       g.forEach((id, i) => { rowOf.set(id, Math.floor(i / n)); sideOf.set(id, i % n); });
@@ -181,12 +184,19 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
     const r = rowOf.get(id) ?? 0;
     hs[r] = Math.max(hs[r] ?? o.boxH, b.h ?? o.boxH);
   }
+  // a line inside a sub-goal past a card on its last row: it goes round the card, under it, and the band has the room
+  // for it at its foot, so the line stays inside it and is not drawn along its edge
+  const round = new Set(edges.flatMap(([a, b]) => {
+    const band = by.get(a)?.band, row = rowOf.get(a);
+    if (!band || band !== by.get(b)?.band || row !== (bandRows.get(band) ?? 1) - 1) return [];
+    return tasks.some((c) => by.get(c)!.band === band && rowOf.get(c) === row && rank[c]! > rank[a]! && rank[c]! < rank[b]!) ? [band] : [];
+  }));
   const bands: Band[] = [];
   const bandTop = new Map<string, number>();
   let y = o.padY;
   for (const band of bandIds) {
     const hs = rowH.get(band)!;
-    const tall = hs.reduce((s, h) => s + h, 0) + Math.max(0, hs.length - 1) * o.gapY;
+    const tall = hs.reduce((s, h) => s + h, 0) + Math.max(0, hs.length - 1) * o.gapY + (round.has(band) ? ROUND : 0);
     const label = band ? o.labelH : 0; // a nameless band has no label to make room for
     bandTop.set(band, y + label);
     bands.push({ id: band, y0: y - o.gapY / 2, y1: y + label + tall + o.gapY / 2 });
@@ -213,24 +223,31 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
   return { boxes: placed, bands, columns, width, height, ranks: cols.length, down: false };
 }
 
-/** Waves as rows: each rank's boxes side by side, wrapping when the row would pass ``width``; the goal
- *  in the last row, centred. A band is a tint on its boxes here, not a region, so ``bands`` is empty. */
+/** Laid downward, the room between two boxes in a row (a card's + and the next one's selection ring) and between
+ *  two rows (the lines'). */
+export const DOWN = { gap: 32, rankGap: 44 };
+
+/** Waves as rows: each rank's boxes side by side, wrapping when the row would pass ``width`` (a wave's rows as far
+ *  apart as two waves', where the lines between rows run), each row centred, the goal last. No sub-goal is drawn
+ *  here, so ``bands`` is empty. */
 function downward(cols: string[][], by: Map<string, Box>, goal: string | null, o: typeof D & Options): Layout {
   const maxW = Math.max(o.width ?? Infinity, o.padX * 2 + o.boxW);
-  const gap = 32; // between boxes in a row: room for a card's + and the next one's selection ring
-  const rankGap = 44; // between rows: room for the arrows
+  const { gap, rankGap } = DOWN;
   const placed: Record<string, Placed> = {};
   const columns: number[] = [];
+  const rows: Placed[][] = [];
   let y = o.padY;
   let widest = o.padX * 2 + o.boxW;
   for (let k = 0; k < cols.length; k++) {
     columns.push(y);
     let x = o.padX, rowH = 0;
+    rows.push([]);
     for (const id of cols[k]!) {
       const b = by.get(id)!;
       const w = b.w ?? o.boxW, h = b.h ?? o.boxH;
-      if (x > o.padX && x + w > maxW - o.padX) { y += rowH + o.gapY; x = o.padX; rowH = 0; } // wrap
+      if (x > o.padX && x + w > maxW - o.padX) { y += rowH + rankGap; x = o.padX; rowH = 0; rows.push([]); } // wrap
       placed[id] = { id, x, y, w, h, rank: k, band: id === goal ? "" : b.band };
+      rows.at(-1)!.push(placed[id]!);
       x += w + gap;
       rowH = Math.max(rowH, h);
       widest = Math.max(widest, x - gap + o.padX);
@@ -238,13 +255,19 @@ function downward(cols: string[][], by: Map<string, Box>, goal: string | null, o
     y += rowH + rankGap;
   }
   const width = Number.isFinite(maxW) ? Math.max(maxW, widest) : widest;
-  if (goal && placed[goal]) placed[goal]!.x = Math.max(o.padX, (width - placed[goal]!.w) / 2);
+  for (const row of rows) { // in the middle of the width, as a column of cards down a page is
+    const shift = row.length ? (width - (row.at(-1)!.x + row.at(-1)!.w + o.padX)) / 2 : 0;
+    for (const p of row) p.x += shift;
+  }
   const height = Math.max(y - rankGap + o.padY, o.padY * 2 + o.boxH);
   return { boxes: placed, bands: [], columns, width, height, ranks: cols.length, down: true };
 }
 
 type Rect = { x: number; y: number; w: number; h: number };
 export type Point = [number, number];
+
+/** A band's foot, where a line inside it goes round a card: 14 px under the card (`route`), 16 over the foot. */
+const ROUND = 24;
 
 /** An edge's corners across, from (x1, y1) on a box's right side to (x2, y2) on a later one's left, square and in
  *  the gaps, as a DAG view routes them: along to the gap before the target's column (``gap`` wide), down or up it,
@@ -264,30 +287,50 @@ export function route(x1: number, y1: number, x2: number, y2: number, gap: numbe
   return [[x1, y1], [t1, y1], [t1, y], [t2, y], [t2, y2], [x2, y2]];
 }
 
-/** Routes' trunks spread in their gaps. Lines into one card share its trunk; but two trunks in one gap that share
+/** A route's corners turned a quarter, x for y: what `route` and `spread` say across, said downward. */
+export const flip = (pts: readonly Point[]): Point[] => pts.map(([a, b]) => [b, a]);
+
+/** Laid downward, an edge's corners: `route` turned a quarter, from ``x1`` on the foot of ``from`` to ``x2`` on the
+ *  top of ``to``, in the gaps between the rows. It sets out from the foot of the row ``from`` stands in, a stub down
+ *  from a card shorter than its row: a line turning under its own card would run inside a taller one beside it. */
+export function routeDown(lay: Layout, from: Placed, x1: number, to: Placed, x2: number, blocks: readonly Rect[]): Point[] {
+  const foot = Math.max(...Object.values(lay.boxes).filter((b) => b.y === from.y).map((b) => b.y + b.h));
+  const pts = flip(route(foot, x1, to.y, x2, DOWN.rankGap, DOWN.gap, blocks.map((r) => ({ x: r.y, y: r.x, w: r.h, h: r.w }))));
+  return foot > from.y + from.h ? [[x1, from.y + from.h], ...pts] : pts;
+}
+
+/** Routes' trunks spread in their gaps. A trunk is a route's vertical leg; its last is its target's, any other its
+ *  source's, and an only leg is its source's where that source has more lines in this gap than its target has: lines
+ *  into one card share its trunk, and lines out of one card into several share the card's own, which branches into
+ *  each, where a trunk for each target stood three lines side by side out of one card. But two trunks in one gap that share
  *  any stretch of height (or meet end to end: a line out of a card turning down just where another turns into the
  *  card beside it) stand apart, at most ``most`` px and within ``room``, so no line seems to run on into another's
  *  card. Of two side by side, the one going further down stands left (further up, left too), so their legs do not
- *  cross. A trunk is a route's vertical leg; its last is its target's, any other its source's. */
+ *  cross. */
 export function spread(routes: readonly Point[][], room: number, most = 6): Point[][] {
   type Trunk = { x: number; y0: number; y1: number; from: number; to: number; legs: [number, number][] };
+  const legsOf = routes.map((pts) => pts.slice(1).flatMap((p, i) => (p[0] === pts[i]![0] && p[1] !== pts[i]![1] ? [i] : [])));
+  const keys = (pts: readonly Point[], i: number) => [`${pts[i]![0]} in ${pts.at(-1)}`, `${pts[i]![0]} out ${pts[0]}`] as const;
+  const count = new Map<string, number>(), add = (k: string) => count.set(k, (count.get(k) ?? 0) + 1);
+  routes.forEach((pts, r) => legsOf[r]!.forEach((i, n, legs) => {
+    const [into, outOf] = keys(pts, i);
+    if (n === legs.length - 1) add(into);
+    if (n === 0) add(outOf);
+  }));
   const trunks = new Map<string, Trunk>();
-  routes.forEach((pts, r) => {
-    const legs = pts.slice(1).flatMap((p, i) => (p[0] === pts[i]![0] && p[1] !== pts[i]![1] ? [i] : []));
-    legs.forEach((i, n) => {
-      const [x, a] = pts[i]!, b = pts[i + 1]![1], end = n === legs.length - 1 ? pts.at(-1)! : pts[0]!;
-      const key = `${x} ${n === legs.length - 1 ? "in" : "out"} ${end[0]},${end[1]}`;
-      const t = trunks.get(key) ?? { x, y0: Infinity, y1: -Infinity, from: 0, to: b, legs: [] };
-      t.y0 = Math.min(t.y0, a, b); t.y1 = Math.max(t.y1, a, b); t.from += a; t.legs.push([r, i]);
-      trunks.set(key, t);
-    });
-  });
+  routes.forEach((pts, r) => legsOf[r]!.forEach((i, n, legs) => {
+    const [x, a] = pts[i]!, b = pts[i + 1]![1], [into, outOf] = keys(pts, i);
+    const key = n < legs.length - 1 || (n === 0 && count.get(outOf)! > count.get(into)!) ? outOf : into;
+    const t = trunks.get(key) ?? { x, y0: Infinity, y1: -Infinity, from: 0, to: 0, legs: [] };
+    t.y0 = Math.min(t.y0, a, b); t.y1 = Math.max(t.y1, a, b); t.from += a; t.to += b; t.legs.push([r, i]);
+    trunks.set(key, t);
+  }));
   const out = routes.map((pts) => pts.map((p) => [...p] as Point));
   const gaps = new Map<number, Trunk[]>();
   for (const t of trunks.values()) gaps.set(t.x, [...(gaps.get(t.x) ?? []), t]);
   for (const ts of gaps.values()) {
-    const down = (t: Trunk) => t.to * t.legs.length > t.from;
-    ts.sort((p, q) => (down(p) === down(q) ? (down(p) ? q.to - p.to : p.to - q.to) : down(p) ? -1 : 1));
+    const down = (t: Trunk) => t.to > t.from, end = (t: Trunk) => t.to / t.legs.length;
+    ts.sort((p, q) => (down(p) === down(q) ? (down(p) ? end(q) - end(p) : end(p) - end(q)) : down(p) ? -1 : 1));
     const slot = new Map<Trunk, number>(), near = (t: Trunk, u: Trunk) => u.y0 <= t.y1 + most && t.y0 <= u.y1 + most;
     for (const t of ts) { // the first slot no trunk beside it in height has
       let s = 0;
