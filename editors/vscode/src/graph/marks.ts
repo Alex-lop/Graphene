@@ -166,8 +166,26 @@ export function checkMark(t: Checked): CheckMark {
  *  check passed (plan.py `roll_up`); until then nothing says it ran, and the box is dotted. */
 export const goalBox = (g: Pick<Goal, "state">): Box => (g.state === "done" ? "passed" : "unrun");
 
+/** ``s`` cut to ``n`` characters as words.ts `cut` cuts it, but never inside a word while a whole part of it keeps
+ *  three fifths of the room: back to its last space or stop, `/`, `_`, `-`, or the hump of a camelCase name
+ *  (`RecipeLookupService…`, not `RecipeLookupServiceI…`; `quit and exit…`, not `quit and exit, h…`). */
+export function cutWhole(s: string, n: number): string {
+  const out = cut(s, n);
+  if (out === s) return s;
+  // where a whole part ends: before a space or a stop, after the lower-case letter of a hump
+  const ends = [...s.slice(0, n).matchAll(/[\s/_.,:;-]|[a-z0-9](?=[A-Z])/g)].map((m) => m.index + (/[a-z0-9]/.test(m[0]) ? 1 : 0));
+  const at = Math.max(0, ...ends.filter((i) => i <= n - 1));
+  return at >= 0.6 * n ? s.slice(0, at).replace(/[\s.,:;·_-]+$/, "") + "…" : out;
+}
+
+/** Text cut to ``max`` px as words.ts `fitWidth` cuts it, at a whole part of a word (`cutWhole`). */
+export function fitWhole(s: string, max: number, width: (t: string) => number): string {
+  const out = fitWidth(s, max, width);
+  return out === s ? s : cutWhole(s, out.length);
+}
+
 /** A title on up to ``most`` lines of ``max`` px as ``width`` measures them: whole words on each line while they
- *  fit, the rest on the last, cut there as `fitWidth` cuts. A first word too long for a line is cut on it. */
+ *  fit, the rest on the last, cut there at a whole part (`fitWhole`). A first word too long for a line is cut on it. */
 export function wrap(s: string, max: number, width: (t: string) => number, most: number): string[] {
   const words = s.split(/\s+/).filter(Boolean), out: string[] = [];
   while (words.length && out.length < most - 1 && width(words[0]!) <= max) {
@@ -176,7 +194,7 @@ export function wrap(s: string, max: number, width: (t: string) => number, most:
     if (n === words.length) break; // the rest fits on this line
     out.push(words.splice(0, n).join(" "));
   }
-  if (words.length) out.push(fitWidth(words.join(" "), max, width));
+  if (words.length) out.push(fitWhole(words.join(" "), max, width));
   return out;
 }
 
@@ -196,9 +214,10 @@ export function checkCut(s: string, n: number): string {
   if (!(n >= 2)) return n >= 1 ? "…" : "";
   const words = s.split(/\s+/).filter(Boolean), back = words.slice(1).map((w) => w.replace(/^['"]|['"]$/g, "")).filter((w) => !w.startsWith("-")).reverse();
   const last = back.find((w) => /[/.]/.test(w)) ?? back[0] ?? words[0] ?? "";
-  const on = last.includes("/") ? last.slice(last.lastIndexOf("/") + 1) || last : /\.[^.\s]{5,}$/.test(last) ? last.slice(last.lastIndexOf(".") + 1) : last;
+  // a dotted name's last part is a test's own name when it says so (a capital, an underscore), not a file's type
+  const on = last.includes("/") ? last.slice(last.lastIndexOf("/") + 1) || last : /\.[^.\s]*[A-Z_][^.\s]*$/.test(last) ? last.slice(last.lastIndexOf(".") + 1) : last;
   if (words.length > 1 && `${words[0]} … ${on}`.length <= n) return `${words[0]} … ${on}`;
-  return cut(on, Math.floor(n));
+  return cutWhole(on, Math.floor(n));
 }
 
 /** What follows `done when` on a card's foot: the check, cut at its words to ``n`` characters; `it exits 0`
