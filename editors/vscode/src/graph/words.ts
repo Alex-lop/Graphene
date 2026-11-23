@@ -490,7 +490,7 @@ export const KEYS: readonly [string, string][] = [
   ["Tab", "the next card"],
   ["← → ↑ ↓", "the card beside it (across the waves, or along one)"],
   ["Enter", "open the card's details"],
-  ["Esc", "close the details, or stop linking"],
+  ["Esc", "put the question away, close the details, or stop linking"],
   ["g", "bring the goal on screen"],
   ["n", "the next task that needs you: selected, and brought on screen"],
   ["f", "fit the whole plan in the pane"],
