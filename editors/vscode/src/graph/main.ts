@@ -3,7 +3,7 @@
 // the sidebar, the same plan as lanes, one row a task, wave by wave. A click selects and opens the details
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
-import { layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
+import { layout, modeFor, rounded, route, step, type Box, type Edge, type Layout } from "../layout.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
@@ -39,13 +39,15 @@ const ROW_W = CARD.compact.w, ROW_H = CARD.compact.h, ROW_X = 36;
 // wider and taller than a task's row and in larger words, so it is still the clearest thing on the canvas.
 const GOAL_W = 220, GOAL_ROW_W = ROW_W + 72, GOAL_ROW_H = 84;
 /** What the layout and the lines between the cards measure by, at each level of detail. */
-type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number };
+type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number; inset: number };
 // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows. A band reaches half
 // a `gapY` past its rows, so two bands stand `bandGap - gapY` apart, 8 px, and never share an edge. Whole cards' top
-// and foot pay for that room, so the running plan still opens as cards in a laptop's tab (1140 by 820)
+// and foot pay for that room, so the running plan still opens as cards in a laptop's tab (1140 by 820). `inset`: a
+// band's room either side of its cards, under half a `gapX`, so a line down the middle of a gap (`edgeD`) keeps 6 px
+// off a band's side and is never drawn along it
 const DIMS: Record<Level, Dims> = {
-  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 16, padX: 24, padY: 16, bandGap: 24, label: 28 },
-  compact: { w: ROW_W, h: ROW_H, gapX: 24, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30 },
+  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 16, padX: 24, padY: 16, bandGap: 24, label: 28, inset: 10 },
+  compact: { w: ROW_W, h: ROW_H, gapX: 28, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30, inset: 8 },
 };
 /** A sub-goal's loose tasks (no line in or out but to the goal) stand at most this many high, then side by side. */
 const STACK = 3;
@@ -542,14 +544,14 @@ function graph(s: StateX, dir: "across" | "down") {
   for (const band of lay.bands) {
     const ps = band.id ? Object.values(lay.boxes).filter((p) => p.band === band.id) : [];
     if (!ps.length) continue;
-    const x0 = Math.min(...ps.map((p) => p.x)) - 12, x1 = Math.max(...ps.map((p) => p.x + p.w)) + 12, most = Math.max(x1, right);
+    const x0 = Math.min(...ps.map((p) => p.x)) - D.inset, x1 = Math.max(...ps.map((p) => p.x + p.w)) + D.inset, most = Math.max(x1, right);
     const title = goalTitle(s, band.id).replace(/^\? /, ""); // the plan text's mark for a suggestion, where a planner left it in a title
     const rect = bands.appendChild(el("rect", { class: "band", x: x0, y: band.y0, height: band.y1 - band.y0, rx: 10 }));
     rect.appendChild(el("title", {}, title));
     // its header has the band's room on to the trunk, wherever the plan is panned or zoomed: what is off screen is
     // cut by the screen, and a redraw never cuts it to the part that was on it
-    const said = bandHead(heads, title, s.tasks.filter((t) => t.parent === band.id), x0 + 12, band.y0 + D.label / 2 + 1, most - x0 - 24);
-    const end = Math.min(most, Math.max(x1, x0 + said + 24));
+    const said = bandHead(heads, title, s.tasks.filter((t) => t.parent === band.id), x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset);
+    const end = Math.min(most, Math.max(x1, x0 + said + 2 * D.inset));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
   }
@@ -564,12 +566,14 @@ function graph(s: StateX, dir: "across" | "down") {
     path.setAttribute("d", d);
     path.setAttribute("class", `edge ${kind}`);
   };
+  // what a line across keeps clear of: every box, and each sub-goal's header row
+  const blocks = [...Object.values(lay.boxes), ...lay.bands.flatMap((b) => { const sp = spans.get(b.id); return sp ? [{ x: sp.x0, y: b.y0, w: sp.x1 - sp.x0, h: D.label }] : []; })];
   for (const [a, b] of g.edges) {
     const p = lay.boxes[a], q = lay.boxes[b];
     if (!p || !q || (b === GOAL && gAt && p.band)) continue; // a sub-goal's last steps end in its band, and the band runs into the goal
     // the edge carries the work: moving where an agent is working, green where it landed, a hairline until then; a
     // step in no sub-goal joins the goal on the bands' trunk
-    line(`${a}>${b}`, b === GOAL && gAt ? bracket(p.x + D.w, p.y + D.h / 2) : edgeD(p, q, down), `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
+    line(`${a}>${b}`, b === GOAL && gAt ? bracket(p.x + D.w, p.y + D.h / 2) : edgeD(p, q, down, blocks), `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`);
   }
   if (gAt) for (const band of lay.bands) { // a sub-goal into the goal: a bracket out of its band, along a trunk half way, into the goal
     const mine = band.id ? s.tasks.filter((t) => t.parent === band.id) : [], span = spans.get(band.id);
@@ -682,19 +686,18 @@ function graph(s: StateX, dir: "across" | "down") {
 }
 
 type Spot = Layout["boxes"][string];
-/** An edge's curve, port to port: out of a card's right side into the next's left, or down out of its foot
- *  into the top. A card's ports are at its own size's middle, however tall its attempts make it; the goal's at
- *  its own. */
-function edgeD(p: Spot, q: Spot, down: boolean): string {
+/** An edge, port to port: across, out of a card's right side and into the next's left, square and in the gaps
+ *  between the cards (layout.ts `route`), never along a card's border or behind one; laid downward, a curve out of
+ *  its foot into the top. A card's ports are at its own size's middle, however tall its attempts make it; the goal's
+ *  at its own. */
+function edgeD(p: Spot, q: Spot, down: boolean, blocks: readonly { x: number; y: number; w: number; h: number }[]): string {
   const w = (b: Spot) => (b.id === GOAL ? b.w : D.w), h = (b: Spot) => (b.id === GOAL ? b.h : D.h);
   if (down) {
     const x1 = p.x + w(p) / 2, y1 = p.y + p.h, x2 = q.x + w(q) / 2, y2 = q.y;
     const dy = Math.max(16, (y2 - y1) / 2);
     return `M${x1},${y1} C${x1},${y1 + dy} ${x2},${y2 - dy} ${x2},${y2}`;
   }
-  const x1 = p.x + w(p), y1 = p.y + h(p) / 2, x2 = q.x, y2 = q.y + h(q) / 2;
-  const dx = Math.max(Math.min(24, D.gapX / 2), (x2 - x1) / 2);
-  return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`;
+  return rounded(route(p.x + w(p), p.y + h(p) / 2, q.x, q.y + h(q) / 2, D.gapX, D.gapY, blocks));
 }
 
 /** The region for what leaves this machine (a push, a pull request), right of the plan, once a step does: its

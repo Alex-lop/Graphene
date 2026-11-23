@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { layout, modeFor, order, ranks, step, type Edge } from "../src/layout.ts";
+import { layout, modeFor, order, ranks, rounded, route, step, type Edge } from "../src/layout.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
@@ -147,4 +147,26 @@ test("a sub-goal's loose tasks stand side by side past `stack`, row by row; tied
   assert.deepEqual(two.columns, [0, 120]);
   assert.deepEqual(["a", "b", "x", "y"].map((id) => two.boxes[id]!.x), [0, 120, 0, 120]);
   assert.equal(two.boxes.b!.rank, 0, "still the rank it is");
+});
+
+test("an edge across is square and in the gaps: along, down the gap before its target, in; round what is in its way", () => {
+  // the next column: along its own height to the middle of the gap, down it, in at the target's height
+  assert.deepEqual(route(100, 50, 132, 150, 32, 16, []), [[100, 50], [116, 50], [116, 150], [132, 150]]);
+  // a column skipped, a box in the way at the source's height: down the first gap and along the target's
+  const skip = [{ x: 132, y: 30, w: 100, h: 40 }];
+  assert.deepEqual(route(100, 50, 264, 150, 32, 16, skip), [[100, 50], [116, 50], [116, 150], [264, 150]]);
+  // in the way at both heights: along the row gap under the box in the way, which has room round it
+  const both = [{ x: 132, y: 30, w: 100, h: 40 }, { x: 132, y: 86, w: 100, h: 200 }];
+  const r = route(100, 50, 264, 50, 32, 16, both.slice(0, 1));
+  assert.equal(r.length, 6);
+  assert.ok(r[2]![1] === 30 - 14 || r[2]![1] === 70 + 14, `around the box with room: ${r[2]![1]}`);
+  // boxes one over another 16 apart: the line takes the middle of their gap, never a box's border
+  const tight = route(100, 50, 264, 50, 32, 16, both);
+  assert.equal(tight[2]![1], 16, "over the box in the way, where there is room");
+  assert.equal(route(100, 50, 264, 50, 32, 16, [...both, { x: 132, y: -100, w: 100, h: 116 }])[2]![1], 78, "else the middle of the row gap");
+  // a box not in a later column is joined straight
+  assert.deepEqual(route(300, 50, 132, 150, 32, 16, []), [[300, 50], [132, 150]]);
+  // drawn with each corner rounded, never wider than half a leg
+  assert.equal(rounded([[0, 0], [16, 0], [16, 100], [32, 100]]), "M0,0 L8,0 Q16,0 16,8 L16,92 Q16,100 24,100 L32,100");
+  assert.equal(rounded([[0, 0], [16, 0], [16, 4], [32, 4]]), "M0,0 L14,0 Q16,0 16,2 L16,2 Q16,4 18,4 L32,4");
 });

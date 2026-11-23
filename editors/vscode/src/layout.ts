@@ -243,6 +243,38 @@ function downward(cols: string[][], by: Map<string, Box>, goal: string | null, o
   return { boxes: placed, bands: [], columns, width, height, ranks: cols.length, down: true };
 }
 
+type Rect = { x: number; y: number; w: number; h: number };
+type Point = [number, number];
+
+/** An edge's corners across, from (x1, y1) on a box's right side to (x2, y2) on a later one's left, square and in
+ *  the gaps, as a DAG view routes them: along to the gap before the target's column (``gap`` wide), down or up it,
+ *  and in, so edges into one box share that trunk. Where its own height is blocked on the way (a box in a column it
+ *  skips, a sub-goal's header), it turns down the first gap and goes along the target's height, else along the
+ *  clear row gap between the two trunks that keeps it shortest: one with room round it, or the middle of a
+ *  ``rowGap`` between two boxes one over another, which counts 40 px longer (but less than a way round a band). */
+export function route(x1: number, y1: number, x2: number, y2: number, gap: number, rowGap: number, blocks: readonly Rect[]): Point[] {
+  const t1 = x1 + gap / 2, t2 = x2 - gap / 2;
+  if (t2 < x1) return [[x1, y1], [x2, y2]]; // not a later column: the straight line says it
+  const clear = (y: number, from: number, to: number, m = 2) => !blocks.some((r) => r.x < to && r.x + r.w > from && r.y - m < y && r.y + r.h + m > y);
+  if (clear(y1, x1, t2)) return [[x1, y1], [t2, y1], [t2, y2], [x2, y2]];
+  if (clear(y2, t1, x2)) return [[x1, y1], [t1, y1], [t1, y2], [x2, y2]];
+  const ways = blocks.filter((r) => r.x < t2 && r.x + r.w > t1).flatMap((r) => [14, rowGap / 2].flatMap((m) => [[r.y - m, m], [r.y + r.h + m, m]]));
+  const cost = ([v, m]: number[]) => Math.abs(v! - y1) + Math.abs(v! - y2) + (m === 14 ? 0 : 40);
+  const y = ways.sort((a, b) => cost(a) - cost(b)).find(([v, m]) => clear(v!, t1, t2, m! - 0.5))?.[0] ?? y1;
+  return [[x1, y1], [t1, y1], [t1, y], [t2, y], [t2, y2], [x2, y2]];
+}
+
+/** A route as a path, each corner rounded to ``r`` px (less where a leg is short). */
+export function rounded(pts: readonly Point[], r = 8): string {
+  let d = `M${pts[0]![0]},${pts[0]![1]}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [px, py] = pts[i - 1]!, [x, y] = pts[i]!, [nx, ny] = pts[i + 1]!;
+    const a = Math.min(r, Math.hypot(x - px, y - py) / 2, Math.hypot(nx - x, ny - y) / 2);
+    d += ` L${x - Math.sign(x - px) * a},${y - Math.sign(y - py) * a} Q${x},${y} ${x + Math.sign(nx - x) * a},${y + Math.sign(ny - y) * a}`;
+  }
+  return `${d} L${pts.at(-1)![0]},${pts.at(-1)![1]}`;
+}
+
 /** The box an arrow key lands on from ``from``: along the ranks (right/left across, down/up when the
  *  layout runs downward) the nearest in the next/previous rank; within a rank, the next one along.
  *  Null when there is none. */
