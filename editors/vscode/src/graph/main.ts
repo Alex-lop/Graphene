@@ -13,7 +13,7 @@ import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
          planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
-import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
+import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -473,15 +473,22 @@ const foot = () => ($("zoom").offsetHeight ? FOOT : 0);
 const sizeOf = (l: Layout): Size => ({ w: l.width, h: l.height });
 
 /** How the plan opens, and how `f` and a double click on the canvas fit it again: the whole plan in the pane.
- *  Whole cards when they fit at a scale they read at, else rows (zoom.ts). Laid downward (the narrow canvas) it
- *  is whole cards from the top, and so is a plan no scale can hold: that one opens on the step that asks you. */
+ *  Whole cards when they fit at a scale they read at, else rows (zoom.ts), never so small their titles do not
+ *  read: a plan larger than that (a Cursor tab beside its agent's chat) opens on the card that matters, the chosen
+ *  one, else the first that wants you, else the first at work. Laid downward (the narrow canvas) it is whole cards
+ *  from the top: that one opens on the step that asks you. */
 function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zoom } {
   const canvas = paneSize();
   const full = place(s, down, "full");
   let rows: Placed | undefined;
   const keep = fitted && !$("details").hidden ? level : "compact"; // a pane open beside whole cards keeps them whole a little further
   const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep);
-  if (fit) return { level: fit.level, at: fit.level === "compact" && rows ? rows : full, zoom: { k: fit.k, tx: fit.tx, ty: fit.ty } };
+  if (fit) {
+    const at = fit.level === "compact" && rows ? rows : full, { k, tx, ty } = fit;
+    const id = fit.whole ? undefined : [selected, ...wantYou(), ...s.tasks.filter((t) => t.state === "running").map((t) => t.id)].find((x) => x && at.lay.boxes[x]);
+    const p = id ? at.lay.boxes[id] : undefined;
+    return { level: fit.level, at, zoom: p ? onto({ k, tx, ty }, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : { k, tx, ty } };
+  }
   // a step that asks you is the thing to see: a graph wider than its canvas opens on that step, past the line,
   // and not on its left edge; a short one sits in the middle
   const ask = s.tasks.find(asksYou), p = ask ? full.lay.boxes[ask.id] : undefined;
@@ -495,15 +502,15 @@ function graph(s: StateX, dir: "across" | "down") {
   const was = svg.dataset.level ?? level; // the level of the drawing on screen
   if (down) level = "full"; // the narrow drawing keeps whole cards
   // Until the person pans or zooms, the whole plan is in the pane: fitted when the page opens, when the window
-  // is resized, when the plan grows or shrinks, and when asked (`f`, a select from outside the page). The pane
-  // opening or closing beside the canvas is none of these, nor is the footer growing a line: a card chosen here
-  // stays where it is, as big as it is. The narrow drawing wraps at its canvas's width, so it is laid out for it
-  // each time.
+  // is resized, when the plan grows or shrinks, when the pane closes (a plan fitted beside it, in a narrow tab,
+  // would stay at half its size), and when asked (`f`, a select from outside the page). The pane opening is none
+  // of these, nor is the footer growing a line: a card chosen here stays where it is, as big as it is. The narrow
+  // drawing wraps at its canvas's width, so it is laid out for it each time.
   const room = `${innerWidth}x${innerHeight}`;
   const sized = (l: Layout) => `${l.width}x${l.height}`;
   const free = !moved && !drawing;
   let at = free && down ? null : place(s, down, level);
-  const same = at !== null && sized(at.lay) === fitSize && room === fitRoom; // neither the window nor the plan changed
+  const same = at !== null && sized(at.lay) === fitSize && room === fitRoom && !(paneMoved && $("details").hidden); // neither the window, the plan nor the pane's close changed it
   const opened = free && !same ? opening(s, down) : null;
   if (opened) level = opened.level;
   D = DIMS[level];
