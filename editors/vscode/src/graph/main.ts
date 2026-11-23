@@ -1096,24 +1096,30 @@ function lanes(s: StateX) {
   const g = boxes(s);
   const order = layout(g.boxes, g.edges, { goal: g.goal, boxW: BOX_W, boxH: BOX_H });
   lay = null; // arrows walk the rows, not a drawing
-  const waves: TaskX[][] = [];
-  // a step past the line is not in the layout: it comes after every wave, under its own heading
-  const past = Math.max(-1, ...Object.values(order.boxes).filter((p) => p.id !== GOAL).map((p) => p.rank)) + 1;
-  for (const t of s.tasks) {
-    const r = t.leaves ? past : order.boxes[t.id]?.rank ?? 0;
-    (waves[r] ??= []).push(t);
-  }
-  for (const w of waves) w?.sort((p, q) => (order.boxes[p.id]?.y ?? 0) - (order.boxes[q.id]?.y ?? 0));
+  // a sub-goal a group, headed as its band is on the canvas, in the graph's order, its tasks in the order they
+  // start; tasks in none (or in auto's root, which is the goal) last, over the goal, with no heading; a step past
+  // the line after them all, under its own
+  const AWAY = " away", groups = new Map<string, TaskX[]>(order.bands.filter((b) => b.id && goalTitle(s, b.id) !== s.goal).map((b) => [b.id, []]));
+  groups.set("", []).set(AWAY, []);
+  for (const t of s.tasks) groups.get(t.leaves ? AWAY : groups.has(t.parent ?? "") ? t.parent ?? "" : "")!.push(t);
+  const box = (t: TaskX) => order.boxes[t.id];
+  for (const ts of groups.values()) ts.sort((p, q) => (box(p)?.rank ?? 0) - (box(q)?.rank ?? 0) || (box(p)?.y ?? 0) - (box(q)?.y ?? 0));
+  const heads = [...groups].filter(([, ts]) => ts.length).map(([id, ts]) => [id, ts, id === AWAY ? `leaves your machine${ts.some(asksYou) ? " · asks you first" : ""}` : id ? done(ts) : ""] as const);
   const steps = draftedSteps(s);
-  const key = JSON.stringify([waves.map((w) => w?.map((t) => t.id)), selected, s.goal, done(s.tasks), drawn(), naming, steps, planningLine(s)]);
+  const key = JSON.stringify([heads.map(([id, ts, n]) => [id, n, goalTitle(s, id), ts.map((t) => t.id)]), selected, s.goal, done(s.tasks), drawn(), naming, steps, planningLine(s)]);
   const rows: HTMLElement[] = [];
   const seen = new Set<string>();
-  waves.forEach((w, i) => {
-    if (!w?.length) return;
-    rows.push(div("wave", w[0]!.leaves ? `leaves your machine${w.some(asksYou) ? " · asks you first" : ""}` : `wave ${i + 1} · ${done(w)} done`));
-    for (const t of w) {
+  for (const [id, ts, n] of heads) {
+    if (id === AWAY) rows.push(div("wave", n));
+    else if (id) {
+      const { name, whole } = bandName(goalTitle(s, id)), head = div("wave");
+      div("w-name", name, head).title = whole;
+      head.append(n);
+      rows.push(head);
+    }
+    for (const t of ts) {
       seen.add(t.id);
-      const k = JSON.stringify([t, t.id === selected, s.goals.find((x) => x.id === t.parent)?.title, s.envelope.forks]);
+      const k = JSON.stringify([t, t.id === selected, s.envelope.forks]);
       let have = laneEls.get(t.id);
       if (!have) {
         const row = div("lane fresh");
@@ -1128,7 +1134,7 @@ function lanes(s: StateX) {
       if (have.key !== k) { have.key = k; drawLane(have.el, t, s); }
       rows.push(have.el);
     }
-  });
+  }
   for (const [id, have] of laneEls) if (!seen.has(id)) { have.el.remove(); laneEls.delete(id); }
   if (drawn().length) rows.push(div("wave", "drawn, not in the plan yet"));
   for (const d of drawn()) { // few, so made again each time; kept only when the rows changed (the key above)
@@ -1152,7 +1158,8 @@ function lanes(s: StateX) {
     const main = div("l-main", undefined, row);
     div("l-title", d.title, main);
     div("l-sub", ["drafted", filesChip(d.scope), d.check ?? ""].filter(Boolean).join(" · "), main);
-    if (d.parent) div("l-band", goalTitle(s, d.parent), main).title = goalTitle(s, d.parent);
+    const b = d.parent ? bandName(goalTitle(s, d.parent)) : null;
+    if (b && b.whole !== s.goal) div("l-band", b.name, main).title = b.whole; // a planner's root sub-goal is the goal itself: said once, at the foot
     rows.push(row);
   }
   if (s.goal) {
@@ -1186,8 +1193,9 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   const times = attemptsMark(t, s.envelope.forks); // set to attempts it has not started: 3 attempts, as on its card
   div("l-sub", [line, times].filter(Boolean).join(" · "), main);
   if (times) row.dataset.attempts = String(parseInt(times)); else delete row.dataset.attempts;
-  const band = t.parent ? goalTitle(s, t.parent) : "";
-  if (band && band !== s.goal) div("l-band", band, main).title = band; // auto's root sub-goal is the goal itself: said once, at the foot
+  // its scope, as its card says it: the files it may change (or has written) by their names, and the check it is done when
+  const files = filesLine(t), check = doneWhen(t, 48), what = [t.command ? commandChip(t.command) : files.text.split(" ").map((w) => tailPath(w).replace(/^…\//, "")).join(" "), check].filter(Boolean);
+  if (what.length) div(`l-scope${files.tone === "back" ? " bad" : ""}`, what.join(" · "), main).title = [t.command ?? t.scope.join(" "), t.check ? `done when ${t.check}` : ""].filter(Boolean).join("\n");
   if (t.forks.length) {
     const forks = div("l-forks", undefined, main);
     for (const f of t.forks) {
