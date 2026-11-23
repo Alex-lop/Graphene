@@ -13,7 +13,7 @@ import { actsFor, ASK_AGENT, askLine, askNote, asksYou, attemptsOf, commandChip,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
          planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
-import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
+import { CARD, dotGap, FAR, fitPlan, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, ROWS_FROM, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
 
 declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState(): unknown; setState(s: unknown): void };
@@ -485,30 +485,30 @@ const paneSize = (): Size => ({ w: $("canvas").clientWidth || 800, h: $("canvas"
 const foot = () => ($("zoom").offsetHeight ? FOOT : 0);
 const sizeOf = (l: Layout): Size => ({ w: l.width, h: l.height });
 
-/** How the plan opens, and how `f` and a double click on the canvas fit it again: the whole plan in the pane.
- *  Whole cards when they fit at a scale they read at, else rows (zoom.ts), never so small their titles do not
- *  read: a plan larger than that (a Cursor tab beside its agent's chat) opens on the card that matters, the chosen
- *  one, else the first that wants you, else the first at work. Laid downward (the narrow canvas) it is whole cards
- *  from the top: that one opens on the step that asks you. */
-function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zoom } {
+/** How the plan opens: the whole plan in the pane. Whole cards when they fit at a scale they read at, else rows
+ *  (zoom.ts), never so small their titles do not read: a plan larger than that (a Cursor tab beside its agent's
+ *  chat) opens on the card that matters, the chosen one, else the first that wants you, else the first at work.
+ *  Asked for (`fitAll`: `f`, the fit button, a double click on the canvas), it is the whole plan however small.
+ *  Laid downward (the narrow canvas) it is whole cards from the top: that one opens on the step that asks you. */
+function opening(s: StateX, down: boolean): { level: Level; at: Placed; zoom: Zoom; whole: boolean } {
   const canvas = paneSize();
   const full = place(s, down, "full");
   let rows: Placed | undefined;
   const keep = fitted && !$("details").hidden ? level : "compact"; // a pane open beside whole cards keeps them whole a little further
   // the drawing's empty margin round the plan and its bands, which a fit just too tight may cut (zoom.ts)
   const cut = (l: Level): Size => ({ w: 2 * (full.awayW ? 8 : DIMS[l].padX - DIMS[l].inset), h: 2 * (DIMS[l].padY - DIMS[l].gapY / 2) });
-  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep, cut);
+  const fit = down ? null : fitPlan(canvas, sizeOf(full.lay), () => sizeOf((rows = place(s, down, "compact")).lay), foot(), keep, cut, fitAll ? ZOOM_MIN : ROWS_FROM);
   if (fit) {
     const at = fit.level === "compact" && rows ? rows : full, z = { k: fit.k, tx: fit.tx, ty: fit.ty };
     const id = fit.whole ? undefined : [selected, ...wantYou(), ...s.tasks.filter((t) => t.state === "running").map((t) => t.id)].find((x) => x && at.lay.boxes[x]);
     const p = id ? at.lay.boxes[id] : undefined;
-    return { level: fit.level, at, zoom: p ? onto(z, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : z };
+    return { level: fit.level, at, zoom: p ? onto(z, { w: canvas.w, h: canvas.h - foot() }, sizeOf(at.lay), p) : z, whole: fit.whole };
   }
   // a step that asks you is the thing to see: a graph wider than its canvas opens on that step, past the line,
   // and not on its left edge; a short one sits in the middle
   const ask = s.tasks.find(asksYou), p = ask ? full.lay.boxes[ask.id] : undefined;
   const tx = full.lay.width <= canvas.w ? (canvas.w - full.lay.width) / 2 : p ? Math.min(0, canvas.w - (p.x + p.w + AWAY_PAD)) : 0;
-  return { level: "full", at: full, zoom: hold({ k: 1, tx, ty: Math.max(0, (canvas.h - full.lay.height) / 2 - 10) }, { w: canvas.w, h: canvas.h - foot() }, sizeOf(full.lay)) };
+  return { level: "full", at: full, zoom: hold({ k: 1, tx, ty: Math.max(0, (canvas.h - full.lay.height) / 2 - 10) }, { w: canvas.w, h: canvas.h - foot() }, sizeOf(full.lay)), whole: true };
 }
 
 function graph(s: StateX, dir: "across" | "down") {
@@ -517,16 +517,18 @@ function graph(s: StateX, dir: "across" | "down") {
   const was = svg.dataset.level ?? level; // the level of the drawing on screen
   if (down) level = "full"; // the narrow drawing keeps whole cards
   // Until the person pans or zooms, the whole plan is in the pane: fitted when the page opens, when the window
-  // is resized, when the plan grows or shrinks, when the pane closes (a plan fitted beside it, in a narrow tab,
-  // would stay at half its size), and when asked (`f`, a select from outside the page). The pane opening is none
-  // of these, nor is the footer growing a line: a card chosen here stays where it is, as big as it is. The narrow
-  // drawing wraps at its canvas's width, so it is laid out for it each time.
+  // is resized, when the plan grows or shrinks, when the pane closes and the plan then fits whole (a plan fitted
+  // beside it, in a narrow tab, would stay at half its size), and when asked (`f`, a select from outside the page).
+  // The pane opening is none of these, nor is the footer growing a line: a card chosen here stays where it is, as
+  // big as it is. The narrow drawing wraps at its canvas's width, so it is laid out for it each time.
   const room = `${innerWidth}x${innerHeight}`;
   const sized = (l: Layout) => `${l.width}x${l.height}`;
   const free = !moved && !drawing;
   let at = free && down ? null : place(s, down, level);
-  const same = at !== null && sized(at.lay) === fitSize && room === fitRoom && !(paneMoved && $("details").hidden); // neither the window, the plan nor the pane's close changed it
-  const opened = free && !same ? opening(s, down) : null;
+  const kept = at !== null && sized(at.lay) === fitSize && room === fitRoom; // neither the window nor the plan changed
+  const same = kept && !(paneMoved && $("details").hidden); // nor did the pane close
+  let opened = free && !same ? opening(s, down) : null;
+  if (opened && kept && !opened.whole) opened = null; // closed on a plan larger than its tab: the card just read stays where it is
   if (opened) level = opened.level;
   D = DIMS[level];
   at = opened?.at ?? at!;
@@ -681,10 +683,10 @@ function graph(s: StateX, dir: "across" | "down") {
   svg.setAttribute("viewBox", `0 0 ${Math.max(lay.width, 10)} ${Math.max(lay.height, 10)}`);
   svg.setAttribute("width", String(lay.width));
   svg.setAttribute("height", String(lay.height));
-  // fitted again because it grew or shrank, or with the pane opening beside it, it glides to its new fit. In a
-  // hand's own place it is held to the canvas when the window or the plan changed, and not for a pane beside it:
-  // a clamp then would shift it under the click. A pane under the canvas (the narrow tab) takes half its height:
-  // there the plan is held to what is left, at the same zoom, or its rows would sit under the pane
+  // fitted again because it grew or shrank, or because the pane closed, it glides to its new fit. Not fitted, it
+  // is held to the canvas when the window, the plan or the pane's close changed the room it has, and not for a
+  // pane opening beside it: a clamp then would shift it under the click. A pane under the canvas (the narrow tab)
+  // takes half its height: there the plan is held to what is left, at the same zoom, or its rows would sit under it
   if (opened) {
     if (fitted && level === was && (sized(lay) !== fitSize || paneMoved)) { svg.classList.add("glide"); setTimeout(() => svg.classList.remove("glide"), 300); }
     zoom = opened.zoom;
@@ -1273,12 +1275,16 @@ function actual() {
 /** A row, opened by a double click: whole cards at their own size, that one in the canvas's middle. */
 const detail = (id: string) => turn("full", 1, { id, sx: $("canvas").clientWidth / 2, sy: $("canvas").clientHeight / 2 });
 
-/** The whole plan in the pane again, as `f` and a double click on the canvas ask. */
+/** The whole plan in the pane again, as `f` and a double click on the canvas ask: however small that draws it,
+ *  which the plan opening does not (`opening`). */
+let fitAll = false;
 function refit() {
   moved = false;
   drawing = null;
   fitRoom = "";
+  fitAll = true;
   render();
+  fitAll = false;
 }
 
 /** The minimap, drawn again with the graph: every card a small rect in its mark's colour (as its row is), the

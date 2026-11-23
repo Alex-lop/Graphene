@@ -69,6 +69,9 @@ test("a plan opens as whole cards where they fit at 11/12 or more, else as rows,
     const fit = fitPlan(room, { w: 20000, h: 9000 }, () => rows, 46);
     assert.deepEqual(fit, { level: "compact", k: ROWS_FROM, tx: 0, ty: rows.h * ROWS_FROM <= room.h - 46 ? (room.h - 46 - rows.h * ROWS_FROM) / 2 : 0, whole: false });
   }
+  // asked for (`f`, the fit button), the fit is the whole plan, under that floor
+  const asked = fitPlan({ w: 680, h: 780 }, { w: 20000, h: 9000 }, () => ({ w: 1744, h: 784 }), 46, "compact", undefined, ZOOM_MIN);
+  assert.ok(asked.whole && Math.abs(asked.k - 680 / 1744) < 1e-9 && asked.k < ROWS_FROM);
 });
 
 test("a fit just too tight for whole cards cuts the drawing's empty margin, evenly, to keep them; a looser one keeps it", () => {
