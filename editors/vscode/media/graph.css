@@ -124,7 +124,7 @@ main { flex: 1; display: flex; min-height: 0; }
   text-align: center; color: var(--dim); font-size: 13px; line-height: 1.5; padding: 16px 20px; white-space: pre-wrap;
 }
 #notice[hidden] { display: none; }
-#notice::first-line { color: var(--fg); font-weight: 600; } /* what is so, then what to do about it */
+.notice-head { color: var(--fg); font-weight: 600; }
 #need { position: absolute; right: 12px; top: 12px; z-index: 2; height: 28px; font-size: 12px; box-shadow: var(--pop); white-space: nowrap; }
 /* while a step wants you: how many, and a click (or n) shows the next */
 #need { border-color: color-mix(in srgb, var(--review) 55%, transparent); background: color-mix(in srgb, var(--review) 12%, var(--card)); box-shadow: 0 8px 24px -6px var(--shadow); }
