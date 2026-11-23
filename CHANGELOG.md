@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.10.0 (not yet tagged)
+## 0.10.0 (23 November 2026)
 
 The graph is where you watch and shape agent work (11 to 23 November 2026). In VS Code and Cursor the plan is a
 graph in an editor tab, and it comes from your coding agent's chat, a saved workflow or Add task, never from a box
@@ -12,7 +12,7 @@ The editor (23 November 2026, then PRs #68, #67 and #60). Each line is one chang
   `test/graph-host.test.ts`).
 - Home has no box to type a goal in, and Graphene: Auto… is gone from the palette: the Claude Code and Codex hooks
   have your agent propose its plan in its own chat. Home's first card opens the graph, and Stop after the plan and
-  Exact sit under Settings at its foot (`test/home.test.ts`).
+  Wait for every answer sit under Settings at its foot (`test/home.test.ts`).
 - One word a thing on every screen: task, suggested, working, to review, needs help, done, attempt, card (`3 tasks
   need you`, `2 of 7 done`, `2 need help`; `test/graph-marks.test.ts`, `test/graph-words.test.ts`).
 - One set of colours, lines and corners for the graph and Home (`media/tokens.css`), none read from what Cursor's
@@ -37,8 +37,8 @@ The editor (23 November 2026, then PRs #68, #67 and #60). Each line is one chang
   before and after the work.
 - Drawn by hand: Add task, the + past a card and the `+` key draw a draft that joins the plan once it has files and
   a check (`graphene node add`); a task's Edit tab is a form (title, files, check, attempts 1 to 8, wait for my
-  approval, I will do this one); drafts survive a reload; Home's Exact holds Start for every open question
-  (`e2e/draw.mjs`).
+  approval, I will do this one); drafts survive a reload; Home's Wait for every answer holds Start for every open
+  question (`e2e/draw.mjs`).
 
 Workflows (17 November 2026, PR #67). Each line is one change.
 - Save as workflow writes the graph to `workflows/<name>.md`; Home lists them and runs one on new inputs with no

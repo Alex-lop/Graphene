@@ -1,11 +1,6 @@
 # Graphene 0.10.0
 
-<!-- Before tagging: README.md's two install blocks and editors/vscode/README.md's go back to the released commands
-     in their comments (uv tool install graphene-map, the .vsix on the latest release), and the sentences saying
-     0.10.0 is not released yet go: PyPI's page for 0.10.0 is the README as tagged. The release does not show
-     this comment. -->
-
-Install: `uv tool install graphene-map` (over 0.9.0, `uv tool upgrade graphene-map`). The VS Code extension's
+Install: `uv tool install graphene-map` (installed already: `uv tool upgrade graphene-map`). The VS Code extension's
 `.vsix` is attached below: `cursor --install-extension graphene-0.10.0.vsix` (VS Code: `code --install-extension
 graphene-0.10.0.vsix`). Upgrade both: with 0.9.0's CLI every task's pane says Not held and no check's box is
 ticked. Or try it with nothing installed: `uvx graphene-map demo --auto`, a scripted replay (no key,
@@ -19,7 +14,7 @@ editor, Graphene: Watch the Demo plays it.
   card moves nothing. It opens by itself when work starts: beside your file in VS Code, in front of it in Cursor.
   Each card's foot is its check, with a box only Graphene ticks; the one act a task needs from you is a button on
   its card, and a chip walks them (`3 tasks need you · show the next`).
-- **A plan from your agent's chat.** There is no box to type a goal in: Graphene's hooks have Claude Code or Codex
+- **A plan from Claude Code's or Codex's chat.** There is no box to type a goal in: Graphene's hooks have Claude Code or Codex
   propose a plan in its own chat before it writes, and it appears on the graph (Claude Code's task by task, as
   `graphene ask` reads it). Change a task's files, check or attempts on its Edit tab, draw one with Add task, then
   Start; Stop after the plan decides whether a plan waits for you.
@@ -39,6 +34,7 @@ editor, Graphene: Watch the Demo plays it.
 
 ## What it does not do
 
+- Cursor's own Agent does not plan with Graphene yet: `graphene init` installs Claude Code's and Codex's hooks only.
 - A write outside a task's files is refused before it happens by Claude Code's hooks and by Nemotron's edit and
   write, and by Codex's hooks once the project and its hooks are trusted in a new Codex session. A hook that is not
   loaded, crashes or times out lets the write through; so does any other CLI agent, or a write a hook cannot read

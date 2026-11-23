@@ -2,9 +2,10 @@
 
 **One plan for your coding agents. Clear boundaries. Tested commits.**
 
-Your coding agent proposes a plan before it writes, and Graphene draws it as a graph in an editor tab. Read it,
-change it, start it, and approve what the agents did. Each task runs in its own copy of your repository, held to the
-files it may change, and lands only when its check passes and, if you keep approval on, when you approve it.
+Claude Code or Codex proposes a plan before it writes (Cursor's own Agent does not plan with Graphene yet), and
+Graphene draws it as a graph in an editor tab. Read it, change it, start it, and approve what the agents did. Each
+task runs in its own copy of your repository, held to the files it may change, and lands only when its check passes
+and, if you keep approval on, when you approve it.
 
 ![Graphene's graph in an editor tab. Across the top: the goal, then Plan, Run and Review. On the graph: four task cards under one sub-goal, three done and one working with its three attempts, each card with its files and, at its foot, its check, all leading into the goal. Beside them, the selected task's Scope pane: the files it may change, its check failing before the work and passing after it, what it may run, how a write outside its files is held, and the write it was stopped from making](media/graph.png)
 
@@ -12,24 +13,25 @@ files it may change, and lands only when its check passes and, if you keep appro
 
 ## Install
 
-The extension and the CLI go together, 0.10.0 each: with 0.9.0's CLI every task's pane says **Not held** and no
-check's box is ticked. Until PyPI and [the latest release](https://github.com/Alex-lop/Graphene/releases/latest)
-have 0.10.0, build both from the repository (Python 3.12+, [uv](https://docs.astral.sh/uv/) and Node 22+; the
-extension is not on the Marketplace or Open VSX):
+The CLI from PyPI (Python 3.12+ and [uv](https://docs.astral.sh/uv/)) and the extension from
+[the release](https://github.com/Alex-lop/Graphene/releases/latest), 0.10.0 each (it is not on the Marketplace or
+Open VSX):
 
 ```sh
-git clone https://github.com/Alex-lop/Graphene && cd Graphene
-uv tool install .                                  # released: uv tool install graphene-map
-cd editors/vscode && npm ci && npm run package     # released: the .vsix on the latest release
-code --install-extension graphene-0.10.0.vsix      # Cursor: cursor --install-extension graphene-0.10.0.vsix
+uv tool install graphene-map   # installed already: uv tool upgrade graphene-map
+curl -LO https://github.com/Alex-lop/Graphene/releases/download/v0.10.0/graphene-0.10.0.vsix
+code --install-extension graphene-0.10.0.vsix
 ```
+
+In Cursor: `cursor --install-extension graphene-0.10.0.vsix`. From a clone instead: `uv tool install .`, then
+`npm ci && npm run package` in `editors/vscode` (Node 22+).
 
 ## The first five minutes
 
 1. **Click Graphene in the activity bar.** The graph opens full size in an editor tab. **Home**, in the side bar,
-   sets up a new folder in one click (Claude Code or Codex); leave approval ticked and nothing lands without you.
-2. **Ask Claude Code or Codex, in its own chat** (Cursor's own Agent does not plan with Graphene yet). Graphene's
-   hooks have it propose its plan (`graphene plan propose`) before it writes. Each task is a card: the files it may
+   sets up a new folder in one click (Claude Code or Codex); leave approval on and nothing lands without you.
+2. **Ask Claude Code or Codex, in its own chat.** Graphene's hooks have it propose its plan (`graphene plan
+   propose`) before it writes. Each task is a card: the files it may
    change and, at its foot, the check that proves it.
 3. **Read and change the plan.** Click a card: its pane opens on **Scope**, and **Edit** changes its files, check,
    attempts and approval. Answer the plan's questions; **Add task** draws a task; a card's dot links it to another.
@@ -93,7 +95,8 @@ graph, or in a diff's title (**Keep This Attempt**, **Approve**).
 
 ## Limits
 
-- VS Code 1.95 or later, or Cursor 3.25.6 (its agent layout hides the side bar: Home needs the classic layout).
+- VS Code 1.95 or later, or Cursor 3.25.6 or later (its agent layout hides the side bar: Home needs the classic
+  layout).
 - It needs Graphene 0.10.0's CLI (with 0.9.0's every task's pane says **Not held** and no check's box is ticked),
   and shows one plan per window: the first workspace folder with a store.
 - Nobody has used it on a real run yet: it was checked against a fixture and a scripted stand-in.

@@ -16,10 +16,13 @@ reviews and the critics' findings are summed up in the pull request.*
    Start, and Settings at the foot. With no plan it tells you to ask Claude Code or Codex in its chat.
 4. **Read the PR** (its body has the decisions to veto), and look at `README.md`: half as long, the editor first,
    the new picture.
-5. **To release 0.10.0** (everything is numbered; nothing is tagged): merge the PR on GitHub, date the two
-   CHANGELOG headings ("not yet tagged") on `main`, then `docs/RELEASING.md` as before (`git tag v0.10.0`, push
-   the tag, then the GitHub release with the `.vsix`). The README's install line names `graphene-0.10.0.vsix` from
-   the latest release, so it is true only once that release exists.
+5. **To release 0.10.0** (everything is numbered; nothing is tagged): merge the PR on GitHub (the two CHANGELOG
+   headings say 23 November 2026: change them if you tag another day), then `git switch main && git pull`, then
+   `docs/RELEASING.md` as before (`git tag v0.10.0`, push the tag, then the GitHub release with the `.vsix`).
+   That release is the first to start `publish-vscode.yml`: with no `VSCE_PAT` or `OVSX_PAT` secret its two
+   registry jobs go red, as expected (`gh run cancel` it): the `.vsix` on the release is the install. Both
+   READMEs install `graphene-map` from PyPI and `graphene-0.10.0.vsix` from the v0.10.0 release, so they are true
+   only once both exist.
 
 ## What changed, by what you asked
 
@@ -33,7 +36,7 @@ reviews and the critics' findings are summed up in the pull request.*
   header with one main act (Start a suggested plan, Run, Stop), whole cards with two-line titles and their files
   and check inside, state on a card's mark and colour only where it wants you, one bracket per sub-goal into the
   goal, square quiet edges, the question on the canvas, the pane as an inspector, Home with one filled act a card.
-- **README** 159 → 90 lines, the extension's 185 → 93, one word a thing on every screen.
+- **README** 159 → 97 lines, the extension's 185 → 104, one word a thing on every screen.
 
 ## Decisions for your veto
 

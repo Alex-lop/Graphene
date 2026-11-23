@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.10.0 (not yet tagged)
+## 0.10.0 (23 November 2026)
 
 The graph is where you watch and shape agent work: whole, in a tab of its own, with a plan from your agent's chat
 (10 to 23 November 2026). It needs Graphene 0.10.0's CLI: with 0.9.0's every task's pane says Not held and no
@@ -23,7 +23,8 @@ The header:
 
 - Two rows: the goal and its buttons, then Plan, Run and Review with their counts and, for a plan running on its
   own, its round. One main act: Start for a suggested plan (it accepts, then runs, as Home's), Run, or Stop while
-  a run goes; Exact holds Start while a question is open. Save as workflow, Lanes and Keys and mouse are icons.
+  a run goes; Home's Wait for every answer holds Start while a question is open. Save as workflow, Lanes and
+  Keys and mouse are icons.
 - Stop after the plan is Home's, under its Settings: beside Start and Stop it read as another stop. A practice
   run or a replay shows no cost anywhere.
 
@@ -37,8 +38,8 @@ The canvas:
   are lit. No frame round a plan that stays on this machine; the leaves your machine region shows only once a
   task would push or open a pull request.
 - A chip walks what needs you (`3 tasks need you · show the next`, `n`), and an open question has a chip of its
-  own (`1 question · answer`). The legend is the marks with their words and counts; the minimap shows only while
-  the plan moves; `g` still brings the goal.
+  own that says what Start or Run picks for it (`1 question · Run picks “json and csv”`). The legend is the marks
+  with their words and counts; the minimap shows only while the plan moves; `g` still brings the goal.
 
 The cards:
 
@@ -63,8 +64,9 @@ The pane, an inspector:
 
 Home:
 
-- Its first card opens the graph; Stop after the plan and Exact sit under Settings at its foot; Exact holds Start
-  for every open question. One filled act a card at most, a card's state said once, paths cut at whole folders.
+- Its first card opens the graph; Settings at its foot has Stop after the plan, approval, and Wait for every
+  answer, which holds Start for every open question. One filled act a card at most, a card's state said once,
+  paths cut at whole folders.
 - Working now in amber, a plan's cost said at list price, a question named by its sub-goal, Install only when
   graphene is missing, and Set Up says before the click what it writes. Home lists the folder's workflows and
   runs one on new inputs with no planner call; a `run:` task that pushes or opens a pull request waits past the
