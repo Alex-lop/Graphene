@@ -24,14 +24,17 @@ const state: StateX = { ...parsed, tasks };
 test("narrow, the header is the goal alone: the counts and the auto line move to its hover and the footer", () => {
   const wide = headerFor(state, false);
   assert.equal(wide.goal, state.goal);
-  assert.equal(wide.counts, counts(state));
+  assert.equal(wide.counts, counts(state, false)); // the auto line says the cost, against its budget
+  assert.match(wide.auto, /\$[\d.]+ of \$/);
+  assert.doesNotMatch(wide.counts, /\$/);
+  assert.equal(headerFor({ ...state, auto: null }, false).counts, counts(state));
   assert.equal(wide.auto, autoLine(state));
   assert.equal(wide.footer, "");
   const narrow = headerFor(state, true);
   assert.equal(narrow.goal, state.goal);
   assert.equal(narrow.counts, "");
   assert.equal(narrow.auto, "");
-  assert.equal(narrow.hover, [state.goal, counts(state), autoLine(state)].filter(Boolean).join("\n"));
+  assert.equal(narrow.hover, [state.goal, counts(state, false), autoLine(state)].filter(Boolean).join("\n"));
   assert.equal(narrow.footer, autoLine(state) || counts(state)); // the live line first, else the counts
   assert.equal(headerFor({ ...state, auto: null }, true).footer, counts(state));
 });

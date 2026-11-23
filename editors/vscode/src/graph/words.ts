@@ -373,11 +373,12 @@ export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
   return replayLine(s.replay) || (s.stand_in ? "practice run · a scripted stand-in, no real AI" : "");
 }
 
-/** The counts under the goal: `2 working · 2 need you · 2 of 7 done · $0.42`. */
-export function counts(s: State): string {
+/** The counts under the goal: `2 working · 2 need you · 2 of 7 done · $0.42`; without the cost beside an auto
+ *  line that says it against the budget. */
+export function counts(s: State, cost = true): string {
   const sb = s.scoreboard;
   const parts = [`${sb.running} working`, `${sb.need_you} need${sb.need_you === 1 ? "s" : ""} you`, `${sb.proven} of ${sb.total} done`];
-  const spent = usd(s.spent);
+  const spent = cost ? usd(s.spent) : "";
   if (spent) parts.push(spent);
   return parts.join(" · ");
 }
@@ -387,7 +388,7 @@ export function counts(s: State): string {
  *  the footer, the live line first. */
 export function headerFor(s: StateX, narrow: boolean): { goal: string; hover: string; counts: string; auto: string; footer: string } {
   const goal = headline(s) || (s.tasks.length ? "your plan" : "no goal yet"); // an ask sets no goal: what was asked
-  const c = counts(s), a = autoLine(s);
+  const a = autoLine(s), c = counts(s, !a || s.auto?.spent === null);
   if (!narrow) return { goal, hover: "", counts: c, auto: a, footer: "" };
   return { goal, hover: [goal, c, a].filter(Boolean).join("\n"), counts: "", auto: "", footer: a || c };
 }
