@@ -48,6 +48,10 @@ export interface Options {
   labelH?: number; // room at the top of a named band for its label
   goal?: string | null; // a box pinned to the last rank, alone
   sweeps?: number;
+  /** A named band's loose boxes at one rank (no edge in, and none out but to the goal) stand at most this many
+   *  high; more stand side by side in that rank, row by row, so a sub-goal of many tasks at once is a block and
+   *  not a tower. Across only; unset, a rank is one column. */
+  stack?: number;
   /** Lay the ranks out as rows, top to bottom, each row's boxes left to right and wrapping at ``width``
    *  (the canvas's width): the narrow drawing, with no bands. */
   down?: boolean;
@@ -142,24 +146,25 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
   // goal spans every band, so it is placed last, centred on the whole height
   const bandIds: string[] = [];
   for (const b of boxes) if (b.id !== goal && !bandIds.includes(b.band)) bandIds.push(b.band);
-  // rows: in each band, each rank's boxes stack top to bottom in their order
-  const rowOf = new Map<string, number>();
+  // rows: in each band, each rank's boxes stack top to bottom in their order; loose ones past `stack` side by side
+  const rowOf = new Map<string, number>(), sideOf = new Map<string, number>();
   const bandRows = new Map<string, number>(bandIds.map((b) => [b, 0]));
-  for (const col of cols) {
-    const seen = new Map<string, number>();
-    for (const id of col) {
-      if (id === goal) continue;
-      const band = by.get(id)!.band;
-      const r = seen.get(band) ?? 0;
-      rowOf.set(id, r);
-      seen.set(band, r + 1);
-      bandRows.set(band, Math.max(bandRows.get(band) ?? 0, r + 1));
+  const loose = (id: string) => !edges.some(([a, b]) => b === id || (a === id && b !== goal));
+  const wide = cols.map(() => 1); // how many boxes stand side by side in a rank, in its widest band
+  cols.forEach((col, k) => {
+    const groups = new Map<string, string[]>();
+    for (const id of col) if (id !== goal) groups.set(by.get(id)!.band, [...(groups.get(by.get(id)!.band) ?? []), id]);
+    for (const [band, g] of groups) {
+      const n = band && o.stack && g.length > o.stack && g.every(loose) ? Math.ceil(g.length / o.stack) : 1;
+      wide[k] = Math.max(wide[k]!, n);
+      g.forEach((id, i) => { rowOf.set(id, Math.floor(i / n)); sideOf.set(id, i % n); });
+      bandRows.set(band, Math.max(bandRows.get(band) ?? 0, Math.ceil(g.length / n)));
     }
-  }
+  });
   const colW = cols.map((col) => Math.max(o.boxW, ...col.map((id) => by.get(id)!.w ?? o.boxW)));
   const columns: number[] = [];
   let x = o.padX;
-  for (const w of colW) { columns.push(x); x += w + o.gapX; }
+  colW.forEach((w, k) => { columns.push(x); x += (w + o.gapX) * wide[k]!; });
   const width = Math.max(x - o.gapX + o.padX, o.padX * 2);
   // row heights per band: a row is as tall as its tallest box
   const rowH = new Map<string, number[]>();
@@ -195,7 +200,7 @@ export function layout(boxes: Box[], edges: Edge[], opts: Options = {}): Layout 
       const hs = rowH.get(b.band)!;
       const r = rowOf.get(id) ?? 0;
       const top = (bandTop.get(b.band) ?? o.padY) + hs.slice(0, r).reduce((s, hh) => s + hh + o.gapY, 0);
-      placed[id] = { id, x: columns[k]!, y: top, w, h, rank: k, band: b.band };
+      placed[id] = { id, x: columns[k]! + (sideOf.get(id) ?? 0) * (colW[k]! + o.gapX), y: top, w, h, rank: k, band: b.band };
     }
   }
   return { boxes: placed, bands, columns, width, height, ranks: cols.length, down: false };
@@ -242,14 +247,21 @@ export function step(lay: Layout, from: string, key: "left" | "right" | "up" | "
   const along = lay.down ? (p: Placed) => p.x + p.w / 2 : (p: Placed) => p.y + p.h / 2;
   const toNextRank = lay.down ? key === "down" || key === "up" : key === "left" || key === "right";
   const forward = key === "right" || key === "down";
+  const across = lay.down ? (p: Placed) => p.y + p.h / 2 : (p: Placed) => p.x + p.w / 2;
+  // the nearest along the rank, then the nearest across it: of two side by side (`stack`), the one in line
+  const nearest = (ps: Placed[]) => ps.reduce((best, p) => {
+    const d = Math.abs(along(p) - along(here)) - Math.abs(along(best) - along(here));
+    return d < 0 || (d === 0 && Math.abs(across(p) - across(here)) < Math.abs(across(best) - across(here))) ? p : best;
+  }).id;
   if (toNextRank) {
+    // loose boxes side by side in one rank: the one beside it on its row comes before the next rank
+    const beside = lay.down ? [] : all.filter((p) => p.rank === here.rank && p.id !== from && p.y === here.y && (forward ? p.x > here.x : p.x < here.x));
+    if (beside.length) return beside.reduce((best, p) => (Math.abs(p.x - here.x) < Math.abs(best.x - here.x) ? p : best)).id;
     const want = here.rank + (forward ? 1 : -1);
     const col = all.filter((p) => p.rank === want);
-    if (!col.length) return null;
-    return col.reduce((best, p) => (Math.abs(along(p) - along(here)) < Math.abs(along(best) - along(here)) ? p : best)).id;
+    return col.length ? nearest(col) : null;
   }
   const col = all.filter((p) => p.rank === here.rank && p.id !== from);
   const next = col.filter((p) => (forward ? along(p) > along(here) : along(p) < along(here)));
-  if (!next.length) return null;
-  return next.reduce((best, p) => (Math.abs(along(p) - along(here)) < Math.abs(along(best) - along(here)) ? p : best)).id;
+  return next.length ? nearest(next) : null;
 }
