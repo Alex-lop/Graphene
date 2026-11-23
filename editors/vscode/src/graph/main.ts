@@ -39,7 +39,7 @@ const GOAL_W = 220, GOAL_ROW_H = 62;
 /** What the layout and the lines between the cards measure by, at each level of detail. */
 type Dims = { w: number; h: number; gapX: number; gapY: number; padX: number; padY: number; bandGap: number; label: number };
 const DIMS: Record<Level, Dims> = { // `label`: the room over a sub-goal's first row for its header, which is drawn larger over rows
-  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 12, padX: 24, padY: 24, bandGap: 16, label: 28 },
+  full: { w: BOX_W, h: BOX_H, gapX: 32, gapY: 16, padX: 24, padY: 24, bandGap: 16, label: 28 },
   compact: { w: ROW_W, h: ROW_H, gapX: 24, gapY: 8, padX: 24, padY: 24, bandGap: 16, label: 30 },
 };
 /** A sub-goal's loose tasks (no line in or out but to the goal) stand at most this many high, then side by side. */
@@ -48,6 +48,7 @@ const FOOT = 46; // the canvas's foot, where the zoom's buttons and the legend s
 const NEED_H = 46; // and its head in the narrow graph, where the chip for what needs you sits over the first row
 const AWAY_W = 264, AWAY_GAP = 20; // the region for what leaves this machine, right of the plan: never narrower than its label, the longest of which is "asks you first"
 const AWAY_PAD = 44; // a step past the line sits this far inside the region, so the gate on the line is clear of it
+const AWAY_TOP = 48; // and under the region's label
 /** The narrow view by default: lanes read better than a downward graph at 280 to 400 px (lane 1's notes). */
 const NARROW_VIEW: "lanes" | "graph" = "lanes";
 const api = acquireVsCodeApi();
@@ -444,10 +445,10 @@ function place(s: StateX, down: boolean, lv: Level): Placed {
   if (here && awayW) lay.width += AWAY_GAP + awayW;
   // a step past the line stands in its region, one under another in the middle; laid downward, under the plan
   const tall = leaving.length * h + Math.max(0, leaving.length - 1) * d.gapY;
-  if (here) lay.height = Math.max(lay.height, tall + d.padY + 24);
+  if (here) lay.height = Math.max(lay.height, tall + AWAY_TOP + 24);
   leaving.forEach((t, i) => {
     const x = here ? here + AWAY_GAP - 8 + (awayW - d.w) / 2 : 16; // in the region's middle, clear of the gate on its line
-    const y = (here ? Math.max(d.padY, (lay.height - tall) / 2) : lay.height + 28) + i * (h + d.gapY);
+    const y = (here ? Math.max(AWAY_TOP, (lay.height - tall) / 2) : lay.height + 28) + i * (h + d.gapY);
     lay.boxes[t.id] = { id: t.id, x, y, w: d.w, h, rank: lay.ranks, band: "" };
   });
   if (leaving.length) lay.ranks += 1;
@@ -528,7 +529,7 @@ function graph(s: StateX, dir: "across" | "down") {
     const rect = bands.appendChild(el("rect", { class: "band", x: x0, y: band.y0, height: band.y1 - band.y0, rx: 10 }));
     rect.appendChild(el("title", {}, title));
     const said = bandHead(heads, title, s.tasks.filter((t) => t.parent === band.id), x0 + 12, band.y0 + D.label / 2 + 1,
-                          Math.min(most - x0, $("canvas").clientWidth / (opened?.zoom ?? zoom).k) - 24); // within the band's visible width
+                          Math.min(most, $("canvas").clientWidth / (opened?.zoom ?? zoom).k) - x0 - 24); // within the band's visible width
     const end = Math.min(most, Math.max(x1, x0 + said + 24));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
@@ -897,10 +898,12 @@ function frame(grp: SVGGElement, h: number, running: boolean, chosen: boolean) {
  *  characters as it is given, a part dropped at a time (words.ts `sub`), so no word is cut while a shorter line
  *  says it whole. */
 function status(grp: SVGGElement, words: (n: number) => string, right: number, bad = false) {
-  const room = right - PAD - 8;
-  let line = words(Math.floor(room / 6.6));
-  const tail = line.lastIndexOf(" · ");
-  if (line.endsWith("…") && tail > 0 && line.length - tail < 10) line = line.slice(0, tail); // a reason cut to a word or two says nothing: the pane says it whole
+  const room = right - PAD - 8, n = Math.floor(room / 6.6);
+  let line = words(n);
+  if (line.endsWith("…")) { // cut: back to the last whole part when a word or two of the next is all that shows (`asks yo…`); the pane says it whole
+    const whole = words(1000), at = Math.max(0, ...[...whole.matchAll(/ · |: /g)].map((m) => m.index).filter((i) => i <= n));
+    if (at && line.length - at < 10) line = whole.slice(0, at);
+  }
   fitText(grp.appendChild(el("text", { class: `sub${bad ? " bad" : ""}`, x: PAD, y: STATUS_Y }, line)), room);
 }
 

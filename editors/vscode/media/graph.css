@@ -502,7 +502,7 @@ button:disabled { opacity: 0.45; cursor: default; }
 #svg.far [data-mark="working"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 32%, var(--card)); }
 #svg.far [data-mark="landed"] > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 42%, var(--card)); }
 #svg.far :is([data-mark="you"], [data-mark="back"]) > .box { fill: color-mix(in srgb, var(--wash, var(--c)) 50%, var(--card)); }
-#svg.far .task > .mk:is(.you, .yours, .back) { transform: translate(calc(9px + 9px / var(--k)), 22px) scale(calc(0.9 / var(--k))); }
+#svg.far .task > .mk:is(.you, .yours, .back) { transform: translate(calc(9px + 9px / var(--k)), 24px) scale(calc(0.9 / var(--k))); }
 .fork .chip { fill: var(--bg); stroke: var(--border); }
 .fork.st-running .chip { stroke: var(--running); }
 .fork.st-passed .chip { stroke: var(--done); }
