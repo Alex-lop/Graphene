@@ -575,6 +575,10 @@ button:disabled { opacity: 0.45; cursor: default; }
 body.vscode-high-contrast, body.vscode-high-contrast-light { --edge: var(--border); --card: var(--bg); --card-border: var(--border); --tint: transparent; --dot: color-mix(in srgb, var(--fg) 20%, transparent);
   --wash: var(--bg); } /* what a state's tint is mixed from: here the canvas's own colour, so a row, a foot and a chip keep their border and their mark alone */
 body.vscode-high-contrast .band, body.vscode-high-contrast-light .band { fill: none; stroke: var(--border); stroke-dasharray: 4 3; }
+body.vscode-high-contrast .band-head .plate, body.vscode-high-contrast-light .band-head .plate { fill: var(--bg); }
+/* the goal the clearest node: the text colour round it; a cell not started an outline in its colour, not a faint fill */
+body.vscode-high-contrast .goal-box, body.vscode-high-contrast-light .goal-box { stroke: var(--fg); }
+:is(body.vscode-high-contrast, body.vscode-high-contrast-light) .cell:is([data-mark="yours"], [data-mark="ready"], [data-mark="waiting"], [data-mark="suggested"]) { fill: none; stroke: var(--c); stroke-width: 1; }
 body.vscode-high-contrast .region.away, body.vscode-high-contrast-light .region.away { fill: none; stroke: var(--review); }
 body.vscode-high-contrast .box, body.vscode-high-contrast .chip, body.vscode-high-contrast .goal-box,
 body.vscode-high-contrast-light .box, body.vscode-high-contrast-light .chip, body.vscode-high-contrast-light .goal-box { stroke-width: 1.5; filter: none; }
