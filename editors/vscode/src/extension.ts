@@ -18,7 +18,7 @@ import { parseLog, rounds, type LogRow } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
 import { PlanTree } from "./tree.ts";
 import { planFolder, Session, STORE, type UI } from "./session.ts";
-import { Hub, PAGE } from "./sessions/hub.ts";
+import { BEFORE, Hub, PAGE } from "./sessions/hub.ts";
 import * as needs from "./needsView.ts";
 import * as agents from "./agentsView.ts";
 import * as find from "./setup.ts";
@@ -75,7 +75,7 @@ export function activate(context: vscode.ExtensionContext) {
   };
   const home = new HomeHost(context, session, (on) => graph.sidebar(on), { hub, on: () => mode === "sessions" });
   // a session's page a reload brings back: the hub takes it up with the sessions it drew
-  context.subscriptions.push(hub, vscode.window.registerWebviewPanelSerializer(PAGE, hub));
+  context.subscriptions.push(hub, vscode.window.registerWebviewPanelSerializer(PAGE, hub), vscode.workspace.registerTextDocumentContentProvider(BEFORE, { provideTextDocumentContent: (uri) => hub.before(uri) }));
   const bar = vscode.window.createStatusBarItem("graphene", vscode.StatusBarAlignment.Left, 50);
   bar.name = "Graphene";
   bar.command = "graphene.home";

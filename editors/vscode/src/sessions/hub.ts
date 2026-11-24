@@ -3,14 +3,17 @@
 // (snapshot.ts). A session that begins or writes while the window is open gets a page; a page can draw several,
 // a band each, and remembers them across a reload. No graphene command runs here and nothing is written
 // anywhere: the files are read, never changed, and nothing leaves the machine.
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
+import * as path from "node:path";
 import * as vscode from "vscode";
 import { graphHtml } from "../graph.ts";
 import { column, pages, wrote } from "../open.ts";
-import type { SessionInfo, State } from "../state.ts";
+import type { GitFacts, SessionInfo, State } from "../state.ts";
 import { checkPage, type FromPage } from "./acts.ts";
 import { glance, procs, readerOf, Scan, type Found, type Proc } from "./find.ts";
 import { Follow } from "./follow.ts";
+import { note, show, since, unexplained, type Note } from "./git.ts";
+import { receipt } from "./receipt.ts";
 import { empty, fold, type Model } from "./model.ts";
 import { Replay } from "./replay.ts";
 import { info, snapshot, status } from "./snapshot.ts";
@@ -23,6 +26,8 @@ const SCAN_MS = 2000, READ_MS = 1000;
 /** A replay plays an event this often: the recording's two minutes in half of one. */
 const REPLAY_MS = 350;
 export const PAGE = "graphene.sessionPage";
+/** The scheme of a changed file's left side: the file as the commit the session began on has it. */
+export const BEFORE = "graphene-before";
 const PAGED = "graphene.sessions.paged"; // the workspace's memory of which session files a page draws
 
 /** One graph tab: the sessions it draws, each followed while the tab is there; or a replay of the recorded one. */
@@ -58,13 +63,14 @@ export class Page {
   /** A closed tab's page is posted nothing: its webview is gone. */
   post(message: unknown) { if (!this.gone) void this.panel.webview.postMessage(message); }
 
-  /** Read what is new in the page's files and draw it; `force`: draw it again though nothing was. */
-  async refresh(live: ReadonlyMap<string, Proc>, force = false) {
+  /** Read what is new in the page's files and draw it; `force`: draw it again though nothing was. `git`: what git
+   *  says of each session's folder since it was first seen, by the session's id. */
+  async refresh(live: ReadonlyMap<string, Proc>, force = false, git: ReadonlyMap<string, GitFacts> = new Map()) {
     const read = this.replay ? [] : await Promise.all(this.follows.map((f) => f.read()));
     if (this.gone) return;
     const state = this.replay
       ? { ...snapshot([this.replay.model], this.replay.clock + 500), replay: { shown: "a recorded Claude Code session", day: "", repository: "" } }
-      : snapshot(this.follows.map((f) => f.model), Date.now(), live);
+      : snapshot(this.follows.map((f) => f.model), Date.now(), live, git);
     // drawn again when a file grew, and when what is said of it moved on (working to idle, with no line written)
     const key = JSON.stringify([state.sessions, state.tasks.map((t) => [t.state, t.card?.says, t.note])]);
     if (!force && !read.some(Boolean) && key === this.last) return;
@@ -171,6 +177,12 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     // a session that began or wrote since the last look gets a page, beside what is in front, once
     const on = this.watching && vscode.workspace.getConfiguration("graphene").get<boolean>("graph.openOnStart", true);
     const dormant = this.dormant();
+    // a session that began since the last look: its folder's HEAD and dirty files are noted now, for its receipt to
+    // compare with at the end. One that was there before the window has no before to note
+    for (const f of this.found) if (this.sizes && !this.sizes.has(f.file) && !this.notes.has(f.file)) {
+      this.notes.set(f.file, null);
+      void note(f.cwd).then((n) => { this.notes.set(f.file, n); });
+    }
     for (const file of wrote(this.sizes, this.found)) {
       if (!pages({ on, paged: this.pages.some((p) => p.has(file)) || dormant.includes(file), opened: this.opened.has(file) })) continue;
       this.opened.add(file);
@@ -184,7 +196,34 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   }
 
   private async read() {
-    await Promise.all(this.pages.filter((p) => p.panel.visible && !p.replay).map((p) => p.refresh(this.live)));
+    await Promise.all(this.pages.filter((p) => p.panel.visible && !p.replay).map((p) => p.refresh(this.live, false, this.git(p))));
+  }
+
+  private readonly notes = new Map<string, Note | null>(); // a session's file -> its folder's git when the session was first seen
+  private readonly facts = new Map<string, { key: string; at: number; facts: GitFacts }>(); // and what moved since, as last compared
+  private readonly repos = new Map<string, boolean>(); // a folder -> whether git has it
+
+  /** What git says of each of a page's sessions, as last compared; a comparison that is due is started, and the
+   *  page drawn again when it ends. Compared when the session's file has grown, at most every five seconds: what
+   *  changes in the folder after the session's last line is not the session's, and is not looked for. */
+  private git(page: Page): Map<string, GitFacts> {
+    const out = new Map<string, GitFacts>();
+    for (const f of page.follows) {
+      const m = f.model, file = f.found.file, was = this.notes.get(file);
+      if (!this.repos.has(m.cwd)) { this.repos.set(m.cwd, false); void note(m.cwd).then((n) => { this.repos.set(m.cwd, n !== null); }); }
+      if (!was) { if (this.repos.get(m.cwd) && !this.notes.has(file)) out.set(m.id, { noted: false, commits: 0, unexplained: [] }); continue; }
+      const have = this.facts.get(file), key = m.last;
+      out.set(m.id, have?.facts ?? { noted: true, commits: 0, unexplained: [] });
+      if (have?.key === key || Date.now() - (have?.at ?? 0) < 5000) continue;
+      this.facts.set(file, { key, at: Date.now(), facts: have?.facts ?? { noted: true, commits: 0, unexplained: [] } });
+      void since(was).then((now) => {
+        if (!now) return;
+        const written = receipt([...m.calls.values()], m.cwd).changed.map((c) => c.file);
+        this.facts.set(file, { key, at: Date.now(), facts: { noted: true, commits: now.commits, unexplained: unexplained(now.changed, written, was.top, m.cwd) } });
+        void page.refresh(this.live, true, this.git(page));
+      });
+    }
+    return out;
   }
 
   /** Each replay moves on by an event; at its end it stays as it is. */
@@ -257,14 +296,42 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   }
 
   private async act(page: Page, m: FromPage) {
-    if (m.type === "ready") return page.refresh(this.live, true);
+    if (m.type === "ready") return page.refresh(this.live, true, this.git(page));
     switch (m.act) {
       case "addSession": return this.add(page);
-      case "takeOff": page.remove(m.id); this.tick(); return page.refresh(this.live, true);
+      case "takeOff": page.remove(m.id); this.tick(); return page.refresh(this.live, true, this.git(page));
       case "replay": return this.playRecorded(page);
       case "terminal": return this.terminal(page, m.id);
       case "resume": return this.resume(page, m.id);
+      case "openFile": return this.openFile(page, m.id, m.file ?? "");
     }
+  }
+
+  /** A file a card changed, as its diff: on the left the file as the commit the session began on has it (the
+   *  last commit, for a session git was not noted for), on the right the file as it is. Where there is no
+   *  repository, the file itself. The file is one the card names, and the left side is read with `git show`. */
+  private async openFile(page: Page, id: string, file: string) {
+    const card = page.drawn?.tasks.find((t) => t.id === id)?.card;
+    const follow = card && page.follows.find((f) => f.model.id === card.session);
+    if (!follow || !file) return;
+    const abs = path.resolve(follow.model.cwd, file), was = this.notes.get(follow.found.file) ?? await note(follow.model.cwd);
+    const there = await stat(abs).then(() => true, () => false);
+    if (!was) {
+      if (there) return void vscode.window.showTextDocument(vscode.Uri.file(abs), { preview: true });
+      return void vscode.window.showInformationMessage(`${file} is not there to open: it was deleted, or moved.`);
+    }
+    const rev = was.head || "HEAD", side = (r: string) => vscode.Uri.file(abs).with({ scheme: BEFORE, query: JSON.stringify({ top: was.top, rev: r }) });
+    // a deleted file's right side is nothing, not a missing file
+    await vscode.commands.executeCommand("vscode.diff", side(rev), there ? vscode.Uri.file(abs) : side(""), `${path.basename(file)} · since ${was.head ? was.head.slice(0, 7) : "the last commit"}`, { preview: true });
+  }
+
+  /** The left side of such a diff: the file as a commit has it; nothing for a revision of "". */
+  before(uri: vscode.Uri): Promise<string> | string {
+    try {
+      const q = JSON.parse(uri.query) as { top?: unknown; rev?: unknown };
+      if (typeof q.top !== "string" || typeof q.rev !== "string" || !q.rev || !/^[0-9a-f]{7,40}$|^HEAD$/.test(q.rev)) return "";
+      return show(q.top, q.rev, path.relative(q.top, uri.fsPath));
+    } catch { return ""; }
   }
 
   private readonly terminals = new Terminals();
@@ -322,7 +389,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     page.replay = null;
     page.add(found);
     this.tick();
-    await page.refresh(this.live, true);
+    await page.refresh(this.live, true, this.git(page));
   }
 
   /** The recorded session the extension carries, played on a page that has none. */
