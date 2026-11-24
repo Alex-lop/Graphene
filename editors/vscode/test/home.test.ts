@@ -370,3 +370,12 @@ test("an older graphene is said above Home, whatever it shows, with Upgrade: onc
   host.push();
   assert.equal(posted[1]!.older, "");
 });
+
+test("a folder with no plan: Home may ask for a session's page by its file, and for strict mode's Set Up and back", () => {
+  assert.deepEqual(checkHome({ type: "act", act: "showGraph", id: "", arg: "/home/me/.claude/projects/-w-app/s1.jsonl" }, null),
+                   { type: "act", act: "showGraph", id: "", arg: "/home/me/.claude/projects/-w-app/s1.jsonl" }); // the host opens only a file it found itself
+  assert.deepEqual(checkHome({ type: "act", act: "showGraph", id: "" }, null), { type: "act", act: "showGraph", id: "" });
+  assert.deepEqual(checkHome({ type: "act", act: "strict", flag: true }, null), { type: "act", act: "strict", id: "", flag: true });
+  assert.deepEqual(checkHome({ type: "act", act: "strict", flag: false }, null), { type: "act", act: "strict", id: "", flag: false });
+  assert.equal(checkHome({ type: "act", act: "strict" }, null), null); // on or off, said
+});

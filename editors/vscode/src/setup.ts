@@ -81,7 +81,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   let setUp = false;
   context.subscriptions.push(vscode.commands.registerCommand("graphene.init", async () => {
     // a folder with no plan is set up on Home, in one pick; the two picks here change who plans and who works
-    if (session.status.kind === "uninitialised") return void vscode.commands.executeCommand("graphene.home");
+    if (session.status.kind === "uninitialised") return void vscode.commands.executeCommand("graphene.setUpScreen");
     const planner = await who("planner");
     if (!planner) return;
     const executor = await who("executor");

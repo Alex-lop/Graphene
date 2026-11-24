@@ -11,7 +11,7 @@ declare function acquireVsCodeApi(): { postMessage(m: unknown): void; getState()
 
 type Status = { kind: string; text: string };
 type Last = { n: number; lines: string[]; bad: boolean; key?: boolean };
-type Model = { type: "home"; status: Status; home: Home | null; review: boolean; exact: boolean; busy: string; last: Last; older?: string; cursor?: boolean };
+type Model = { type: "home"; status: Status; home: Home | null; review: boolean; exact: boolean; busy: string; last: Last; older?: string; cursor?: boolean; sessions?: boolean };
 type Saved = { open?: Record<string, boolean>; review?: boolean };
 const api = acquireVsCodeApi();
 let saved: Saved = (() => { try { return (api.getState() as Saved) ?? {}; } catch { return {}; } })();
@@ -330,11 +330,51 @@ function drawSetUp(m: Model) {
   writes.append(" takes them out.");
   if (m.busy) el("p", "busy", m.busy, screen);
   if (m.last.lines.length || m.last.key) drawSaid(el("div", "said", undefined, screen), m.last);
-  button({ label: "Watch the demo first", act: "demo" }, el("div", "foot", undefined, screen)); // a link, as on Home's foot
+  const foot = el("div", "foot", undefined, screen);
+  button({ label: "Watch the demo first", act: "demo" }, foot); // a link, as on Home's foot
+  if (m.sessions) el("button", "quiet", "Back to sessions", foot).addEventListener("click", () => send("strict", { flag: false }));
 }
 
-window.addEventListener("message", (e: MessageEvent<Model>) => {
+/** How long ago, in a word: `now`, `4 min ago`, `3 h ago`, `2 d ago`. */
+const ago = (iso: string): string => {
+  const s = (Date.now() - Date.parse(iso)) / 1000;
+  return !(s >= 60) ? "now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
+};
+
+type Sessions = { type: "sessions"; folder: boolean; sessions: { id: string; agent: string; title: string; status: string; file: string; last: string; error: string }[] };
+
+/** Home in a folder with no plan: its Claude Code and Codex sessions, the ones at work first; a click opens one
+ *  as a graph. */
+function drawSessions(m: Sessions) {
+  work.hidden = banner.hidden = older.hidden = true;
+  screen.hidden = false;
+  screen.replaceChildren();
+  if (!m.folder) {
+    el("h2", "", "Open a folder to start", screen);
+    el("p", "", "Graphene draws the Claude Code and Codex sessions of the folder you open.", screen);
+    button({ label: "Open Folder", act: "openFolder", main: true }, el("div", "acts", undefined, screen));
+    return;
+  }
+  el("h2", "", "Sessions", screen);
+  if (!m.sessions.length) el("p", "", "Start Claude Code or Codex in this folder, the way you always do: its work appears as a graph.", screen);
+  const rank = (st: string) => (st === "needs you" ? 0 : st === "working" ? 1 : 2);
+  const picks = el("div", "picks sessions", undefined, screen);
+  for (const x of [...m.sessions].sort((a, b) => rank(a.status) - rank(b.status))) {
+    const b = el("button", `pick session ${x.status.replace(" ", "-")}`, undefined, picks);
+    el("span", "pick-name", x.title, b);
+    el("span", "pick-note", x.error || `${x.agent === "codex" ? "Codex" : "Claude Code"} · ${x.status} · ${ago(x.last)}`, b);
+    b.title = "open this session as a graph";
+    b.addEventListener("click", () => send("showGraph", { arg: x.file }));
+  }
+  // strict mode is opt-in: one quiet line, and nobody passes through it to see a graph
+  const strict = el("button", "quiet strict", "Strict mode…", el("div", "foot", undefined, screen));
+  strict.title = "Graphene as it was: your agent proposes a plan first, each task has its files and its check. It needs the graphene command, and adds hooks to this folder.";
+  strict.addEventListener("click", () => send("strict", { flag: true }));
+}
+
+window.addEventListener("message", (e: MessageEvent<Model | Sessions>) => {
   const m = e.data;
+  if (m?.type === "sessions") return drawSessions(m);
   if (!m || m.type !== "home") return;
   model = m;
   older.replaceChildren();

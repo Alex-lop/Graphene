@@ -8,7 +8,7 @@ import { needs, OFFERS, offerOn } from "../needs.ts";
 import { headline, SAY, usd, type Question, type State, type Task } from "../state.ts";
 import { WHO } from "./who.ts";
 
-export const ACTS = ["startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
+export const ACTS = ["strict", "startAll", "discardAll", "run", "stop", "drop", "answer", "openDiff", "compare", "keep",
                      "approve", "sendBack", "offer", "tryAgain", "allow", "message", "markDone", "showGraph", "demo", "setup",
                      "install", "setKey", "refresh", "openFolder", "exact", "stopAfter", "review", "runWorkflow"] as const;
 export type Act = (typeof ACTS)[number];
@@ -297,7 +297,7 @@ export function checkHome(m: unknown, s: State | null, workflows: readonly Pick<
   const act = r.act as Act;
   const id = typeof r.id === "string" ? r.id : "";
   const arg = typeof r.arg === "string" ? r.arg : undefined;
-  if (act === "exact" || act === "stopAfter" || act === "review") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
+  if (act === "exact" || act === "stopAfter" || act === "review" || act === "strict") return typeof r.flag === "boolean" ? { type: "act", act, id: "", flag: r.flag } : null;
   if (act === "runWorkflow") return workflows.some((w) => w.name === arg && !w.error) ? { type: "act", act, id: "", arg } : null; // one the repository has
   if (act === "setup") return WHO.some((w) => w.word === arg) ? { type: "act", act, id: "", arg, flag: r.flag === true } : null;
   if (act === "setKey") return arg === undefined || /^\w+$/.test(arg) ? { type: "act", act, id: "", arg } : null;
@@ -306,7 +306,8 @@ export function checkHome(m: unknown, s: State | null, workflows: readonly Pick<
     if (!q || (arg !== undefined && arg !== q.default && !q.options.includes(arg))) return null;
     return { type: "act", act, id, arg };
   }
-  if (act === "showGraph") return !id || s?.tasks.some((t) => t.id === id) ? { type: "act", act, id } : null;
+  // `arg`: a session's file, in a folder with no plan; the host opens only one it found itself (sessions/hub.ts)
+  if (act === "showGraph") return !id || s?.tasks.some((t) => t.id === id) ? { type: "act", act, id, ...(arg !== undefined ? { arg } : {}) } : null;
   if (GLOBAL.includes(act)) return { type: "act", act, id: "" };
   const t = s?.tasks.find((x) => x.id === id);
   if (!t) return null;
