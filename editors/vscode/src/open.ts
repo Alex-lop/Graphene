@@ -37,3 +37,16 @@ export function beside(front: unknown, cursor = false): boolean {
   // ponytail: Settings is covered as Welcome is (VS Code names neither); tell them apart by the tab if a box there matters
   return !cursor && front !== undefined && front !== null;
 }
+
+/** The sessions that get a page of their own now (sessions/hub.ts): the ones that began or wrote since the folder
+ *  was last looked at. `before`: each session file's size at that look, null at the first one, when everything
+ *  there is old: a window never opens on a page per old session. */
+export function wrote(before: ReadonlyMap<string, number> | null, now: readonly { file: string; size: number }[]): string[] {
+  if (!before) return [];
+  return now.filter((f) => f.size > (before.get(f.file) ?? 0)).map((f) => f.file);
+}
+
+/** Whether a session that wrote gets its page now. `on`: the setting graphene.graph.openOnStart. `paged`: a page
+ *  draws it already. `opened`: its page opened by itself once in this window, so a person who closed it is not
+ *  chased by the session's next line. */
+export const pages = (o: { on: boolean; paged: boolean; opened: boolean }): boolean => o.on && !o.paged && !o.opened;
