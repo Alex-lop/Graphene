@@ -187,10 +187,10 @@ function sub(m: Model, s: Sub, k: string, base: (k: string, title: string, full:
 }
 
 /** What Home and a page's band say of a session. */
-export function info(m: Model, st: Status): SessionInfo {
+export function info(m: Model, st: Status, open = false): SessionInfo {
   const first = m.turns.find((t) => t.text)?.text ?? "";
   return { id: m.id, agent: m.agent, title: m.title || titleOf(first) || "a session with no request yet", status: st, cwd: m.cwd, branch: m.branch, file: m.file, last: m.last,
-           requests: m.turns.filter((t) => t.text).length, error: m.error };
+           requests: m.turns.filter((t) => t.text).length, error: m.error, open };
 }
 
 /** The sessions of one page as one snapshot: a session alone fills the page; two or more are a band each, under
@@ -199,7 +199,7 @@ export function snapshot(models: readonly Model[], now: number, live: ReadonlyMa
   const many = models.length > 1;
   const sessions: SessionInfo[] = [], tasks: RawTask[] = [], edges: Drawn["edges"] = [], goals: Raw[] = [];
   for (const m of models) {
-    const st = status(m, now, live.get(m.id)), s = info(m, st), band = many ? `session ${m.id}` : null;
+    const st = status(m, now, live.get(m.id)), s = info(m, st, live.has(m.id)), band = many ? `session ${m.id}` : null;
     sessions.push(s);
     if (band) goals.push({ id: band, title: s.title, parent: null, state: "open", check: null });
     const d = cards(m, st, now, band);

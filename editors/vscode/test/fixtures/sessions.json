@@ -489,7 +489,8 @@
    "file": "requests.jsonl",
    "last": "2026-11-24T10:00:31.000Z",
    "requests": 3,
-   "error": ""
+   "error": "",
+   "open": false
   },
   {
    "id": "tasks",
@@ -501,7 +502,8 @@
    "file": "tasks.jsonl",
    "last": "2026-11-24T10:00:16.000Z",
    "requests": 1,
-   "error": ""
+   "error": "",
+   "open": false
   }
  ]
 }

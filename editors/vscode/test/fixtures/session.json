@@ -354,7 +354,8 @@
    "file": "subagents.jsonl",
    "last": "2026-11-24T10:00:41.000Z",
    "requests": 2,
-   "error": ""
+   "error": "",
+   "open": false
   }
  ]
 }

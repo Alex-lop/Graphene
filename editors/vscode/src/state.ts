@@ -115,6 +115,9 @@ export interface SessionInfo {
   last: string; // when it last wrote, ISO
   requests: number;
   error: string;
+  /** A running agent has it open (its own record of its process says so): it is not offered to be resumed, as two
+   *  writers on one session corrupt it. */
+  open: boolean;
 }
 
 export interface Replay {
@@ -286,7 +289,7 @@ function parseSession(r: Raw): SessionInfo {
   const status = str(r.status);
   return { id: str(r.id), agent: r.agent === "codex" ? "codex" : "claude", title: str(r.title),
            status: status === "working" || status === "needs you" ? status : "idle",
-           cwd: str(r.cwd), branch: str(r.branch), file: str(r.file), last: str(r.last), requests: int(r.requests, 0), error: str(r.error) };
+           cwd: str(r.cwd), branch: str(r.branch), file: str(r.file), last: str(r.last), requests: int(r.requests, 0), error: str(r.error), open: bool(r.open) };
 }
 
 export interface Contract { planned: number | null; signoff: boolean; owner: string }
