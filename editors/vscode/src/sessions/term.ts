@@ -12,7 +12,7 @@ export const bold = paint("1"), dim = paint("2"), red = paint("31"), green = pai
 export const OUTPUT_LINES = 14;
 /** A line an agent wrote is not trusted with the terminal: only printing characters and tabs go through, so no
  *  escape sequence from a transcript moves the cursor, renames the tab or asks the terminal a question. */
-const safe = (s: string): string => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
+export const safe = (s: string): string => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, ""); // controls, and what reorders or hides text
 const rows = (text: string): string[] => text.replace(/\r\n?/g, "\n").split("\n").map(safe);
 
 /** One session's (or one subagent's) events, turned into a terminal's lines as they come. */
@@ -20,12 +20,15 @@ export class Term {
   private calls = new Map<string, string>(); // a call's id -> its tool's name: a result is printed as its tool's
   private over = false; // its turn's end was printed: a transcript says it on each of a reply's last lines, a terminal once
   private readonly cwd: string;
+  private readonly own: string | null;
 
-  constructor(cwd = "") { this.cwd = cwd; }
+  /** `own`: the one thread whose lines are printed ("" the session's own, a subagent's id); null prints them all. */
+  constructor(cwd = "", own: string | null = null) { this.cwd = cwd; this.own = own; }
 
   /** The lines an event prints; none for what a terminal would not have shown. */
   feed(ev: Ev): string[] {
     if (ev.k === "meta") return [];
+    if (this.own !== null && ev.k !== "result" && ev.side !== this.own) return []; // another thread's line (an older transcript mixes them)
     const was = this.over;
     this.over = ev.k === "end" || ev.k === "stop";
     if (was && this.over) return [];
@@ -56,8 +59,9 @@ export class Term {
     return [];
   }
 
+  /** A file's name is an agent's words too (git allows a control byte in one): made safe wherever it is printed. */
   private rel(file: string): string {
-    return this.cwd && file.startsWith(`${this.cwd}/`) ? file.slice(this.cwd.length + 1) : safe(file);
+    return safe(this.cwd && file.startsWith(`${this.cwd}/`) ? file.slice(this.cwd.length + 1) : file);
   }
 }
 
@@ -69,6 +73,23 @@ export function parents(ps: string): Map<number, number> {
     if (m) out.set(Number(m[1]), Number(m[2]));
   }
   return out;
+}
+
+/** `ps -axo pid=,ppid=,command=` as each process's command line. */
+export function commandsOf(ps: string): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const line of ps.split("\n")) {
+    const m = /^\s*(\d+)\s+\d+\s+(.*)$/.exec(line);
+    if (m) out.set(Number(m[1]), m[2]!);
+  }
+  return out;
+}
+
+/** Whether a command line is that agent's own program: its first word, or the script a `node` runs, is named so.
+ *  What a record of a process is held to before it is believed: a pid is given to another program in time. */
+export function runs(command: string, agent: "claude" | "codex"): boolean {
+  const words = command.trim().split(/\s+/), name = (w: string | undefined) => (w ?? "").split("/").pop()!.replace(/\.(js|mjs|cjs|exe)$/, "");
+  return name(words[0]) === agent || (/^(node|bun|deno)$/.test(name(words[0])) && words.slice(1, 4).some((w) => !w.startsWith("-") && (name(w) === agent || w.includes(`/${agent}`))));
 }
 
 /** A process and every process above it, nearest first: the shell that started an agent, the terminal that

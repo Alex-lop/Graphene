@@ -34,6 +34,9 @@ export interface Model {
   turns: Turn[]; subs: Sub[]; sides: Map<string, Side>;
   calls: Map<string, Call>;
   first: string; last: string;
+  /** When the session's file was last written, in ms: a line this reader skips (Codex's reasoning, its token counts)
+   *  is a write all the same, and says the session is not idle. 0: not known. */
+  touched: number;
   /** The task in progress now: what a call is counted under. */
   doing: Todo | null;
   /** A line this could not read, the last one: said on the page in one line. */
@@ -42,13 +45,13 @@ export interface Model {
 
 export const empty = (agent: Agent, file: string, id = ""): Model => ({
   agent, id, file, cwd: "", branch: "", title: "", head: "", model: "",
-  turns: [], subs: [], sides: new Map(), calls: new Map(), first: "", last: "", doing: null, error: "",
+  turns: [], subs: [], sides: new Map(), calls: new Map(), first: "", last: "", touched: 0, doing: null, error: "",
 });
 
 /** The session as it was before a line was read: for a file that was rewritten, and is read from its start again.
  *  In place, as a page holds the model itself. */
 export function reset(m: Model): void {
-  Object.assign(m, empty(m.agent, m.file, m.id), { cwd: m.cwd });
+  Object.assign(m, empty(m.agent, m.file, m.id), { cwd: m.cwd, touched: m.touched });
 }
 
 const SAID = 40; // the agent's last words kept for a card: the terminal view reads the file itself

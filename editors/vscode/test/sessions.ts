@@ -15,6 +15,7 @@ export const found = (file: string, agent: Found["agent"] = "claude"): Found =>
 export async function read(file: string, agent: Found["agent"] = "claude"): Promise<Model> {
   const f = new Follow(found(file, agent));
   await f.read();
+  f.model.touched = 0; // a fixture is not a file being written: when it was checked out says nothing of its session
   return f.model;
 }
 export const scratch = () => mkdtempSync(path.join(os.tmpdir(), "graphene-sessions-"));

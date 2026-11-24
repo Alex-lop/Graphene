@@ -30,7 +30,7 @@ const ms = (iso: string): number => { const t = Date.parse(iso); return Number.i
 export function status(m: Model, now: number, live?: Live | null): Status {
   const t = m.turns.at(-1);
   if (!t) return "idle";
-  const quiet = now - ms(m.last);
+  const quiet = now - Math.max(ms(m.last), m.touched); // its last line read, or its file's last write of any line
   // a subagent or a workflow the request left running behind it: the request is over, the work is not
   const behind = m.agent === "claude" && m.subs.some((s) => s.turn === t.n && !subOver(m, s));
   if (t.ended) return behind && quiet < OUT ? "working" : "idle";

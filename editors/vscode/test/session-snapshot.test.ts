@@ -179,6 +179,14 @@ test("a request that left a subagent running behind it is working while that thr
   assert.equal(status(n, at("2026-11-24T11:30:00.000Z")), "idle"); // an hour and a half quiet: nothing says it runs
 });
 
+test("a file still being written is not idle, though the lines written are ones the reader skips", () => {
+  const m = empty("codex", "x", "c1"), asked = at("2026-11-24T10:00:00.000Z");
+  fold(m, { k: "ask", at: "2026-11-24T10:00:00.000Z", text: "run the long suite", side: "" }); // Codex says a command when it ends: three minutes of nothing read
+  assert.equal(status(m, asked + 3 * 60_000), "idle");
+  m.touched = asked + 3 * 60_000 - 2000; // its reasoning and its token counts are being written all the while
+  assert.equal(status(m, asked + 3 * 60_000), "working");
+});
+
 test("two sessions whose ids begin alike (Codex's begin with the time) keep cards apart", () => {
   const a = empty("codex", "a", "019a1b2c-0000-7000-8000-00000000000a"), b = empty("codex", "b", "019a1b2c-0000-7000-8000-00000000000b");
   for (const m of [a, b]) fold(m, { k: "ask", at: "2026-11-24T10:00:00.000Z", text: "go", side: "" });

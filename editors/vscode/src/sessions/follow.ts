@@ -2,7 +2,7 @@
 // subagents it launched (<session id>/subagents/agent-<id>.jsonl; a workflow's under workflows/<run>/). Each
 // file is read once and then only for what is new (tail.ts), every line into the one model (model.ts). It
 // never throws: a file that cannot be read says so in the model's `error`. Node's file system only.
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import * as path from "node:path";
 import type { Ev } from "./events.ts";
 import { readerOf, type Found, type Reader } from "./find.ts";
@@ -36,6 +36,7 @@ export class Follow {
   private async next(): Promise<boolean> {
     const m = this.model;
     let changed = await this.take(this.tail, "");
+    try { m.touched = (await stat(this.found.file)).mtimeMs; } catch { /* gone: its read says so */ }
     if (this.found.agent !== "claude") return changed;
     for (const s of await this.subagents()) {
       if (!s.named) { // its own note beside it: the call that launched it, where Claude Code says so

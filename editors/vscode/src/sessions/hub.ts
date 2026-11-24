@@ -14,7 +14,8 @@ import { Follow } from "./follow.ts";
 import { empty, fold, type Model } from "./model.ts";
 import { Replay } from "./replay.ts";
 import { info, snapshot, status } from "./snapshot.ts";
-import { Terminals, terminalOf } from "./terminals.ts";
+import { runs } from "./term.ts";
+import { codexMayHave, processes, Terminals, terminalOf } from "./terminals.ts";
 
 /** How often the folder is looked at for sessions, and an open page's files for what is new.
  *  ponytail: a poll, a few dozen stats a look (find.ts `Scan`); watch the directories if idle CPU matters. */
@@ -89,6 +90,11 @@ function front(): unknown {
 function activeColumn(): number | undefined {
   try { return vscode.window.tabGroups.activeTabGroup.viewColumn; } catch { return undefined; }
 }
+/** What is in front is one of the pages. */
+function ownInFront(): boolean {
+  const input = front();
+  return input instanceof vscode.TabInputWebview && input.viewType.includes(PAGE);
+}
 
 export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   /** The folder's sessions, the last written first. */
@@ -157,6 +163,11 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     const folder = this.folder;
     if (folder !== this.scanned) { this.scanned = folder ?? ""; this.scanner = folder ? new Scan(folder) : null; }
     [this.found, this.live] = await Promise.all([this.scanner?.look() ?? Promise.resolve([]), procs()]);
+    // a record of a process is believed only while that process is the agent's: a pid is given to another program in time
+    if (this.live.size) {
+      const { command } = await processes();
+      for (const [id, p] of this.live) if (command.size && !runs(command.get(p.pid) ?? "", "claude")) this.live.delete(id);
+    }
     // a session that began or wrote since the last look gets a page, beside what is in front, once
     const on = this.watching && vscode.workspace.getConfiguration("graphene").get<boolean>("graph.openOnStart", true);
     const dormant = this.dormant();
@@ -215,7 +226,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     if (file && !found) return undefined; // a session the folder no longer has: no page opens in its place
     const have = found ? this.pages.find((p) => p.has(found.file)) : this.pages.find((p) => !p.replay);
     if (have) { if (!quiet) have.panel.reveal(undefined, false); return have; }
-    const to = quiet ? column({ front: front(), active: activeColumn(), pages: this.pages.map((p) => p.panel.viewColumn) }) : "active";
+    const to = quiet ? column({ front: front(), own: ownInFront(), active: activeColumn(), pages: this.pages.map((p) => p.panel.viewColumn) }) : "active";
     const viewColumn = to === "beside" ? vscode.ViewColumn.Beside : to === "active" ? vscode.ViewColumn.Active : to;
     const panel = vscode.window.createWebviewPanel(PAGE, "Graphene", { viewColumn, preserveFocus: quiet }, { enableScripts: true, retainContextWhenHidden: true });
     return this.adopt(panel, found ? [found] : []);
@@ -271,8 +282,8 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     if (own) return own.show(true);
     const who = follow.found.agent === "codex" ? "Codex" : "Claude Code", title = page.drawn?.tasks.find((t) => t.id === id)?.title ?? "";
     const view = side?.file
-      ? this.terminals.tailOf(side.file, follow.found, title, "the tail of this subagent's own transcript")
-      : this.terminals.tailOf(follow.found.file, follow.found, info(follow.model, "idle").title, `the tail of this ${who} session's transcript`);
+      ? this.terminals.tailOf(side.file, follow.found, title, "the tail of this subagent's own transcript", null)
+      : this.terminals.tailOf(follow.found.file, follow.found, info(follow.model, "idle").title, `the tail of this ${who} session's transcript`, "");
     view.show(true);
   }
 
@@ -288,8 +299,13 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
       own?.show();
       return void vscode.window.showInformationMessage(own ? "This session is open in this terminal: it is not started a second time." : "This session is open in a terminal outside the editor: it is not started a second time.");
     }
-    if (status(m, Date.now(), null) !== "idle" || Date.now() - Date.parse(m.last) < 5000) {
+    // any write to its file in the last fifteen seconds, a line this reader skips included, is a session still at work
+    if (status(m, Date.now(), null) !== "idle" || Date.now() - Math.max(Date.parse(m.last) || 0, m.touched) < 15_000) {
       return void vscode.window.showInformationMessage("This session is still writing: resume it once it is idle.");
+    }
+    // Codex keeps no record of which session a running one has open: one that is running in this folder may have this one
+    if (m.agent === "codex" && await codexMayHave(m.id, m.cwd)) {
+      return void vscode.window.showInformationMessage("A Codex is running in this session's folder. If it has this session open, a second one would corrupt it: close it first.");
     }
     if (!this.terminals.resume(follow.found)) void vscode.window.showErrorMessage("Graphene could not tell this session's id from its file.");
   }

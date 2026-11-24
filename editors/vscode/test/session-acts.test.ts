@@ -48,4 +48,7 @@ test("a page that opens by itself never covers the file in front: beside it, or 
   assert.equal(column({ front: undefined, active: 1, pages: [] }), "active"); // nothing in front: nothing to cover
   assert.equal(column({ front: undefined, active: 1, pages: [1] }), 1);
   assert.equal(column({ front: undefined, active: 2, pages: [undefined, 1] }), 1);
+  // one of the pages is what is in front: the next joins it there, and no third group is made beside the pages' own
+  assert.equal(column({ front: { viewType: "page" }, own: true, active: 2, pages: [2, 2] }), 2);
+  assert.equal(column({ front: { viewType: "page" }, own: true, active: undefined, pages: [] }), "active");
 });

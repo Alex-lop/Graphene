@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { claudeLine } from "../src/sessions/claude.ts";
-import { ancestors, OUTPUT_LINES, parents, resumeLine, Term } from "../src/sessions/term.ts";
+import { ancestors, commandsOf, OUTPUT_LINES, parents, resumeLine, runs, Term } from "../src/sessions/term.ts";
 
 const plain = (lines: string[]) => lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
 const lines = (name: string) => readFileSync(new URL(`./fixtures/sessions/${name}`, import.meta.url), "utf8").split("\n");
@@ -40,6 +40,14 @@ test("only the end of a long output is shown, and nothing an agent wrote can dri
   const evil = t.feed({ k: "say", at: "", text: "ok\x1b]0;owned\x07 \x1b[2J\x1b[H done\x9b31m", side: "", model: "" });
   assert.ok(evil.every((l) => !/[\x00-\x08\x0b-\x1f\x7f-\x9f]/.test(l)), JSON.stringify(evil));
   assert.equal(t.feed({ k: "tool", at: "", id: "d", name: "Bash", input: { command: "echo \x1b[31mred" }, side: "" })[0]!.replace(/\x1b\[36m|\x1b\[0m/g, ""), "$ echo [31mred");
+  // a file's name is an agent's words too: git allows control bytes in one, and a cloned repository can hold such a file
+  const named = t.feed({ k: "tool", at: "", id: "f", name: "Read", input: { file_path: "/x/a\x1b]0;owned\x07\x1b[2J\x1b[H.py" }, side: "" });
+  const inside = new Term("/work/app").feed({ k: "tool", at: "", id: "g", name: "Edit", input: { file_path: "/work/app/b\x1b]8;;https://evil\x07click\x1b]8;;\x07\u202e.py" }, side: "" });
+  for (const l of [...named, ...inside]) assert.ok(!/[\x00-\x08\x0b-\x1a\x1c-\x1f\x7f-\x9f\u202e]/.test(l) && !/\x1b(?!\[(2|33|0)m)/.test(l), JSON.stringify(l));
+  // a view of one thread prints only that thread's lines
+  const mine = new Term("", "");
+  assert.deepEqual(mine.feed({ k: "say", at: "", text: "a subagent's words", side: "sidechain", model: "" }), []);
+  assert.equal(plain(mine.feed({ k: "say", at: "", text: "the session's own", side: "", model: "" }))[0], "the session's own");
   // a command that was refused did not run: it is not printed as a failure of the command
   t.feed({ k: "tool", at: "", id: "e", name: "Bash", input: { command: "rm -rf build" }, side: "" });
   assert.deepEqual(plain(t.feed({ k: "result", at: "", id: "e", error: true, out: "This command requires approval", err: "", interrupted: false, exit: null, more: {} })), ["  This command requires approval", "  ✗ did not run", ""]);
@@ -57,4 +65,13 @@ test("a session is taken up again by its id, and an id that is not one puts noth
   assert.equal(resumeLine("claude", "4a26adbb-6712-4d1f-9289-17fc4becbb73"), "claude --resume 4a26adbb-6712-4d1f-9289-17fc4becbb73");
   assert.equal(resumeLine("codex", "01a20f92-f7bd-7743-aec6-1d9cea565dcf"), "codex resume 01a20f92-f7bd-7743-aec6-1d9cea565dcf");
   for (const bad of ["", "x", "a; rm -rf ~", "$(id)", "--help", "id with space", "a/../b"]) assert.equal(resumeLine("claude", bad), "", bad);
+});
+
+test("a record of a process is believed only while that process is the agent's own program", () => {
+  const ps = "  611   610 claude --resume abc\n  700     1 /usr/local/bin/node /opt/lib/node_modules/@scope/claude/cli.js -p hi\n  701     1 /bin/zsh -l\n  702     1 codex resume 01a2\n  703 1 vim claude.md\n";
+  const command = commandsOf(ps);
+  assert.equal(command.get(611), "claude --resume abc");
+  assert.deepEqual([611, 700, 701, 702, 703].map((p) => runs(command.get(p) ?? "", "claude")), [true, true, false, false, false]); // a pid given to another program is not the agent
+  assert.deepEqual([702, 611].map((p) => runs(command.get(p) ?? "", "codex")), [true, false]);
+  assert.equal(runs("", "claude"), false);
 });

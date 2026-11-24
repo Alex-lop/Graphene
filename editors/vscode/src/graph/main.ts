@@ -2054,6 +2054,8 @@ function cardPane(body: HTMLElement, t: TaskX) {
   if (session && session.status === "idle" && !session.open) {
     button({ label: "Resume in terminal", act: "resume", icon: "play", main: true,
              title: `a new terminal in the session's folder, running ${session.agent === "codex" ? "codex resume" : "claude --resume"} with its id` }, session.id, acts);
+    const resume = acts.lastElementChild as HTMLButtonElement;
+    resume.addEventListener("click", () => { resume.disabled = true; }); // once: a second click is not a second writer on the session
   }
 }
 
@@ -2064,7 +2066,9 @@ function pane() {
   const pane = $("details");
   const d = drawn().find((x) => x.key === selected);
   const shown = state?.tasks.find((x) => x.id === selected);
-  const scoped = shown && state && tab() === "scope" ? JSON.stringify([scopeTree(shown, state), stopsOf(shown, state.tasks).count, state.allows]) : "";
+  // a session's card: its pane says its session's state too (what it offers, what git says), and is drawn again when that moves
+  const scoped = shown?.card ? JSON.stringify(state?.sessions?.find((x) => x.id === shown.card!.session) ?? null)
+    : shown && state && tab() === "scope" ? JSON.stringify([scopeTree(shown, state), stopsOf(shown, state.tasks).count, state.allows]) : "";
   const key = d ? JSON.stringify([d, offered.has(d.key)])
     : state ? paneKey(state, selected, replaying()) + (refused.get(selected ?? "") ?? "") + state.envelope.forks + tab() + scoped + seen.has(selected ?? "") : "";
   if (key === paneLast) return;

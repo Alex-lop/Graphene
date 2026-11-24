@@ -52,12 +52,14 @@ export function wrote(before: ReadonlyMap<string, number> | null, now: readonly 
 export const pages = (o: { on: boolean; paged: boolean; opened: boolean }): boolean => o.on && !o.paged && !o.opened;
 
 /** Where a page that opens by itself goes, so it never covers what a person has in front. `front`: what the
- *  active group has in front (`beside`'s). `active`: the active group's column. `pages`: the columns the pages
+ *  active group has in front (`beside`'s); `own`: it is one of the pages. `active`: the active group's column. `pages`: the columns the pages
  *  that are open stand in. With a file in front: a group of pages that is not the file's own, so pages gather in
  *  one group and do not halve the editor again; else beside the file. With nothing in front there is nothing to
  *  cover: with the other pages, or in the active group. */
-export function column(o: { front: unknown; active: number | undefined; pages: readonly (number | undefined)[] }): number | "beside" | "active" {
+export function column(o: { front: unknown; own?: boolean; active: number | undefined; pages: readonly (number | undefined)[] }): number | "beside" | "active" {
   const elsewhere = o.pages.find((c) => c !== undefined && c !== o.active);
+  // one of the pages is what is in front: its group is the pages' own, and a third group beside it would halve them
+  if (o.own) return o.active ?? "active";
   if (beside(o.front)) return elsewhere ?? "beside";
   return elsewhere ?? o.pages.find((c) => c !== undefined) ?? "active";
 }
