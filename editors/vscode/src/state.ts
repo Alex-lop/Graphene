@@ -88,6 +88,33 @@ export interface Task {
   planned: number | null;
   signoff: boolean | null;
   owner: string;
+  /** Set on a card drawn from a session; a plan's task has none. */
+  card?: Card;
+}
+
+/** A card that comes from a session's own file (sessions/), not from a plan. `says`: its state in a session's
+ *  words (working, needs you, idle, done, interrupted, failed, not started), which the plan's `state` only
+ *  approximates. `side`: a subagent's id, whose own transcript is the card's terminal view. */
+export interface Card {
+  session: string;
+  kind: "request" | "task" | "step" | "subagent" | "workflow" | "earlier";
+  says: string;
+  side: string;
+}
+
+/** A session on a page: one agent conversation, as Claude Code or Codex records it on disk. `status`: needs you
+ *  only when the file proves it, else working or idle. `error`: a file that could not be read, in one line. */
+export interface SessionInfo {
+  id: string;
+  agent: "claude" | "codex";
+  title: string;
+  status: "working" | "needs you" | "idle";
+  cwd: string;
+  branch: string;
+  file: string;
+  last: string; // when it last wrote, ISO
+  requests: number;
+  error: string;
 }
 
 export interface Replay {
@@ -193,6 +220,9 @@ export interface State {
   tasks: Task[];
   edges: [string, string, string][];
   news: string[];
+  /** The sessions this page draws, when its source is their files and not a plan (sessions/): each a band of
+   *  cards. Absent for a plan. */
+  sessions?: SessionInfo[];
 }
 
 type Raw = Record<string, unknown>;
@@ -241,7 +271,22 @@ export function parseTask(r: Raw): Task {
     held: { state: held === "refused" || held === "caught" || held === "none" ? held : "", by: str(obj(r.held).by) },
     command: optStr(r.command), leaves: bool(r.leaves),
     planned: null, signoff: null, owner: "",
+    ...(r.card && typeof r.card === "object" ? { card: parseCard(obj(r.card)) } : {}),
   };
+}
+
+const KINDS: readonly Card["kind"][] = ["request", "task", "step", "subagent", "workflow", "earlier"];
+
+function parseCard(r: Raw): Card {
+  const kind = str(r.kind) as Card["kind"];
+  return { session: str(r.session), kind: KINDS.includes(kind) ? kind : "request", says: str(r.says), side: str(r.side) };
+}
+
+function parseSession(r: Raw): SessionInfo {
+  const status = str(r.status);
+  return { id: str(r.id), agent: r.agent === "codex" ? "codex" : "claude", title: str(r.title),
+           status: status === "working" || status === "needs you" ? status : "idle",
+           cwd: str(r.cwd), branch: str(r.branch), file: str(r.file), last: str(r.last), requests: int(r.requests, 0), error: str(r.error) };
 }
 
 export interface Contract { planned: number | null; signoff: boolean; owner: string }
@@ -326,6 +371,7 @@ export function parseState(text: string): State {
       options: strs(q.options), about: typeof q.about === "string" ? q.about : null, kind: str(q.kind, "question"),
     })).filter((q) => q.id),
     goals, tasks, edges, news: strs(r.news),
+    ...(Array.isArray(r.sessions) ? { sessions: list(r.sessions).map(parseSession).filter((x) => x.id) } : {}),
   };
 }
 
