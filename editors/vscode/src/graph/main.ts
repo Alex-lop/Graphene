@@ -12,7 +12,7 @@ import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, covers, coversI
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, earlier, edgeKind, editable,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
-         planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whatFor, whenEdit, who, writtenOf,
+         planningLine, PROVES_NOTHING, provesNothing, questionOn, scopeTree, START_AGENT, startAnswers, stopsOf, sub, tabOrder, tokenWords, topLine, whatFor, whenEdit, who, writtenOf,
          type Button, type ForkX, type StateX, type TaskX } from "./words.ts";
 import { CARD, dotGap, FAR, FULL_FROM, fitPlan, fitView, hold, levelFor, miniFrame, miniSize, nearest, offScreen, onto, panTo, percent, ROWS_FROM, settle, switchK, wheelK, ZOOM_MAX, ZOOM_MIN, zoomK,
          type Level, type Size, type Zoom } from "./zoom.ts";
@@ -293,7 +293,10 @@ function goalTitle(s: State, id: string): string {
   return s.goals.find((g) => g.id === id)?.title ?? s.drafting?.steps.find((d) => d.id === id)?.title ?? id;
 }
 
-const replaying = () => Boolean(state?.replay);
+/** A page of sessions (state.ts `sessions`): drawn from their own files, not from a plan. */
+const sessions = () => Boolean(state?.sessions);
+/** Watched, not worked on: a replay, and a page of sessions. Nothing there draws a task, links one or acts on a plan. */
+const replaying = () => Boolean(state?.replay) || sessions();
 
 /** The tab's width, the canvas and a pane beside it: what says whether it is narrow. Not the canvas alone, which
  *  a pane opening beside it narrows: choosing a card would turn the graph to lanes, or lay it downward. */
@@ -353,7 +356,8 @@ function render() {
   if (!s.tasks.length) {
     $("notice").className = "";
     $("notice").replaceChildren();
-    div("notice-head", "Nothing is planned yet.", $("notice")); // what is so, then what to do about it
+    div("notice-head", sessions() ? "No session here yet." : "Nothing is planned yet.", $("notice")); // what is so, then what to do about it
+    if (sessions()) $("notice").append(START_AGENT);
     if (!replaying()) $("notice").append(ASK_AGENT);
     if (!replaying() && document.body.dataset.editor === "cursor") div("notice-aside", CURSOR_AGENT, $("notice")); // the host says which editor (graph.ts)
     if (!replaying()) button({ label: "Add task", act: "add-under", title: "draw a task: its title, then its files and its check", icon: "add", main: true }, "", $("notice"));
@@ -443,7 +447,7 @@ function header(s: StateX, blank: boolean) {
   $("auto").textContent = $("auto").title = h.auto;
   $("auto").hidden = !h.auto;
   // one pipeline, the plan first: Plan, Run, Review; none before there is a plan to be at a stage of
-  $("pipe").hidden = !s.tasks.length;
+  $("pipe").hidden = !s.tasks.length || !h.stages.length; // a page of sessions has no stages: nothing there is started
   $("stages").replaceChildren(...h.stages.map((st, i) => {
     const stage = div(`stage ${st.at}`);
     stage.setAttribute("role", "listitem");
@@ -1112,7 +1116,8 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   grp.setAttribute("class", `task ${cls(t.state)}${t.id === selected ? " selected" : ""}${t.needs_you ? " needs-you" : ""}`);
   grp.setAttribute("data-mark", stateMark(t));
   const asked = state ? questionOn(state, t.id)?.text ?? "" : "";
-  const line = cardLine(t, 60, asked), times = attemptsMark(t, limit), check = checkMark(t), what = covers(t);
+  const line = cardLine(t, 60, asked), times = attemptsMark(t, limit), what = covers(t);
+  const check: CheckMark = t.card ? { box: "unrun", tone: "dim", words: "" } : checkMark(t); // a session's card: no check of a plan's to wear
   if (times) grp.dataset.attempts = String(parseInt(times)); else delete grp.dataset.attempts;
   // its state in words where its line says something else (a question): only its mark says it to the eye
   const word = markWord(stateMark(t), t), said = (l: string) => (l.startsWith(word) ? l : `${word}, ${l}`);
@@ -1149,7 +1154,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
     right = actButton(grp, { label: "Answer…", act: "answer", icon: "", main: true, title: `its answers, in its pane: ${asked}` }, t.id, t.title,
                       () => { select(t.id); document.querySelector<HTMLElement>("#details .ask-opts button")?.focus(); });
   } else {
-    const tail = t.state === "running" && t.model && t.forks.length < 2 ? cut(t.model, 14) : times;
+    const tail = t.card ? "" : t.state === "running" && t.model && t.forks.length < 2 ? cut(t.model, 14) : times; // a session's card: its line is what it is doing, its model is in its pane
     const end = tail ? grp.appendChild(el("text", { class: tail === times ? "times" : "model", x: right, y: STATUS_Y, "text-anchor": "end" }, tail)) : null;
     if (end) right -= (end.getComputedTextLength() || tail.length * 7) + 8;
     if (end && tail === times) end.appendChild(el("title", {}, attemptsWhy(parseInt(times))));
@@ -1170,7 +1175,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
     chip.appendChild(el("title", {}, forkRow(f, t.kept)));
     grp.appendChild(chip);
   });
-  cardFoot(grp, check, (n) => doneWhen(t, n), h);
+  cardFoot(grp, check, (n) => doneWhen(t, n), h, BOX_W, t.card ? "" : undefined);
   grp.appendChild(el("title", {}, hover));
   // its ports, where its lines join: in at the left, out at the right (the top and the foot when laid downward)
   grp.appendChild(el("circle", { class: "port in", cx: down ? BOX_W / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
@@ -1470,7 +1475,7 @@ function legendRow(s: StateX) {
 
 /** The steps to act on, in the plan's order: what the header's chip counts, and `n` walks.
  *  None in a replay, which is watched. */
-const wantYou = (): string[] => (state && !replaying() ? wanting(state.tasks) : []);
+const wantYou = (): string[] => (state && !state.replay ? wanting(state.tasks) : []); // a session's card that needs you counts: only a replay is past
 
 /** The next step that wants you, selected and brought on screen; round again after the last. */
 function showNext() {
@@ -1993,6 +1998,19 @@ function activityTab(body: HTMLElement, t: TaskX) {
   if (body.childElementCount === before) div("dim", t.state === "done" ? "Done, with no moves recorded." : t.agent ? "Nothing reported yet." : "No agent has been on it yet.", body);
 }
 
+/** The pane of a session's card: what it was asked, what it is doing or said last, the files it wrote and its
+ *  last moves. Only what its session's file says. */
+function cardPane(body: HTMLElement, t: TaskX) {
+  if (t.full && t.full !== t.title) div("d-asked", cut(t.full, 600), part(body, t.card?.kind === "request" ? "Asked" : "For"));
+  if (t.note) div("", t.note, part(body, t.state === "running" ? "Doing" : "Said last"));
+  const changed = part(body, "Changed", t.changed.length ? String(t.changed.length) : "");
+  if (!t.changed.length) div("dim", "no file written", changed);
+  for (const f of t.changed) code(f, div("", undefined, changed));
+  if (!t.tail.length) return;
+  const moves = div("mono", undefined, part(body, "Last moves"));
+  for (const line of t.tail) div("move", line, moves);
+}
+
 /** The pane is rebuilt only when what it shows changed (its key); then the focused button, by its words,
  *  and the scroll are kept, so a keyboard user reaches its buttons while a run writes the store. A box being
  *  typed in is never rebuilt under the typing: the pane waits for it to be left. */
@@ -2051,6 +2069,13 @@ function pane() {
   const inFoot = (b: Button) => b.main || ["openDiff", "signOff"].includes(b.act) || (b.act === "sendBack" && t.state === "review")
     || (b.act === "drop" && t.state === "proposed") || (b.act === "compareForks" && !t.kept);
   const tools = div("d-tools", undefined, head);
+  if (t.card) { // a session's card: what it says of itself, and no act on a plan
+    meta.replaceChildren();
+    div("d-state", t.card.says, meta);
+    meta.append(` · ${[t.agent, t.model].filter(Boolean).join(" · ")}`);
+    closer(tools);
+    return cardPane(div("d-body", undefined, pane), t);
+  }
   paneMenu(tools, t.id, all.filter((b) => !inFoot(b)));
   closer(tools);
   const body = div("d-body", undefined, pane);

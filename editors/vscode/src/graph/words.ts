@@ -379,6 +379,24 @@ export function sub(t: TaskX, max = 25): string {
   return fitWords(parts, max);
 }
 
+/** A session card's status line: its state in a session's words, how long a working one has been quiet, then what
+ *  it is doing now, or said last. */
+export function sessionLine(t: Pick<TaskX, "card" | "state" | "idle" | "note">, max: number): string {
+  const head = [t.card?.says ?? "", t.state === "running" ? quiet(t.idle) : ""].filter(Boolean).join(" · ");
+  return cut([head, t.note].filter(Boolean).join(" · "), max);
+}
+
+/** Under a page's title: what its sessions are doing, each agent named (`Claude Code · working`); the one line a
+ *  file that could not be read is said in. */
+export function sessionsLine(sessions: NonNullable<StateX["sessions"]>): string {
+  const bad = sessions.find((x) => x.error);
+  if (bad) return bad.error;
+  const who = (x: { agent: string }) => (x.agent === "codex" ? "Codex" : "Claude Code");
+  if (sessions.length === 1) return `${who(sessions[0]!)} · ${sessions[0]!.status}${sessions[0]!.branch ? ` · ${sessions[0]!.branch}` : ""}`;
+  const n = (st: string) => sessions.filter((x) => x.status === st).length;
+  return [n("needs you") ? `${n("needs you")} need you` : "", n("working") ? `${n("working")} working` : "", n("idle") ? `${n("idle")} idle` : ""].filter(Boolean).join(" · ");
+}
+
 /** A fork's chip: its letter and model, then that it is kept and why (`b ✓ kept: 4 lines against 12`, the
  *  cockpit's words), then as many as fit of its words. While it runs the numbers are the news, so its
  *  lines, seconds quiet and dollars come before the state word (its border says it runs anyway); once it
@@ -417,6 +435,8 @@ export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
  *  bar). The cost is said once: not beside an auto line that says it against its budget, and not for a race
  *  against the scripted stand-in or a replay, which spend nothing (state.ts `free`). */
 export function headerFor(s: StateX): { goal: string; auto: string; stages: Stage[] } {
+  // a page of sessions: its session's title, or how many it draws; no stages, a session is not a plan to start
+  if (s.sessions) return { goal: s.sessions.length === 1 ? s.sessions[0]!.title : s.sessions.length ? `${s.sessions.length} sessions` : "Graphene", auto: sessionsLine(s.sessions), stages: [] };
   const drawing = s.drafting?.steps.find((d) => !d.leaf && !d.parent)?.title;
   const goal = headline(s) || drawing || (s.tasks.length ? "your plan" : "Graphene"); // an ask sets no goal: what was asked
   const auto = s.auto?.stage === "done" ? "" : autoLine(s);
@@ -569,6 +589,8 @@ export function linkHint(title: string, dragging: boolean): string {
 /** The empty graph's words: who plans here, by name. Graphene's hooks reach Claude Code and Codex alone, not
  *  Cursor's own Agent: in Cursor that is said too, in the same words wherever a screen points to an agent. */
 export const ASK_AGENT = `${ASK}: its plan appears here. Or draw the first task.`;
+/** The empty page of a folder with no plan: what to do, in one line. */
+export const START_AGENT = "Start Claude Code or Codex in this folder, the way you always do: its work appears here as a graph.";
 export const CURSOR_AGENT = NOT_CURSOR;
 
 /** The question chip's words, its two halves as the tasks' chip has them: how many, then what a click on Start or Run
