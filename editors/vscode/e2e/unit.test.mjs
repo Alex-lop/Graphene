@@ -67,3 +67,9 @@ test("an app the harness launches cannot reach the real Token Factory: no shell 
   // launch() puts it in the app's environment after the person's own variables, so it wins over them
   assert.match(L.launch.toString(), /\.\.\.cleanEnv\(\), \.\.\.safeEnv\(standin\)/);
 });
+
+test("a PATH with no graphene on it: every directory that has one is left out, the rest keep their order", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "no-graphene-"));
+  writeFileSync(path.join(dir, "graphene"), "");
+  assert.equal(L.noGraphene(["/usr/bin", dir, "/bin", ""].join(path.delimiter)), ["/usr/bin", "/bin"].join(path.delimiter));
+});
