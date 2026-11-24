@@ -6,9 +6,10 @@
 // Pure: sessions in, a snapshot out.
 import * as path from "node:path";
 import { cutWhole } from "../graph/marks.ts";
-import { parseState, type Card, type SessionInfo, type State, type Word } from "../state.ts";
+import { parseState, type Card, type GitFacts, type Receipt, type SessionInfo, type State, type Word } from "../state.ts";
 import { COMMAND, str, SUBAGENT, WORKFLOW, WRITES, type Raw } from "./events.ts";
 import { sidesOf, subOver, type Call, type Model, type Sub, type Turn } from "./model.ts";
+import { receipt, shared } from "./receipt.ts";
 
 export type Status = SessionInfo["status"];
 /** What the agent's own record of its process says while it runs (find.ts `procs`): `busy` or `idle`. */
@@ -70,16 +71,6 @@ export function titleOf(text: string, n = 72): string {
   return cutWhole(oneLine(line), n);
 }
 
-/** The files a card's calls wrote, as paths from the session's folder, each once, in the order first written. */
-export function written(calls: readonly Call[], cwd: string): string[] {
-  const out: string[] = [];
-  for (const c of calls) {
-    const file = WRITES.includes(c.name) && c.done && !c.error ? rel(str(c.input.file_path) || str(c.input.notebook_path), cwd) : "";
-    if (file && !out.includes(file)) out.push(file);
-  }
-  return out;
-}
-
 /** A plan's steps, out of the text ExitPlanMode carried: its numbered items, else its second-level headings.
  *  Fewer than two is no plan to draw. */
 export function planSteps(plan: string): string[] {
@@ -115,8 +106,15 @@ export function cards(m: Model, st: Status, now: number, band: string | null): D
     st === "working" ? { state: "running", needs_you: false, says: "working" }
       : st === "needs you" ? { state: "running", needs_you: true, says: "needs you" } : { state: "waiting", needs_you: false, says: "idle" };
   const base = (k: string, title: string, full: string, kind: Card["kind"], side = ""): RawTask => ({
-    id: id(k), title, full, parent: band, agent: who, model: m.model, scope: [], needs: [], check: null, card: { session: m.id, kind, says: "", side },
+    id: id(k), title, full, parent: band, agent: who, model: m.model, scope: [], needs: [], check: null, card: { session: m.id, kind, says: "", side, receipt: null },
   });
+  /** What a card did, after the fact: its receipt, and the files of it for the card's chip. */
+  const did = (t: RawTask, calls: readonly Call[]) => {
+    const r = receipt(calls, m.cwd);
+    (t.card as Card).receipt = r;
+    t.changed = r.changed.map((c) => c.file);
+    return t;
+  };
   const say = (t: RawTask, s: { state: Word; needs_you?: boolean; says: string }) => {
     Object.assign(t, { state: s.state, needs_you: s.needs_you === true, idle: s.state === "running" ? idle : null });
     (t.card as Card).says = s.says;
@@ -132,7 +130,7 @@ export function cards(m: Model, st: Status, now: number, band: string | null): D
   if (before.length) {
     const calls = before.flatMap((t) => t.calls);
     const c = base("earlier", `${before.length} earlier request${before.length > 1 ? "s" : ""}`, before.map((t) => titleOf(t.text)).filter(Boolean).join("\n"), "earlier");
-    Object.assign(c, { changed: written(calls, m.cwd), tail: [], note: titleOf(before[0]!.text, 160) });
+    Object.assign(did(c, calls), { tail: [], note: titleOf(before[0]!.text, 160) });
     tasks.push(say(c, { state: "done", says: "done" }));
     prev = [c.id];
   }
@@ -140,14 +138,15 @@ export function cards(m: Model, st: Status, now: number, band: string | null): D
   for (const t of shown) {
     const over = t !== last || t.ended;
     const c = base(`r${t.n}`, titleOf(t.text) || "continued", t.text, "request");
-    Object.assign(c, { changed: written(t.calls, m.cwd), tail: tailOf(t.calls, m.cwd), note: line(t.calls, t.said, over, m.cwd) });
+    Object.assign(did(c, t.calls), { tail: tailOf(t.calls, m.cwd), note: line(t.calls, t.said, over, m.cwd) });
     tasks.push(say(c, over ? { state: "done", says: t.stopped ? "interrupted" : "done" } : under()));
     for (const p of prev) edges.push([p, c.id, "needs"]);
     prev = [c.id];
     const steps = t.todos.length ? [] : planSteps(t.plan);
     for (const todo of t.todos) {
       const d = base(`r${t.n}t${todo.id}`, titleOf(todo.title), todo.title, "task"), now_ = todo.state === "in_progress";
-      Object.assign(d, { changed: written(todo.calls, m.cwd), tail: tailOf(todo.calls, m.cwd), note: now_ ? line(todo.calls, [todo.doing], over, m.cwd) : "" });
+      Object.assign(did(d, todo.calls), { tail: tailOf(todo.calls, m.cwd), note: now_ ? line(todo.calls, [todo.doing], over, m.cwd) : "" });
+      if (todo.state === "pending" && !todo.calls.length) (d.card as Card).receipt = null; // not started: nothing happened to give a receipt of
       // a task left in progress by a request that is over was not finished: the list says so, and so does its card
       tasks.push(say(d, todo.state === "completed" ? { state: "done", says: "done" } : now_ ? (over ? { state: "waiting", says: "left in progress" } : under()) : { state: "waiting", says: "not started" }));
       edges.push([prev[0]!, d.id, "needs"]);
@@ -181,31 +180,40 @@ function sub(m: Model, s: Sub, k: string, base: (k: string, title: string, full:
   const over = m.agent === "codex" ? turnOver : subOver(m, s);
   const title = titleOf(s.title) || (s.kind === "workflow" ? "workflow" : "subagent");
   const task = base(k, title, str(s.call.input.prompt) || s.title, s.kind, s.kind === "subagent" ? sides[0]?.id ?? "" : "");
+  const r = receipt(calls, m.cwd);
+  (task.card as Card).receipt = r;
   Object.assign(task, { agent: s.kind === "workflow" ? "workflow" : s.type || "subagent", model: str(s.call.more.resolvedModel) || str(s.call.input.model),
-                        changed: written(calls, m.cwd), tail: tailOf(calls, m.cwd), note: line(calls, said, over, m.cwd) });
+                        changed: r.changed.map((c) => c.file), tail: tailOf(calls, m.cwd), note: line(calls, said, over, m.cwd) });
   return { task, over };
 }
 
 /** What Home and a page's band say of a session. */
-export function info(m: Model, st: Status, open = false): SessionInfo {
+export function info(m: Model, st: Status, open = false, git: GitFacts | null = null): SessionInfo {
   const first = m.turns.find((t) => t.text)?.text ?? "";
   return { id: m.id, agent: m.agent, title: m.title || titleOf(first) || "a session with no request yet", status: st, cwd: m.cwd, branch: m.branch, file: m.file, last: m.last,
-           requests: m.turns.filter((t) => t.text).length, error: m.error, open };
+           requests: m.turns.filter((t) => t.text).length, error: m.error, open,
+           // the session as a whole: every call of its own thread and of its subagents', in the order they were made
+           receipt: receipt([...m.calls.values()], m.cwd), git };
 }
 
 /** The sessions of one page as one snapshot: a session alone fills the page; two or more are a band each, under
  *  its title. `live`: each session's own process record, by its id, where there is one. */
-export function snapshot(models: readonly Model[], now: number, live: ReadonlyMap<string, Live> = new Map()): State {
+export function snapshot(models: readonly Model[], now: number, live: ReadonlyMap<string, Live> = new Map(), git: ReadonlyMap<string, GitFacts> = new Map()): State {
   const many = models.length > 1;
   const sessions: SessionInfo[] = [], tasks: RawTask[] = [], edges: Drawn["edges"] = [], goals: Raw[] = [];
   for (const m of models) {
-    const st = status(m, now, live.get(m.id)), s = info(m, st, live.has(m.id)), band = many ? `session ${m.id}` : null;
+    const st = status(m, now, live.get(m.id)), s = info(m, st, live.has(m.id), git.get(m.id) ?? null), band = many ? `session ${m.id}` : null;
     sessions.push(s);
     if (band) goals.push({ id: band, title: s.title, parent: null, state: "open", check: null });
     const d = cards(m, st, now, band);
     tasks.push(...d.tasks);
     edges.push(...d.edges);
   }
+  // a file two of the page's sessions wrote is said on both, and on each card of theirs that wrote it
+  const wrote = sessions.map((s) => ({ id: s.id, title: s.title, files: s.receipt?.changed.map((c) => c.file) ?? [] }));
+  const others = (id: string) => wrote.filter((w) => w.id !== id);
+  for (const s of sessions) if (s.receipt) s.receipt.flags.push(...shared(s.receipt, others(s.id)));
+  for (const t of tasks) { const c = t.card as Card; if (c.receipt) c.receipt.flags.push(...shared(c.receipt, others(c.session))); }
   const running = tasks.filter((t) => t.state === "running" && !t.needs_you).length, need = tasks.filter((t) => t.needs_you).length;
   return parseState(JSON.stringify({
     schema: 1, graphene: "", repo: models[0]?.cwd ?? "", goal: "", asked: sessions.length === 1 ? sessions[0]!.title : "", goals, tasks, edges, sessions,

@@ -18,6 +18,13 @@ test("Claude Code: the snapshot is a card a request, in order, with what each wr
     ["Now make it count hyphenated words as one.", "running", "working", "request"],
   ]);
   assert.deepEqual(s.tasks[0]!.changed, ["wordcount.py", "tests/test_wordcount.py"]); // from the session's folder
+  // each card carries its receipt, and the session one for all of it
+  const r = s.tasks[0]!.card!.receipt!;
+  assert.deepEqual(r.changed.map((c) => [c.file, c.how]), [["wordcount.py", "edited"], ["tests/test_wordcount.py", "created"]]);
+  assert.deepEqual(r.checks.map((c) => [c.tool, c.verdict, c.command]), [["unittest", "passed", "python3 -m unittest -v"]]);
+  assert.deepEqual([r.tests, r.flags], ["passed", []]);
+  assert.deepEqual([s.tasks[1]!.card!.receipt!.tests, s.tasks[2]!.card!.receipt!.tests], ["none", "none"]); // git diff is no test; a run still out has no result
+  assert.deepEqual([s.sessions![0]!.receipt!.changed.length, s.sessions![0]!.receipt!.tests, s.sessions![0]!.git], [2, "passed", null]);
   assert.equal(s.tasks[0]!.note, "Fixed, and both tests pass."); // over: the agent's last words
   assert.equal(s.tasks[2]!.note, "$ python3 -m unittest"); // under way: the call that is out
   assert.deepEqual(s.tasks[0]!.tail.slice(-2), ["write tests/test_wordcount.py", "$ python3 -m unittest -v"]);
@@ -140,6 +147,16 @@ test("two sessions on one page are a band each, under its title", async () => {
   assert.deepEqual(s.goals.map((g) => g.title), ["Fix the word counter", "slug() keeps punctuation. Strip it, add a test, and run the tests."]);
   assert.deepEqual([...new Set(s.tasks.map((t) => t.parent))], s.goals.map((g) => g.id));
   assert.equal(new Set(s.tasks.map((t) => t.id)).size, s.tasks.length); // no two cards share an id
+  // a file both sessions wrote is said on each, and on the cards that wrote it
+  fold(b, { k: "tool", at: "2026-11-24T10:00:17.000Z", id: "x1", name: "Edit", input: { file_path: "/work/app/wordcount.py" }, side: "" });
+  fold(b, { k: "result", at: "2026-11-24T10:00:18.000Z", id: "x1", error: false, out: "", err: "", interrupted: false, exit: null, more: {} });
+  const both = snapshot([a, b], at(a.last) + 1000, new Map(), new Map([[a.id, { noted: true, commits: 1, unexplained: ["gen/out.txt"] }]]));
+  assert.deepEqual(both.sessions!.map((x) => x.receipt!.flags.map((f) => [f.kind, f.line, f.note])), [
+    [["written by two sessions", "wordcount.py", "also written by “slug() keeps punctuation. Strip it, add a test, and run the tests.”"]],
+    [["written by two sessions", "wordcount.py", "also written by “Fix the word counter”"]]]);
+  assert.deepEqual(both.tasks[0]!.card!.receipt!.flags.map((f) => f.kind), ["written by two sessions"]);
+  assert.deepEqual(both.tasks[1]!.card!.receipt!.flags, []); // a card that did not write it says nothing
+  assert.deepEqual(both.sessions!.map((x) => x.git), [{ noted: true, commits: 1, unexplained: ["gen/out.txt"] }, null]); // what git said of each, where it was asked
   assert.equal(s.sessions!.length, 2);
 });
 

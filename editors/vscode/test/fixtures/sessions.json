@@ -112,7 +112,33 @@
     "session": "requests",
     "kind": "request",
     "says": "done",
-    "side": ""
+    "side": "",
+    "receipt": {
+     "changed": [
+      {
+       "file": "wordcount.py",
+       "how": "edited",
+       "outside": false
+      },
+      {
+       "file": "tests/test_wordcount.py",
+       "how": "created",
+       "outside": false
+      }
+     ],
+     "checks": [
+      {
+       "tool": "unittest",
+       "kind": "test",
+       "command": "python3 -m unittest -v",
+       "verdict": "passed",
+       "why": "its output says OK",
+       "at": "2026-11-24T10:00:10.000Z"
+      }
+     ],
+     "tests": "passed",
+     "flags": []
+    }
    }
   },
   {
@@ -166,7 +192,13 @@
     "session": "requests",
     "kind": "request",
     "says": "interrupted",
-    "side": ""
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   },
   {
@@ -220,7 +252,13 @@
     "session": "requests",
     "kind": "request",
     "says": "working",
-    "side": ""
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   },
   {
@@ -283,7 +321,19 @@
     "session": "tasks",
     "kind": "request",
     "says": "working",
-    "side": ""
+    "side": "",
+    "receipt": {
+     "changed": [
+      {
+       "file": "export/csv.py",
+       "how": "created",
+       "outside": false
+      }
+     ],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   },
   {
@@ -340,7 +390,19 @@
     "session": "tasks",
     "kind": "task",
     "says": "done",
-    "side": ""
+    "side": "",
+    "receipt": {
+     "changed": [
+      {
+       "file": "export/csv.py",
+       "how": "created",
+       "outside": false
+      }
+     ],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   },
   {
@@ -394,7 +456,13 @@
     "session": "tasks",
     "kind": "task",
     "says": "working",
-    "side": ""
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   },
   {
@@ -446,7 +514,8 @@
     "session": "tasks",
     "kind": "task",
     "says": "not started",
-    "side": ""
+    "side": "",
+    "receipt": null
    }
   }
  ],
@@ -490,7 +559,34 @@
    "last": "2026-11-24T10:00:31.000Z",
    "requests": 3,
    "error": "",
-   "open": false
+   "open": false,
+   "receipt": {
+    "changed": [
+     {
+      "file": "wordcount.py",
+      "how": "edited",
+      "outside": false
+     },
+     {
+      "file": "tests/test_wordcount.py",
+      "how": "created",
+      "outside": false
+     }
+    ],
+    "checks": [
+     {
+      "tool": "unittest",
+      "kind": "test",
+      "command": "python3 -m unittest -v",
+      "verdict": "passed",
+      "why": "its output says OK",
+      "at": "2026-11-24T10:00:10.000Z"
+     }
+    ],
+    "tests": "passed",
+    "flags": []
+   },
+   "git": null
   },
   {
    "id": "tasks",
@@ -503,7 +599,20 @@
    "last": "2026-11-24T10:00:16.000Z",
    "requests": 1,
    "error": "",
-   "open": false
+   "open": false,
+   "receipt": {
+    "changed": [
+     {
+      "file": "export/csv.py",
+      "how": "created",
+      "outside": false
+     }
+    ],
+    "checks": [],
+    "tests": "none",
+    "flags": []
+   },
+   "git": null
   }
  ]
 }

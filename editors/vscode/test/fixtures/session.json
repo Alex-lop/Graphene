@@ -93,7 +93,13 @@
     "session": "subagents",
     "kind": "request",
     "says": "done",
-    "side": ""
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   },
   {
@@ -147,7 +153,13 @@
     "session": "subagents",
     "kind": "subagent",
     "says": "done",
-    "side": "aaa111"
+    "side": "aaa111",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   },
   {
@@ -201,7 +213,13 @@
     "session": "subagents",
     "kind": "subagent",
     "says": "working",
-    "side": "bbb222"
+    "side": "bbb222",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   },
   {
@@ -257,7 +275,19 @@
     "session": "subagents",
     "kind": "workflow",
     "says": "done",
-    "side": ""
+    "side": "",
+    "receipt": {
+     "changed": [
+      {
+       "file": "setup.cfg",
+       "how": "edited",
+       "outside": false
+      }
+     ],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   },
   {
@@ -311,7 +341,13 @@
     "session": "subagents",
     "kind": "request",
     "says": "working",
-    "side": ""
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
    }
   }
  ],
@@ -355,7 +391,20 @@
    "last": "2026-11-24T10:00:41.000Z",
    "requests": 2,
    "error": "",
-   "open": false
+   "open": false,
+   "receipt": {
+    "changed": [
+     {
+      "file": "setup.cfg",
+      "how": "edited",
+      "outside": false
+     }
+    ],
+    "checks": [],
+    "tests": "none",
+    "flags": []
+   },
+   "git": null
   }
  ]
 }

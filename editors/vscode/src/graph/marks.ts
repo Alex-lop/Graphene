@@ -2,8 +2,8 @@
 // and the "need you" chip count from those marks, what the check's box at a card's foot says, the files
 // chip's latest fact, and the one act a card wears. A mark is drawn only for what a field of the snapshot
 // says (state.ts); the words are words.ts's and `SAY`'s. No DOM here, so `node --test` reads them.
-import { SAY, type Goal } from "../state.ts";
-import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, fitWords, provesNothing, sub, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
+import { SAY, type Goal, type Receipt } from "../state.ts";
+import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, fitWords, flagsWords, provesNothing, sub, testsWords, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
 
 /** The one mark a step's state wears, the same shape at every size: a circle is the run's own business
  *  (waiting, ready, working, landed, suggested), a diamond is the person (you, yours), a triangle is trouble (back). */
@@ -162,6 +162,21 @@ export function checkMark(t: Checked): CheckMark {
   if (b!.tone === "red") return { box: "tells", tone: "plain", words: said };
   return { box: "unrun", tone: "dim", words: said || (!open ? "" : t.state === "running" || t.state === "came back" ? a.line : unsaid) };
 }
+
+/** The foot of a session's card: its receipt's tests. A tick only for a pass that was seen; a cross for a failure;
+ *  a dashed box where tests ran and their result was not seen; a dotted one, dim, where none ran. Its hover says
+ *  what decided each tool's verdict. No receipt (a plan's step): no foot. */
+export function receiptMark(r: Receipt | null | undefined): CheckMark {
+  if (!r) return { box: "unrun", tone: "dim", words: "" };
+  const why = r.checks.map((c) => `${c.tool} ${c.verdict === "unseen" ? "ran, result not seen" : c.verdict}: ${c.why}`).join(" · ");
+  if (r.tests === "passed") return { box: "passed", tone: "ok", words: why };
+  if (r.tests === "failed") return { box: "failed", tone: "red", words: why };
+  if (r.tests === "unseen") return { box: "hollow", tone: "warn", words: why };
+  return { box: "unrun", tone: "dim", words: why };
+}
+
+/** What that foot says, in ``n`` characters: the tests, then how many things are worth a second look. */
+export const receiptFoot = (r: Receipt | null | undefined, n: number): string => (r ? cutWhole([testsWords(r), flagsWords(r)].filter(Boolean).join(" · "), n) : "");
 
 /** The box on the goal's own check: ticked once the goal itself is done, which the engine says only after that
  *  check passed (plan.py `roll_up`); until then nothing says it ran, and the box is dotted. */

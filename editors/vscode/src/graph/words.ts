@@ -4,7 +4,7 @@ import { ASK, NOT_CURSOR } from "../home/who.ts"; // Home's words for the agents
 import type { Layout } from "../layout.ts";
 import type { PageAct } from "../sessions/acts.ts";
 import { inScope } from "../owners.ts";
-import { autoLine, free, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { autoLine, free, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type Receipt, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -389,13 +389,35 @@ export function sessionLine(t: Pick<TaskX, "card" | "state" | "idle" | "note">, 
   return cut([head, t.note].filter(Boolean).join(" · "), max);
 }
 
-/** Under a page's title: what its sessions are doing, each agent named (`Claude Code · working`); the one line a
- *  file that could not be read is said in. */
+/** A receipt's tests in a few words, for a card's foot and a page's header: `unittest passed`, `pytest failed`,
+ *  `ran no tests`, `pytest ran, result not seen`. Each tool that ran is named with its own last verdict's word. */
+export function testsWords(r: Receipt): string {
+  const of = (v: string) => r.checks.filter((c) => c.kind === "test" && c.verdict === v).map((c) => c.tool).join(", ");
+  if (r.tests === "none") return "ran no tests";
+  if (r.tests === "failed") return `${of("failed")} failed`;
+  if (r.tests === "passed") return `${of("passed")} passed`;
+  return `${of("unseen")} ran, result not seen`;
+}
+
+/** How many things a receipt has that are worth a second look, in words: `1 to look at`; nothing for none. */
+export const flagsWords = (r: Receipt): string => (r.flags.length ? `${r.flags.length} to look at` : "");
+
+/** A receipt in a line: how many files, the tests, what to look at. A session that changed nothing says so. */
+export function receiptLine(r: Receipt): string {
+  const n = r.changed.length;
+  return [n ? `${n} file${n > 1 ? "s" : ""} changed` : "no file changed", testsWords(r), flagsWords(r)].filter(Boolean).join(" · ");
+}
+
+/** Under a page's title: what its sessions are doing, each agent named (`Claude Code · working`), and for a page
+ *  of one its receipt as a whole; the one line a file that could not be read is said in. */
 export function sessionsLine(sessions: NonNullable<StateX["sessions"]>): string {
   const bad = sessions.find((x) => x.error);
   if (bad) return bad.error;
   const who = (x: { agent: string }) => (x.agent === "codex" ? "Codex" : "Claude Code");
-  if (sessions.length === 1) return `${who(sessions[0]!)} · ${sessions[0]!.status}${sessions[0]!.branch ? ` · ${sessions[0]!.branch}` : ""}`;
+  if (sessions.length === 1) {
+    const s = sessions[0]!;
+    return [who(s), s.status, s.branch, s.receipt && s.requests ? receiptLine(s.receipt) : ""].filter(Boolean).join(" · ");
+  }
   const n = (st: string) => sessions.filter((x) => x.status === st).length;
   return [n("needs you") ? `${n("needs you")} need you` : "", n("working") ? `${n("working")} working` : "", n("idle") ? `${n("idle")} idle` : ""].filter(Boolean).join(" · ");
 }
