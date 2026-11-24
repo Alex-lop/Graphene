@@ -8,9 +8,10 @@ collaboration directive (`dev/process/directives/COLLABORATION_DIRECTIVE.md`); l
 
 *The process archive moved off `main` on the cut night. It is the orphan branch `process`, at `fb6a408`.*
 
-**Read this first, 16 November 2026.** The direction is [VISION.md](VISION.md). The job an agent
-may take is [SCOPE.md](SCOPE.md). The prompt is [prompts/workflow.md](prompts/workflow.md). This
-file is the decision log. An agent reads the scope before it treats a decision here as the task.
+**Read this first, 24 November 2026.** The direction is [VISION.md](VISION.md), and the prompt that
+carries it out is [prompts/sessions.md](prompts/sessions.md): a session drawn as a graph with nothing
+to set up, and everything below (plan first, scopes, checks, hooks) as strict mode, opt-in. This
+file is the decision log. An agent reads the vision before it treats a decision here as the task.
 
 ## What Graphene is
 

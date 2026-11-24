@@ -9,8 +9,8 @@ Three things that have put a red build on `main`:
 - **Never merge a pull request whose checks are running or red**, and never push to `main`. `main` requires the
   three `test (ubuntu-latest, …)` checks; do not pass `--admin` to get past them.
 
-The job is scoped. Read [dev/VISION.md](dev/VISION.md) and [dev/SCOPE.md](dev/SCOPE.md) before the code, and
-take the prompt in [dev/prompts/workflow.md](dev/prompts/workflow.md). A request that names no files is not a
-task. Do not search the repository for more to do.
+The direction is [dev/VISION.md](dev/VISION.md): a page that draws an agent's session as a graph, with nothing
+to set up. The prompt that carries it out is [dev/prompts/sessions.md](dev/prompts/sessions.md); read both before
+the code. A request that names no files is not a task. Do not search the repository for more to do.
 
 The rest is in [CONTRIBUTING.md](CONTRIBUTING.md).
