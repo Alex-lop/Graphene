@@ -1,7 +1,7 @@
 // What git knows that tool calls do not (src/sessions/git.ts), on a repository made for the test.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
@@ -48,7 +48,22 @@ test("a folder is noted when a session is first seen and compared later: what ch
     assert.equal(now.commits, 1);
     assert.deepEqual(now.changed, ["a.py", "c.py", "new.txt", "pkg/d.py"]); // b.py was dirty before and was left alone: not the session's
     assert.deepEqual(unexplained(now.changed, ["a.py"], was.top, repo), ["c.py", "new.txt", "pkg/d.py"]);
+    assert.equal(now.dropped, 0);
     unlinkSync(path.join(repo, "b.py")); // a deleted file cannot be hashed: its name is still noted
-    assert.ok((await note(repo))!.dirty.has("b.py"));
+    const gone = (await note(repo))!;
+    assert.ok(gone.dirty.has("b.py"));
+    // and it does not keep the files beside it from being hashed: a dirty file a command rewrites is still seen to change
+    assert.ok(gone.dirty.get("c.py"));
+    writeFileSync(path.join(repo, "c.py"), "rewritten once more, by a command\n");
+    assert.deepEqual((await since(gone))!.changed, ["c.py"]);
+    // HEAD moved back: no commit on top of the noted one, and one it was on that it is not on now
+    git("stash", "-u", "-q");
+    const top = (await note(repo))!;
+    git("reset", "-q", "--hard", "HEAD~1");
+    assert.deepEqual([(await since(top))!.commits, (await since(top))!.dropped], [0, 1]);
+    // a folder named by a link to it (/tmp for /private/tmp): a file its session wrote is still its own
+    const link = `${repo}-link`;
+    symlinkSync(repo, link);
+    try { assert.deepEqual(unexplained(["a.py", "new.txt"], ["a.py", `${link}/new.txt`], top.top, link), []); } finally { unlinkSync(link); }
   } finally { rmSync(repo, { recursive: true, force: true }); }
 });

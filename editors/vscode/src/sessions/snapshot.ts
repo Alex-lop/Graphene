@@ -210,10 +210,11 @@ export function snapshot(models: readonly Model[], now: number, live: ReadonlyMa
     edges.push(...d.edges);
   }
   // a file two of the page's sessions wrote is said on both, and on each card of theirs that wrote it
-  const wrote = sessions.map((s) => ({ id: s.id, title: s.title, files: s.receipt?.changed.map((c) => c.file) ?? [] }));
+  const folder = new Map(models.map((m) => [m.id, m.cwd]));
+  const wrote = sessions.map((s) => ({ id: s.id, title: s.title, cwd: folder.get(s.id) ?? "", files: s.receipt?.changed.map((c) => c.file) ?? [] }));
   const others = (id: string) => wrote.filter((w) => w.id !== id);
-  for (const s of sessions) if (s.receipt) s.receipt.flags.push(...shared(s.receipt, others(s.id)));
-  for (const t of tasks) { const c = t.card as Card; if (c.receipt) c.receipt.flags.push(...shared(c.receipt, others(c.session))); }
+  for (const s of sessions) if (s.receipt) s.receipt.flags.push(...shared(s.receipt, folder.get(s.id) ?? "", others(s.id)));
+  for (const t of tasks) { const c = t.card as Card; if (c.receipt) c.receipt.flags.push(...shared(c.receipt, folder.get(c.session) ?? "", others(c.session))); }
   const running = tasks.filter((t) => t.state === "running" && !t.needs_you).length, need = tasks.filter((t) => t.needs_you).length;
   return parseState(JSON.stringify({
     schema: 1, graphene: "", repo: models[0]?.cwd ?? "", goal: "", asked: sessions.length === 1 ? sessions[0]!.title : "", goals, tasks, edges, sessions,

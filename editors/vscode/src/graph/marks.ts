@@ -169,7 +169,7 @@ export function checkMark(t: Checked): CheckMark {
  *  what decided each tool's verdict. No receipt (a plan's step): no foot. */
 export function receiptMark(r: Receipt | null | undefined): CheckMark {
   if (!r) return { box: "unrun", tone: "dim", words: "" };
-  const why = r.checks.map((c) => `${c.tool} ${c.verdict === "unseen" ? "ran, result not seen" : c.verdict}: ${c.why}`).join(" · ");
+  const why = r.checks.map((c) => `${c.tool} ${c.verdict === "unseen" ? "ran, result not seen" : c.verdict === "none" ? "ran no test" : c.verdict}: ${c.why}`).join(" · ");
   if (r.tests === "passed") return { box: "passed", tone: "ok", words: why };
   if (r.tests === "failed") return { box: "failed", tone: "red", words: why };
   if (r.tests === "unseen") return { box: "hollow", tone: "warn", words: why };

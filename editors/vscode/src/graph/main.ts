@@ -2038,6 +2038,7 @@ function activityTab(body: HTMLElement, t: TaskX) {
 function receiptParts(body: HTMLElement, t: TaskX, r: Receipt | null) {
   if (!r) return void div("dim", "The session's file says the plan, never which step is under way: its request's card has what happened.", part(body, "Changed"));
   const changed = part(body, "Changed", r.changed.length ? String(r.changed.length) : "");
+  const session = state?.sessions?.find((x) => x.id === t.card?.session), git = session?.git, noted = Boolean(git?.noted);
   if (!r.changed.length) div("dim", "no file written by a tool call", changed);
   for (const c of r.changed) {
     const row = changed.appendChild(document.createElement("button"));
@@ -2047,13 +2048,13 @@ function receiptParts(body: HTMLElement, t: TaskX, r: Receipt | null) {
     mark.textContent = c.how === "created" ? "+" : c.how === "deleted" ? "✕" : "✎";
     row.append(mark);
     seams(c.file, row.appendChild(document.createElement("code")));
-    row.title = `${c.how}${c.outside ? ", outside the session's folder" : ""}: open its diff against the last commit`;
+    row.title = `${c.how}${c.outside ? ", outside the session's folder" : ""}: open its diff against ${noted ? "the commit the folder was at when the session began" : "the last commit (a change the session committed does not show)"}`;
     row.setAttribute("aria-label", `${c.file}, ${c.how}: open its diff`);
     if (state?.replay) row.disabled = true; // a recording's files are not here to open
     row.addEventListener("click", () => api.postMessage({ type: "act", act: "openFile", id: t.id, file: c.file }));
   }
   const tests = part(body, "Tests it ran");
-  const tone = { passed: "ok", failed: "red", unseen: "warn" } as const, said = { passed: "passed", failed: "failed", unseen: "ran, result not seen" } as const;
+  const tone = { passed: "ok", failed: "red", unseen: "warn", none: "dim" } as const, said = { passed: "passed", failed: "failed", unseen: "ran, result not seen", none: "ran no test" } as const;
   if (!r.checks.length) div("checkrow dim", "ran no tests", tests);
   else if (!r.checks.some((c) => c.kind === "test")) div("checkrow dim", "ran no tests; the checks below are not tests", tests);
   for (const c of r.checks) {
@@ -2072,11 +2073,13 @@ function receiptParts(body: HTMLElement, t: TaskX, r: Receipt | null) {
       small(f.note, row);
     }
   }
-  const session = state?.sessions?.find((x) => x.id === t.card?.session), git = session?.git;
   if (!git || state?.replay) return;
   const since = part(body, "Git, since the session was first seen");
-  if (!git.noted) return void div("dim", "not noted: the session began before this window opened, so git has no before to compare with", since);
-  div("checkrow", git.commits ? `HEAD moved on by ${git.commits} commit${git.commits > 1 ? "s" : ""}` : "HEAD is where it was", since);
+  if (!git.noted) return void div("dim", "not noted: Graphene did not see this session begin (it began before this window watched it, or was resumed), so git has no before to compare with", since);
+  if (!git.compared) return void div("dim", "noted when the session was first seen; not compared with the folder yet", since);
+  const n = (k: number) => `${k} commit${k > 1 ? "s" : ""}`;
+  div("checkrow", git.dropped ? `HEAD moved off ${n(git.dropped)} it was on (a reset, or another branch)${git.commits ? `, and onto ${n(git.commits)} it was not` : ""}`
+    : git.commits ? `HEAD moved on by ${n(git.commits)}` : "HEAD is where it was", since);
   if (!git.unexplained.length) return void div("checkrow dim", "every file that changed was written by a tool call of the session", since);
   div("checkrow", `${git.unexplained.length} file${git.unexplained.length > 1 ? "s" : ""} changed with no tool call of the session that wrote ${git.unexplained.length > 1 ? "them" : "it"} (a command it ran, or someone else: git does not say)`, since);
   for (const f of git.unexplained.slice(0, 20)) code(f, div("rc-loose", undefined, since));

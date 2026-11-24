@@ -204,22 +204,24 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   private readonly repos = new Map<string, boolean>(); // a folder -> whether git has it
 
   /** What git says of each of a page's sessions, as last compared; a comparison that is due is started, and the
-   *  page drawn again when it ends. Compared when the session's file has grown, at most every five seconds: what
-   *  changes in the folder after the session's last line is not the session's, and is not looked for. */
+   *  page drawn again when it ends. Compared when the session's file has grown, at most every five seconds, and
+   *  only for a page that is shown: what a comparison finds changed since the note, it does not say who changed. */
   private git(page: Page): Map<string, GitFacts> {
     const out = new Map<string, GitFacts>();
+    // noted, and not compared yet: nothing is said of what moved until a comparison has come back
+    const none: GitFacts = { noted: true, compared: false, commits: 0, dropped: 0, unexplained: [] };
     for (const f of page.follows) {
       const m = f.model, file = f.found.file, was = this.notes.get(file);
       if (!this.repos.has(m.cwd)) { this.repos.set(m.cwd, false); void note(m.cwd).then((n) => { this.repos.set(m.cwd, n !== null); }); }
-      if (!was) { if (this.repos.get(m.cwd) && !this.notes.has(file)) out.set(m.id, { noted: false, commits: 0, unexplained: [] }); continue; }
+      if (!was) { if (this.repos.get(m.cwd) && !this.notes.has(file)) out.set(m.id, { ...none, noted: false }); continue; }
       const have = this.facts.get(file), key = m.last;
-      out.set(m.id, have?.facts ?? { noted: true, commits: 0, unexplained: [] });
+      out.set(m.id, have?.facts ?? none);
       if (have?.key === key || Date.now() - (have?.at ?? 0) < 5000) continue;
-      this.facts.set(file, { key, at: Date.now(), facts: have?.facts ?? { noted: true, commits: 0, unexplained: [] } });
+      this.facts.set(file, { key, at: Date.now(), facts: have?.facts ?? none });
       void since(was).then((now) => {
         if (!now) return;
         const written = receipt([...m.calls.values()], m.cwd).changed.map((c) => c.file);
-        this.facts.set(file, { key, at: Date.now(), facts: { noted: true, commits: now.commits, unexplained: unexplained(now.changed, written, was.top, m.cwd) } });
+        this.facts.set(file, { key, at: Date.now(), facts: { noted: true, compared: true, commits: now.commits, dropped: now.dropped, unexplained: unexplained(now.changed, written, was.top, m.cwd) } });
         void page.refresh(this.live, true, this.git(page));
       });
     }

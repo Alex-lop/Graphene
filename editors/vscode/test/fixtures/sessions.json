@@ -132,7 +132,7 @@
        "kind": "test",
        "command": "python3 -m unittest -v",
        "verdict": "passed",
-       "why": "its output says OK",
+       "why": "its output says Ran 2 tests in 0.001s, OK",
        "at": "2026-11-24T10:00:10.000Z"
       }
      ],
@@ -579,7 +579,7 @@
       "kind": "test",
       "command": "python3 -m unittest -v",
       "verdict": "passed",
-      "why": "its output says OK",
+      "why": "its output says Ran 2 tests in 0.001s, OK",
       "at": "2026-11-24T10:00:10.000Z"
      }
     ],

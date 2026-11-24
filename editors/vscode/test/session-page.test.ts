@@ -42,7 +42,7 @@ test("a card's foot is its receipt: a tick only for a pass that was seen, and th
   const s = fixture("sessions"), by = (title: string) => s.tasks.find((t) => t.title.startsWith(title))!.card!.receipt!;
   const passed = by("Fix the word counter");
   assert.deepEqual([receiptMark(passed).box, receiptMark(passed).tone, receiptFoot(passed, 60)], ["passed", "ok", "unittest passed"]);
-  assert.equal(receiptMark(passed).words, "unittest passed: its output says OK"); // the hover says what decided it
+  assert.equal(receiptMark(passed).words, "unittest passed: its output says Ran 2 tests in 0.001s, OK"); // the hover says what decided it
   assert.equal(receiptLine(passed), "2 files changed · unittest passed");
   const none = by("/review"); // it ran git diff, and no test
   assert.deepEqual([receiptMark(none).box, receiptMark(none).tone, receiptFoot(none, 60)], ["unrun", "dim", "ran no tests"]);

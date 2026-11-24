@@ -4,13 +4,15 @@
 // the receipt does not guess). Read-only: `git rev-parse`, `git status`, `git diff --name-only`,
 // `git rev-list --count`, `git hash-object`. Nothing is written, staged or fetched.
 import { execFile } from "node:child_process";
+import { realpathSync, statSync } from "node:fs";
 import * as path from "node:path";
 
 /** A folder's repository as git has it at one moment: its top, its HEAD, and each dirty file (as a path from the
  *  top) with a hash of what it holds, "" where none was taken. */
 export interface Note { top: string; head: string; dirty: Map<string, string>; at: number }
-/** What moved since a note: HEAD (and how many commits on top of the noted one), and the files that differ. */
-export interface Since { head: string; commits: number; changed: string[] }
+/** What moved since a note: HEAD (how many commits it has now that the noted one did not, and how many the noted
+ *  one had that it has not: a reset, or another branch), and the files that differ. */
+export interface Since { head: string; commits: number; dropped: number; changed: string[] }
 
 function git(cwd: string, args: string[]): Promise<string | null> {
   return new Promise((resolve) => {
@@ -40,8 +42,9 @@ export async function note(cwd: string): Promise<Note | null> {
   const head = (await git(top, ["rev-parse", "--verify", "-q", "HEAD"]))?.trim() ?? ""; // none yet in a repository with no commit
   const files = porcelain((await git(top, ["status", "--porcelain", "-z", "--untracked-files=all"])) ?? "");
   const dirty = new Map<string, string>(files.map((f) => [f, ""]));
-  // one at a time would be a process a file; all at once fails on a file that was deleted, so those are left out
-  const there = files.length <= HASHED ? files.filter((f) => !f.endsWith("/")) : [];
+  // one at a time would be a process a file; all at once fails on a single file that is not there (a deleted one
+  // is dirty too), so only files that are there are hashed, and of a great many only the first
+  const there = files.filter((f) => statSync(path.join(top, f), { throwIfNoEntry: false })?.isFile()).slice(0, HASHED);
   const hashes = there.length ? (await git(top, ["hash-object", "--no-filters", "--", ...there]))?.trim().split("\n") : undefined;
   if (hashes?.length === there.length) there.forEach((f, i) => dirty.set(f, hashes[i]!));
   return { top, head, dirty, at: Date.now() };
@@ -54,17 +57,19 @@ export async function since(was: Note): Promise<Since | null> {
   const now = await note(was.top);
   if (!now) return null;
   const changed = new Set<string>();
-  let commits = 0;
+  let commits = 0, dropped = 0;
+  const count = async (range: string) => Number((await git(was.top, ["rev-list", "--count", range]))?.trim() ?? 0) || 0;
   if (was.head && now.head && was.head !== now.head) {
     for (const f of (await git(was.top, ["diff", "--name-only", "-z", was.head, now.head]))?.split("\0").filter(Boolean) ?? []) changed.add(f);
-    commits = Number((await git(was.top, ["rev-list", "--count", `${was.head}..${now.head}`]))?.trim() ?? 0) || 0;
+    commits = await count(`${was.head}..${now.head}`);
+    dropped = await count(`${now.head}..${was.head}`);
   }
   for (const [f, h] of now.dirty) {
     const then = was.dirty.get(f);
     if (then === undefined || (h && then && h !== then)) changed.add(f);
   }
   for (const f of was.dirty.keys()) if (!now.dirty.has(f)) changed.add(f);
-  return { head: now.head, commits, changed: [...changed].sort() };
+  return { head: now.head, commits, dropped, changed: [...changed].sort() };
 }
 
 /** A file as a commit has it; "" for one the commit does not have (a new file), or where git cannot say. */
@@ -75,6 +80,9 @@ export async function show(top: string, rev: string, rel: string): Promise<strin
 /** Of what git says changed (paths from the repository's top), the files no write of the session's explains.
  *  `written`: the files its tool calls wrote, as the receipt names them (from the session's folder, or absolute). */
 export function unexplained(changed: readonly string[], written: readonly string[], top: string, cwd: string): string[] {
-  const mine = new Set(written.map((f) => path.relative(top, path.resolve(cwd, f)).split(path.sep).join("/")));
+  // git's top is the folder's real path, and a session names its folder as it was given (/tmp for /private/tmp)
+  // (a file that is gone has no real path of its own: its folder's, then)
+  const real = (p: string): string => { try { return realpathSync(p); } catch { const up = path.dirname(p); return up === p ? p : path.join(real(up), path.basename(p)); } };
+  const at = real(cwd), mine = new Set(written.map((f) => path.relative(top, path.isAbsolute(f) ? real(f) : path.resolve(at, f)).split(path.sep).join("/")));
   return changed.filter((f) => !mine.has(f));
 }

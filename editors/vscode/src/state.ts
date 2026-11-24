@@ -97,7 +97,7 @@ export interface Task {
  *  states and the fourth it does not hide (ran, result not seen); and what is worth a second look, each a fact
  *  with the line that shows it, a guess said to be one. */
 export interface Changed { file: string; how: "created" | "edited" | "deleted"; outside: boolean }
-export interface Check { tool: string; kind: "test" | "check"; command: string; verdict: "passed" | "failed" | "unseen"; why: string; at: string }
+export interface Check { tool: string; kind: "test" | "check"; command: string; verdict: "passed" | "failed" | "unseen" | "none"; why: string; at: string }
 export type FlagKind = "push" | "pull request" | "delete" | "force" | "hard reset" | "test edited after it failed" | "written by two sessions"
   | "outside the folder";
 export interface Flag { kind: FlagKind; line: string; note: string; guess: boolean }
@@ -105,10 +105,12 @@ export type Tests = "passed" | "failed" | "none" | "unseen";
 export interface Receipt { changed: Changed[]; checks: Check[]; tests: Tests; flags: Flag[] }
 
 /** What git says of a session's folder since the session was first seen. `noted`: its HEAD and dirty files were
- *  noted then (a session that began before the window opened has no such note, and nothing is claimed of it).
- *  `commits`: how many HEAD moved on by. `unexplained`: the files that changed with no tool call of the session's
- *  that wrote them. */
-export interface GitFacts { noted: boolean; commits: number; unexplained: string[] }
+ *  noted then (a session Graphene did not see begin has no such note, and nothing is claimed of it). `compared`:
+ *  the folder has been compared with that note since; until it has, nothing is said of what moved. `commits`:
+ *  how many HEAD has now that it did not have then. `dropped`: how many it had then that it does not have now (a
+ *  reset, or another branch). `unexplained`: the files that changed with no tool call of the session's that wrote
+ *  them. */
+export interface GitFacts { noted: boolean; compared: boolean; commits: number; dropped: number; unexplained: string[] }
 
 /** A card that comes from a session's own file (sessions/), not from a plan. `says`: its state in a session's
  *  words (working, needs you, idle, done, interrupted, failed, not started), which the plan's `state` only
@@ -317,7 +319,7 @@ function parseReceipt(v: unknown): Receipt | null {
   return {
     changed: list(r.changed).filter((c) => str(c.file)).map((c) => ({ file: str(c.file), how: one(c.how, ["created", "edited", "deleted"] as const, "edited"), outside: bool(c.outside) })),
     checks: list(r.checks).filter((c) => str(c.tool)).map((c) => ({ tool: str(c.tool), kind: one(c.kind, ["test", "check"] as const, "check"), command: str(c.command),
-                                                              verdict: one(c.verdict, ["passed", "failed", "unseen"] as const, "unseen"), why: str(c.why), at: str(c.at) })),
+                                                              verdict: one(c.verdict, ["passed", "failed", "unseen", "none"] as const, "unseen"), why: str(c.why), at: str(c.at) })),
     tests: one(r.tests, ["passed", "failed", "none", "unseen"] as const, "none"),
     // a kind this build does not know is not a flag it can word: left out, never guessed at
     flags: list(r.flags).filter((f) => FLAGS.includes(f.kind as FlagKind)).map((f) => ({ kind: f.kind as FlagKind, line: str(f.line), note: str(f.note), guess: bool(f.guess) })),
@@ -330,7 +332,7 @@ function parseSession(r: Raw): SessionInfo {
            status: status === "working" || status === "needs you" ? status : "idle",
            cwd: str(r.cwd), branch: str(r.branch), file: str(r.file), last: str(r.last), requests: int(r.requests, 0), error: str(r.error), open: bool(r.open),
            receipt: parseReceipt(r.receipt),
-           git: r.git && typeof r.git === "object" ? { noted: bool(obj(r.git).noted), commits: int(obj(r.git).commits, 0), unexplained: strs(obj(r.git).unexplained) } : null };
+           git: r.git && typeof r.git === "object" ? { noted: bool(obj(r.git).noted), compared: bool(obj(r.git).compared), commits: int(obj(r.git).commits, 0), dropped: int(obj(r.git).dropped, 0), unexplained: strs(obj(r.git).unexplained) } : null };
 }
 
 export interface Contract { planned: number | null; signoff: boolean; owner: string }

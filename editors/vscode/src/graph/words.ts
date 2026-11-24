@@ -398,7 +398,7 @@ export function sessionLine(t: Pick<TaskX, "card" | "state" | "idle" | "note">, 
 /** A receipt's tests in a few words, for a card's foot and a page's header: `unittest passed`, `pytest failed`,
  *  `ran no tests`, `pytest ran, result not seen`. Each tool that ran is named with its own last verdict's word. */
 export function testsWords(r: Receipt): string {
-  const of = (v: string) => r.checks.filter((c) => c.kind === "test" && c.verdict === v).map((c) => c.tool).join(", ");
+  const of = (v: string) => [...new Set(r.checks.filter((c) => c.kind === "test" && c.verdict === v).map((c) => c.tool))].join(", ");
   if (r.tests === "none") return "ran no tests";
   if (r.tests === "failed") return `${of("failed")} failed`;
   if (r.tests === "passed") return `${of("passed")} passed`;
@@ -408,10 +408,11 @@ export function testsWords(r: Receipt): string {
 /** How many things a receipt has that are worth a second look, in words: `1 to look at`; nothing for none. */
 export const flagsWords = (r: Receipt): string => (r.flags.length ? `${r.flags.length} to look at` : "");
 
-/** A receipt in a line: how many files, the tests, what to look at. A session that changed nothing says so. */
+/** A receipt in a line: how many files, the tests, what to look at. With no file written by a tool call it says
+ *  that, and not that nothing changed: a command may have changed a file, and the receipt does not see that. */
 export function receiptLine(r: Receipt): string {
   const n = r.changed.length;
-  return [n ? `${n} file${n > 1 ? "s" : ""} changed` : "no file changed", testsWords(r), flagsWords(r)].filter(Boolean).join(" · ");
+  return [n ? `${n} file${n > 1 ? "s" : ""} changed` : "wrote no file", testsWords(r), flagsWords(r)].filter(Boolean).join(" · ");
 }
 
 /** Under a page's title: what its sessions are doing, each agent named (`Claude Code · working`), and for a page
