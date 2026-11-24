@@ -4,11 +4,11 @@
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
 import { DOWN, flip, layout, modeFor, rounded, route, routeDown, spread, step, type Box, type Edge, type Layout, type Point } from "../layout.ts";
-import { autoLine, SAY, screenWords, usd, type DraftStep, type State } from "../state.ts";
+import { autoLine, SAY, screenWords, usd, type DraftStep, type Receipt, type State } from "../state.ts";
 import { wearInk } from "../ink.ts";
 import { ICONS } from "./icons.ts";
 import { blanks, draftLine, globs, isDraft, lacks, type Draft } from "./draft.ts";
-import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, covers, coversIn, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, markWord, nextWanting, stateMark, tailPath, tally, wanting, wantingLine, wrap,
+import { attemptsMark, attemptsWhy, cardAct, cardLine, checkCut, covers, coversIn, checkLines, checkMark, cornerMark, cutWhole, doneWhen, filesLine, fitWhole, forkMark, goalBox, goalCells, legend, markWord, nextWanting, receiptFoot, receiptMark, stateMark, tailPath, tally, wanting, wantingLine, wrap,
          type CheckMark, type Mark } from "./marks.ts";
 import { actsFor, ASK_AGENT, askLine, asksYou, attemptsOf, commandChip, cornerWord, CURSOR_AGENT, cut, done, draftedSteps, earlier, edgeKind, editable,
          filesChip, forkActs, forkRow, forkWords, HEADER_ACTS, headerFor, heldWords, KEYS, linkHint, mainAct, mayRun, newsLine, paneKey, pipeline,
@@ -1018,12 +1018,13 @@ function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: num
  *  room for), tinted where the verdict is news. Its hover says `done when` the check whole, and the verdict. A step
  *  with no check is done when you approve; a draft that has said neither wears no box (a dotted one is a check not
  *  run yet) and says ``blank``. */
-function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h = BOX_H, w = BOX_W, blank = "no check yet") {
+function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h = BOX_H, w = BOX_W, blank = "no check yet", happened = false) {
   const y = h - FOOT_H;
   const g = grp.appendChild(el("g", { class: `foot ${c.tone}` }));
   g.appendChild(el("path", { class: "tint", d: `M0.5,${y}H${w - 0.5}V${h - 12}a11.5,11.5 0 0 1 -11.5,11.5H12a11.5,11.5 0 0 1 -11.5,-11.5Z` }));
   g.appendChild(el("path", { class: "hair", d: `M0.5,${y + 0.5}H${w - 0.5}` })); // on a pixel's middle: one crisp line, not two soft ones
-  const whole = says(Infinity), hover = [whole ? `done when ${whole}` : "", c.words].filter(Boolean).join(" · ") || (c.box === "approval" ? "done when you approve" : "");
+  // a plan's check is what its task is done when; a session's receipt is what happened, and says so
+  const whole = says(Infinity), hover = [whole ? (happened ? whole : `done when ${whole}`) : "", c.words].filter(Boolean).join(" · ") || (c.box === "approval" ? "done when you approve" : "");
   const boxed = Boolean(whole) || c.box !== "unrun";
   if (boxed) mark(g, c.box, PAD + 7, y + 11, 7);
   if (hover) g.appendChild(el("title", {}, hover)); // a draft that has said neither has nothing to say yet
@@ -1141,7 +1142,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   grp.setAttribute("data-mark", stateMark(t));
   const asked = state ? questionOn(state, t.id)?.text ?? "" : "";
   const line = cardLine(t, 60, asked), times = attemptsMark(t, limit), what = covers(t);
-  const check: CheckMark = t.card ? { box: "unrun", tone: "dim", words: "" } : checkMark(t); // a session's card: no check of a plan's to wear
+  const check: CheckMark = t.card ? receiptMark(t.card.receipt) : checkMark(t); // a session's card: its receipt's tests, not a plan's check
   if (times) grp.dataset.attempts = String(parseInt(times)); else delete grp.dataset.attempts;
   // its state in words where its line says something else (a question): only its mark says it to the eye
   const word = markWord(stateMark(t), t), said = (l: string) => (l.startsWith(word) ? l : `${word}, ${l}`);
@@ -1199,7 +1200,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
     chip.appendChild(el("title", {}, forkRow(f, t.kept)));
     grp.appendChild(chip);
   });
-  cardFoot(grp, check, (n) => doneWhen(t, n), h, BOX_W, t.card ? "" : undefined);
+  cardFoot(grp, check, (n) => (t.card ? receiptFoot(t.card.receipt, n) : doneWhen(t, n)), h, BOX_W, t.card ? "" : undefined, Boolean(t.card));
   grp.appendChild(el("title", {}, hover));
   // its ports, where its lines join: in at the left, out at the right (the top and the foot when laid downward)
   grp.appendChild(el("circle", { class: "port in", cx: down ? BOX_W / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
@@ -1383,8 +1384,10 @@ function drawLane(row: HTMLElement, t: TaskX, s: StateX) {
   div("l-sub", [line, times].filter(Boolean).join(" · "), main);
   if (times) row.dataset.attempts = String(parseInt(times)); else delete row.dataset.attempts;
   // its scope, as its card says it: the files it may change (or has written) by their names, and the check it is done when
-  const files = filesLine(t), check = doneWhen(t, 48), what = [t.command ? commandChip(t.command) : files.text.split(" ").map((w) => tailPath(w).replace(/^…\//, "")).join(" "), check].filter(Boolean);
-  if (what.length) div(`l-scope${files.tone === "back" ? " bad" : ""}`, what.join(" · "), main).title = [t.command ?? t.scope.join(" "), t.check ? `done when ${t.check}` : ""].filter(Boolean).join("\n");
+  // a session's card: the files it wrote and its receipt's tests, not a check it is done when
+  const files = filesLine(t), check = t.card ? receiptFoot(t.card.receipt, 48) : doneWhen(t, 48), what = [t.command ? commandChip(t.command) : files.text.split(" ").map((w) => tailPath(w).replace(/^…\//, "")).join(" "), check].filter(Boolean);
+  if (what.length) div(`l-scope${files.tone === "back" ? " bad" : ""}`, what.join(" · "), main).title = t.card ? [t.changed.join(" "), receiptMark(t.card.receipt).words].filter(Boolean).join("\n")
+    : [t.command ?? t.scope.join(" "), t.check ? `done when ${t.check}` : ""].filter(Boolean).join("\n");
   if (t.forks.length) {
     const forks = div("l-forks", undefined, main);
     for (const f of t.forks) {
@@ -2034,14 +2037,64 @@ function activityTab(body: HTMLElement, t: TaskX) {
   if (body.childElementCount === before) div("dim", t.state === "done" ? "Done, with no moves recorded." : t.agent ? "Nothing reported yet." : "No agent has been on it yet.", body);
 }
 
-/** The pane of a session's card: what it was asked, what it is doing or said last, the files it wrote and its
- *  last moves. Only what its session's file says. */
+/** A receipt in the pane: the Scope pane drawn from what happened. What a plan's task may change is here what
+ *  the card changed, each file opening its diff; what it is done when is the tests it ran, each with what decided
+ *  its verdict; then what is worth a second look, a fact a line, a guess said to be one; and what git says of the
+ *  folder since the session was first seen. Nothing here was held, and nothing was stopped: those are strict mode's. */
+function receiptParts(body: HTMLElement, t: TaskX, r: Receipt | null) {
+  if (!r) return void div("dim", "The session's file says the plan, never which step is under way: its request's card has what happened.", part(body, "Changed"));
+  const changed = part(body, "Changed", r.changed.length ? String(r.changed.length) : "");
+  if (!r.changed.length) div("dim", "no file written by a tool call", changed);
+  for (const c of r.changed) {
+    const row = changed.appendChild(document.createElement("button"));
+    row.className = `rc-file quiet${c.how === "deleted" ? " gone" : ""}`;
+    const mark = document.createElement("span");
+    mark.className = "rc-how";
+    mark.textContent = c.how === "created" ? "+" : c.how === "deleted" ? "✕" : "✎";
+    row.append(mark);
+    seams(c.file, row.appendChild(document.createElement("code")));
+    row.title = `${c.how}${c.outside ? ", outside the session's folder" : ""}: open its diff against the last commit`;
+    row.setAttribute("aria-label", `${c.file}, ${c.how}: open its diff`);
+    if (state?.replay) row.disabled = true; // a recording's files are not here to open
+    row.addEventListener("click", () => api.postMessage({ type: "act", act: "openFile", id: t.id, file: c.file }));
+  }
+  const tests = part(body, "Tests it ran");
+  const tone = { passed: "ok", failed: "red", unseen: "warn" } as const, said = { passed: "passed", failed: "failed", unseen: "ran, result not seen" } as const;
+  if (!r.checks.length) div("checkrow dim", "ran no tests", tests);
+  else if (!r.checks.some((c) => c.kind === "test")) div("checkrow dim", "ran no tests; the checks below are not tests", tests);
+  for (const c of r.checks) {
+    const row = div("checkrow rc-check", undefined, tests);
+    div(`dot ${tone[c.verdict]}`, undefined, row);
+    const words = div("", undefined, row);
+    code(c.command, words);
+    small(`${c.tool} ${said[c.verdict]}: ${c.why}`, words);
+  }
+  if (r.flags.length) {
+    const look = part(body, "Worth a second look", String(r.flags.length));
+    for (const f of r.flags) {
+      const row = div("rc-flag", undefined, look);
+      div("rc-kind", f.guess ? `${f.kind} · a guess` : f.kind, row);
+      code(f.line, row);
+      small(f.note, row);
+    }
+  }
+  const session = state?.sessions?.find((x) => x.id === t.card?.session), git = session?.git;
+  if (!git || state?.replay) return;
+  const since = part(body, "Git, since the session was first seen");
+  if (!git.noted) return void div("dim", "not noted: the session began before this window opened, so git has no before to compare with", since);
+  div("checkrow", git.commits ? `HEAD moved on by ${git.commits} commit${git.commits > 1 ? "s" : ""}` : "HEAD is where it was", since);
+  if (!git.unexplained.length) return void div("checkrow dim", "every file that changed was written by a tool call of the session", since);
+  div("checkrow", `${git.unexplained.length} file${git.unexplained.length > 1 ? "s" : ""} changed with no tool call of the session that wrote ${git.unexplained.length > 1 ? "them" : "it"} (a command it ran, or someone else: git does not say)`, since);
+  for (const f of git.unexplained.slice(0, 20)) code(f, div("rc-loose", undefined, since));
+  if (git.unexplained.length > 20) div("dim", `and ${git.unexplained.length - 20} more`, since);
+}
+
+/** The pane of a session's card: what it was asked, what it is doing or said last, its receipt, and its last
+ *  moves. Only what its session's file says, and git. */
 function cardPane(body: HTMLElement, t: TaskX) {
   if (t.full && t.full !== t.title) div("d-asked", cut(t.full, 600), part(body, t.card?.kind === "request" ? "Asked" : "For"));
   if (t.note) div("", t.note, part(body, t.state === "running" ? "Doing" : "Said last"));
-  const changed = part(body, "Changed", t.changed.length ? String(t.changed.length) : "");
-  if (!t.changed.length) div("dim", "no file written", changed);
-  for (const f of t.changed) code(f, div("", undefined, changed));
+  receiptParts(body, t, t.card?.receipt ?? null);
   if (t.tail.length) {
     const moves = div("mono", undefined, part(body, "Last moves"));
     for (const line of t.tail) div("move", line, moves);

@@ -399,6 +399,16 @@ button:disabled { opacity: 0.45; cursor: default; }
 /* a sub-goal: a quiet section, a little over the ground, with a hairline edge */
 .band { fill: color-mix(in srgb, var(--fg) 5.5%, transparent); stroke: var(--line-1); }
 /* a session's band: the × at its header's end takes the session off the page */
+/* a receipt in the pane: a changed file opens its diff; a flag is its kind, the line that shows it, and a note */
+#details .rc-file { display: flex; gap: 6px; align-items: baseline; width: 100%; text-align: left; padding: 2px 4px; margin: 1px 0; border-radius: var(--r-sm, 4px); }
+#details .rc-file code { background: none; padding: 0; word-break: break-word; }
+#details .rc-file .rc-how { flex: none; width: 12px; color: var(--dim); text-align: center; }
+#details .rc-file.gone code { text-decoration: line-through; }
+#details .rc-check { align-items: flex-start; }
+#details .rc-check small, #details .rc-flag small { display: block; color: var(--dim); margin-top: 2px; }
+#details .rc-flag { margin: 6px 0 10px; padding-left: 8px; border-left: 2px solid var(--line-2, var(--line-1)); }
+#details .rc-flag .rc-kind { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+#details .rc-loose { margin: 2px 0 2px 14px; }
 .band-off { cursor: pointer; outline: none; }
 .band-off circle { fill: transparent; }
 .band-off path { stroke: var(--dim); stroke-width: 1.4; stroke-linecap: round; fill: none; }
