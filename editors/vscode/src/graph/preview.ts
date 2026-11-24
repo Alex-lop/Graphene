@@ -21,7 +21,13 @@ const fixtures: Record<string, unknown> = { auto: autoFx, big: bigFx, empty: emp
 const params = new URLSearchParams(location.search);
 const name = params.get("fixture") ?? "running";
 const select = params.get("select"); // `&select=greet` opens that task's details, as a click would
-const raw = (fixtures[name] ?? runningFx) as Record<string, unknown>;
+// `&state=FILE`: a snapshot from a file (a real session's, for a picture), read before the page asks for its state.
+// From file:// a browser reads it only when told it may (Chrome: --allow-file-access-from-files)
+function load(file: string | null): Record<string, unknown> | null {
+  if (!file) return null;
+  try { const x = new XMLHttpRequest(); x.open("GET", file, false); x.send(); return JSON.parse(x.responseText) as Record<string, unknown>; } catch { return null; }
+}
+const raw = (load(params.get("state")) ?? fixtures[name] ?? runningFx) as Record<string, unknown>;
 const state = parseState(JSON.stringify(raw)) as unknown as Record<string, unknown> & { tasks: Record<string, unknown>[] };
 // what the snapshot gains tonight, until the parser knows it (CONTRACT.md): replay, a task's why and attempts,
 // a fork's attempts and idle

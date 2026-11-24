@@ -287,6 +287,19 @@ export function route(x1: number, y1: number, x2: number, y2: number, gap: numbe
   return [[x1, y1], [t1, y1], [t1, y], [t2, y], [t2, y2], [x2, y2]];
 }
 
+/** An edge as one curve, port to port: out of a card's right side and into the next one's left, leaving and
+ *  arriving level, so a fan of them reads as a flow and not as a board's wiring. Laid downward, out of a card's
+ *  foot and into the next one's top. A card behind its source (a line that goes back) gets the same curve, drawn
+ *  wide enough to be seen to turn. */
+export function curve(x1: number, y1: number, x2: number, y2: number, down = false): string {
+  if (down) {
+    const d = Math.max(16, Math.abs(y2 - y1) / 2);
+    return `M${x1},${y1} C${x1},${y1 + d} ${x2},${y2 - d} ${x2},${y2}`;
+  }
+  const d = Math.max(24, Math.abs(x2 - x1) / 2);
+  return `M${x1},${y1} C${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
+}
+
 /** A route's corners turned a quarter, x for y: what `route` and `spread` say across, said downward. */
 export const flip = (pts: readonly Point[]): Point[] => pts.map(([a, b]) => [b, a]);
 
