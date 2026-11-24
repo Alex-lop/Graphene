@@ -14,6 +14,7 @@ import { Follow } from "./follow.ts";
 import { empty, fold, type Model } from "./model.ts";
 import { Replay } from "./replay.ts";
 import { info, snapshot, status } from "./snapshot.ts";
+import { Terminals, terminalOf } from "./terminals.ts";
 
 /** How often the folder is looked at for sessions, and an open page's files for what is new.
  *  ponytail: a poll, a few dozen stats a look (find.ts `Scan`); watch the directories if idle CPU matters. */
@@ -169,7 +170,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
         }
         m = g.model;
       }
-      out.push(info(m, status(m, now, this.live.get(m.id))));
+      out.push(info(m, status(m, now, this.live.get(m.id)), this.live.has(m.id)));
     }
     for (const file of [...this.glanced.keys()]) if (!newest.some((f) => f.file === file)) this.glanced.delete(file);
     return out;
@@ -220,7 +221,47 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
       case "addSession": return this.add(page);
       case "takeOff": page.remove(m.id); return page.refresh(this.live, true);
       case "replay": return this.playRecorded(page);
+      case "terminal": return this.terminal(page, m.id);
+      case "resume": return this.resume(page, m.id);
     }
+  }
+
+  private readonly terminals = new Terminals();
+
+  /** A card's terminal: the editor's own terminal its session runs in, where it runs in one; else its transcript's
+   *  tail as a terminal would have shown it; a subagent's card, the subagent's own transcript. The keyboard stays
+   *  where it is: a click on a card is a look, not a move. */
+  private async terminal(page: Page, id: string) {
+    const card = page.drawn?.tasks.find((t) => t.id === id)?.card;
+    const follow = card && page.follows.find((f) => f.model.id === card.session);
+    if (!card || !follow) return;
+    const side = card.side ? follow.model.sides.get(card.side) : undefined;
+    const pid = this.live.get(follow.model.id)?.pid;
+    const own = !side && pid ? await terminalOf(pid) : undefined;
+    if (own) return own.show(true);
+    const who = follow.found.agent === "codex" ? "Codex" : "Claude Code", title = page.drawn?.tasks.find((t) => t.id === id)?.title ?? "";
+    const view = side?.file
+      ? this.terminals.tailOf(side.file, follow.found, title, "the tail of this subagent's own transcript")
+      : this.terminals.tailOf(follow.found.file, follow.found, info(follow.model, "idle").title, `the tail of this ${who} session's transcript`);
+    view.show(true);
+  }
+
+  /** Resume in terminal: only a session that is not writing and that nothing has open, looked at again now: two
+   *  writers on one session corrupt it. One a running agent has open in a terminal of the editor's is shown there. */
+  private async resume(page: Page, session: string) {
+    const follow = page.follows.find((f) => f.model.id === session);
+    if (!follow) return;
+    await Promise.all([follow.read(), this.scan()]);
+    const m = follow.model, open = this.live.get(m.id);
+    if (open) {
+      const own = await terminalOf(open.pid);
+      own?.show();
+      return void vscode.window.showInformationMessage(own ? "This session is open in this terminal: it is not started a second time." : "This session is open in a terminal outside the editor: it is not started a second time.");
+    }
+    if (status(m, Date.now(), null) !== "idle" || Date.now() - Date.parse(m.last) < 5000) {
+      return void vscode.window.showInformationMessage("This session is still writing: resume it once it is idle.");
+    }
+    if (!this.terminals.resume(follow.found)) void vscode.window.showErrorMessage("Graphene could not tell this session's id from its file.");
   }
 
   /** Add to page…: another of the folder's sessions, picked from a list, drawn as a band of its own. */

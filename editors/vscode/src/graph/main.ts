@@ -1591,6 +1591,8 @@ function clicked(id: string) {
     return;
   }
   select(id);
+  // a session's card: a click shows that agent's terminal (the host finds which), and the keyboard stays here
+  if (state?.tasks.find((t) => t.id === id)?.card && !state.replay) api.postMessage({ type: "act", act: "terminal", id });
 }
 
 /** A card chosen: its pane opens beside the canvas, and nothing else moves: not the zoom, not the level. Only
@@ -2037,9 +2039,19 @@ function cardPane(body: HTMLElement, t: TaskX) {
   const changed = part(body, "Changed", t.changed.length ? String(t.changed.length) : "");
   if (!t.changed.length) div("dim", "no file written", changed);
   for (const f of t.changed) code(f, div("", undefined, changed));
-  if (!t.tail.length) return;
-  const moves = div("mono", undefined, part(body, "Last moves"));
-  for (const line of t.tail) div("move", line, moves);
+  if (t.tail.length) {
+    const moves = div("mono", undefined, part(body, "Last moves"));
+    for (const line of t.tail) div("move", line, moves);
+  }
+  if (state?.replay || !t.card) return; // a replay is watched: there is no terminal behind it
+  const session = state?.sessions?.find((x) => x.id === t.card!.session), acts = div("d-acts", undefined, $("details"));
+  button({ label: "Terminal", act: "terminal", icon: "terminal", main: false,
+           title: t.card.side ? "this subagent's own transcript, as a terminal would have shown it" : "the terminal this session runs in, or its transcript as a terminal would have shown it" }, t.id, acts);
+  // only for a session nothing has open and that is not writing: two writers on one session corrupt it
+  if (session && session.status === "idle" && !session.open) {
+    button({ label: "Resume in terminal", act: "resume", icon: "play", main: true,
+             title: `a new terminal in the session's folder, running ${session.agent === "codex" ? "codex resume" : "claude --resume"} with its id` }, session.id, acts);
+  }
 }
 
 /** The pane is rebuilt only when what it shows changed (its key); then the focused button, by its words,
