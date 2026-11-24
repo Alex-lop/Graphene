@@ -43,8 +43,13 @@ function repository(dir) {
   writeFileSync(path.join(dir, "notes.md"), "# Notes\n\n");
   const git = (...a) => execFileSync("git", a, { cwd: dir, stdio: "pipe" });
   git("init", "-q");
+  git("config", "user.name", "Scratch");
+  git("config", "user.email", "scratch@example.com");
   git("add", "-A");
-  git("-c", "user.name=Scratch", "-c", "user.email=scratch@example.com", "commit", "-qm", "a word counter and its test");
+  git("commit", "-qm", "a word counter and its test");
+  // somewhere to push to that is no one's: a bare repository beside it
+  execFileSync("git", ["init", "-q", "--bare", `${dir}-remote.git`], { stdio: "pipe" });
+  git("remote", "add", "origin", `${dir}-remote.git`);
   return dir;
 }
 
@@ -74,6 +79,19 @@ const terminal = (page) => page.evaluate(() => ({
 }));
 /** A card of a page, clicked as a person clicks it: on the canvas, or its row in a narrow tab's lanes. */
 const clickCard = (p, title) => p.frame.locator(`g.task:has(text.title), #lanes:not([hidden]) .lane`).filter({ hasText: title.slice(0, 14) }).first().click();
+
+/** A card's receipt as its page shows it without a click: its foot on the canvas, or its line in a narrow tab's lanes. */
+const foot = (p, title) => p.frame.evaluate((t) => {
+  const card = [...document.querySelectorAll("#view g.task")].find((g) => g.querySelector("text.title")?.textContent.startsWith(t));
+  const lane = [...document.querySelectorAll("#lanes:not([hidden]) .lane")].find((r) => r.querySelector(".l-title")?.textContent.startsWith(t));
+  return card?.querySelector(".foot-v")?.textContent ?? lane?.querySelector(".l-scope")?.textContent ?? "";
+}, title.slice(0, 14));
+/** The pane of the chosen card: the files it changed, the tests it ran, what is worth a second look, what git says. */
+const receiptOf = (p) => p.frame.evaluate(() => ({
+  files: [...document.querySelectorAll("#details .rc-file")].map((b) => b.textContent),
+  tests: [...document.querySelectorAll("#details .checkrow")].map((r) => r.textContent),
+  flags: [...document.querySelectorAll("#details .rc-flag")].map((f) => [f.querySelector(".rc-kind")?.textContent, f.querySelector("code")?.textContent]),
+}));
 
 /** What the file in front holds, and whether the keyboard is in it. */
 const typed = (page) => page.evaluate(() => ({
@@ -139,9 +157,13 @@ try {
     say(`while it works its card says: ${JSON.stringify(seenWorking)}`);
     await shot(page, "card-working");
     await first;
+    const firstEnded = Date.now();
     // 3. it finishes: the card says what it changed
     const done = await until("the first session's card done", async () => (await pages(page)).find((p) => p.tasks.length && p.tasks.every((t) => t.mark !== "working" && !t.sub.startsWith("working"))), 60000);
     say(`it finished: ${JSON.stringify(done.tasks.map((t) => [t.title, t.sub]))} · ${done.line}`);
+    const receipt = await foot(done, one.goal);
+    if (!/unittest passed/.test(receipt) || !/2 files changed · unittest passed/.test(done.line)) throw new Error(`its receipt does not say the two files and the pass: ${JSON.stringify([receipt, done.line])}`);
+    say(`its card carries its receipt: ${JSON.stringify(receipt)}; the page's line: ${JSON.stringify(done.line)}`);
     await shot(page, "card-done");
 
     // 4. a second session: a second page; then added to the first page, two bands
@@ -203,9 +225,14 @@ try {
     const tail = await until("the transcript's tail in a terminal", async () => { const t = await terminal(page); return t.rows.some((r) => r.includes("its turn ended")) ? t : null; }, 20000);
     say(`a click on a card of a session started outside the editor: its transcript's tail in a terminal, ending ${JSON.stringify(tail.rows.slice(-3))}`);
     await shot(page, "terminal-transcript-tail");
+    // its receipt, in its pane: the two files it changed, the test it ran and what decided its pass
+    const r1 = await receiptOf(both);
+    if (r1.files.length !== 2 || !r1.tests.some((t) => /python3 -m unittest.*unittest passed/.test(t))) throw new Error(`the first session's receipt: ${JSON.stringify(r1)}`);
+    say(`its pane's receipt: changed ${JSON.stringify(r1.files)}, tests ${JSON.stringify(r1.tests)}`);
     // (c) it is idle and nothing has it open: its card offers Resume in terminal, which runs claude --resume with its id
     const resume = both.frame.locator("#details .d-acts button", { hasText: "Resume in terminal" });
     await resume.waitFor({ timeout: 10000 });
+    await page.waitForTimeout(Math.max(0, 17000 - (Date.now() - firstEnded))); // a session whose file was written in the last fifteen seconds is not resumed: it may still be writing
     await resume.click();
     const resumed = await until("claude --resume in a new terminal", async () => { const t = await terminal(page); return t.rows.find((r) => /claude --resume [0-9a-f-]{36}/.test(r)); }, 20000);
     say(`Resume in terminal typed: ${JSON.stringify(resumed.trim().replace(/^.*?(claude --resume)/, "$1"))}`);
@@ -233,6 +260,36 @@ try {
     say("while it is working its card offers Terminal, and not Resume in terminal");
     await shot(page, "terminal-of-the-editor");
     void own;
+
+    // --- receipts ---
+    // a file a card changed opens its diff
+    await page.locator(".tabs-container .tab", { hasText: "2 sessions" }).first().click();
+    const again = await until("the page of two bands, for its receipts", async () => (await pages(page)).find((p) => p.bands.length === 2 && p.tasks.length), 15000);
+    await clickCard(again, one.goal);
+    await again.frame.locator("#details .rc-file", { hasText: "wordcount.py" }).first().click();
+    await page.waitForSelector(".monaco-diff-editor, .multiDiffEditor, .multi-diff-editor", { timeout: 20000 }).catch(() => { throw new Error("a changed file opened no diff"); });
+    say("a changed file on its card opened its diff");
+    await page.waitForTimeout(800);
+    await shot(page, "changed-file-diff");
+    // the session that ran no test says so (the diff's tab is in front now: the page's is clicked back)
+    await page.locator(".tabs-container .tab", { hasText: "2 sessions" }).first().click();
+    await until("the page in front again", async () => again.frame.locator("#b-session").isVisible().catch(() => false), 15000);
+    await clickCard(again, "Add a one-line docstring");
+    const r2 = await until("the second session's receipt", async () => { const r = await receiptOf(again); return r.files.some((f) => f.includes("test_wordcount.py")) ? r : null; }, 10000);
+    if (!r2.tests.some((t) => t === "ran no tests")) throw new Error(`a session that ran no test does not say so: ${JSON.stringify(r2)}`);
+    say(`the session that ran no test says so: ${JSON.stringify(r2.tests)}, and its card's foot ${JSON.stringify(await foot(again, "Add a one-line docstring"))}`);
+    await shot(page, "ran-no-tests");
+    // a session that commits and pushes (to a bare repository beside the folder): the flag, with the line that shows it
+    const pushing = ask(dir, 'Create CHANGES.md with the one line "pushed by the walk". Then run exactly: git add CHANGES.md, then git commit -m "changes", then git push -u origin HEAD.', ["Bash(git add:*)", "Bash(git commit:*)", "Bash(git push:*)"]);
+    const pushed = await until("a page for the session that pushes", async () => (await pages(page)).find((p) => p.goal.startsWith("Create CHANGES.md")), 90000);
+    await pushing;
+    await page.locator(".tabs-container .tab", { hasText: "Create CHANGES.md" }).first().click();
+    const flagged = await until("its card flagged", async () => { const p = (await pages(page)).find((x) => x.goal.startsWith("Create CHANGES.md")); return p && /to look at/.test(await foot(p, "Create CHANGES.md")) ? p : null; }, 60000);
+    await clickCard(flagged, "Create CHANGES.md");
+    const r3 = await until("its receipt's flag", async () => { const r = await receiptOf(flagged); return r.flags.some(([k]) => k === "push") ? r : null; }, 10000);
+    say(`the session that pushed: its card's foot ${JSON.stringify(await foot(flagged, "Create CHANGES.md"))}; flags ${JSON.stringify(r3.flags)}; git ${JSON.stringify(r3.tests.filter((t) => /HEAD|tool call/.test(t)))}`);
+    await shot(page, "pushed-flag");
+    void pushed;
     writeFileSync(path.join(out, `${appName}-walk.json`), JSON.stringify({ folder: dir, typedKeys: keys, pages: back.map((p) => ({ goal: p.goal, line: p.line, bands: p.bands, tasks: p.tasks })) }, null, 1));
   }
 } catch (e) {
