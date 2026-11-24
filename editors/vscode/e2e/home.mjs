@@ -54,8 +54,11 @@ try {
   await L.openSidebar(page);
   await L.setSidebarWidth(page, 400);
   let home = await L.homeFrame(page);
+  // a folder with no plan lists its sessions; strict mode is one quiet line under them, and Set Up is behind it
+  await until(home, () => document.querySelector("section.screen h2")?.textContent === "Sessions", null, "the folder's sessions");
+  await home.locator("button.strict").click();
   await until(home, () => document.querySelector("section.screen h2")?.textContent === "Set up Graphene in this folder", null, "the Set Up screen");
-  say("a folder with no plan opens on Set Up");
+  say("a folder with no plan lists its sessions, and Strict mode… opens Set Up");
   await shot("setup");
 
   await home.locator("button.pick", { hasText: "Claude Code" }).click();

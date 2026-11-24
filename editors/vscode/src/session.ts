@@ -128,6 +128,8 @@ export class Session {
   private async read() {
     if (!this.own) this.folder ??= planFolder();
     if (!this.folder) return this.set(null, { kind: "nofolder", text: "Open a folder to see its plan." });
+    // a folder with no plan: graphene is not run there, installed or not (the folder's sessions are drawn without it)
+    if (!this.own && !existsSync(path.join(this.folder.uri.fsPath, STORE))) return this.set(null, { kind: "uninitialised", text: INIT });
     if (this.versioned !== this.path) { // which graphene answers: said in the hover and the older-CLI line
       const v = await this.run(["--version"]);
       this.versioned = this.path;

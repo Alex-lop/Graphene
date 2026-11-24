@@ -41,8 +41,14 @@ def test_the_manifest_names_the_product_and_its_version():
     assert MANIFEST["engines"]["vscode"] == "^1.95.0"
 
 
-def test_the_extension_wakes_for_a_folder_with_a_store():
-    assert f"workspaceContains:{STORE}" in MANIFEST["activationEvents"]
+def test_the_extension_wakes_in_any_folder():
+    """It draws a folder's sessions with nothing set up (dev/VISION.md), so it does not wait for a store: a
+    folder that has one is strict mode, which the extension tells by looking (src/extension.ts)."""
+    events = MANIFEST["activationEvents"]
+    assert "onStartupFinished" in events
+    assert not any(e.startswith("workspaceContains") for e in events)
+    # the store's name is still the code's
+    assert f'"{STORE.split("/")[1]}")' in (EXT / "src/session.ts").read_text()
 
 
 def test_every_command_is_titled_graphene_and_the_list_is_the_promised_one():

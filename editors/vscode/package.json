@@ -42,7 +42,7 @@
     }
   },
   "activationEvents": [
-    "workspaceContains:.graphene/graphene.db"
+    "onStartupFinished"
   ],
   "contributes": {
     "viewsContainers": {
