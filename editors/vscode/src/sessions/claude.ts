@@ -63,7 +63,7 @@ export function claudeLine(line: string): Ev[] {
     const exit = EXIT.exec(text)?.[1];
     out.push({
       k: "result", at, id: str(b.tool_use_id), error: b.is_error === true,
-      out: clip(str(more.stdout) || (typeof r === "string" ? r : text)), err: clip(str(more.stderr)), interrupted: more.interrupted === true,
+      out: clip(str(more.stdout) || text), err: clip(str(more.stderr)), interrupted: more.interrupted === true, // a failed command: what the agent was shown
       // Claude Code says a failed command's code and nothing for one that exited 0; a refusal has neither
       exit: exit !== undefined ? Number(exit) : b.is_error === true ? null : 0, more: kept(more),
     });
