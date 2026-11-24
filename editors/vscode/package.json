@@ -70,14 +70,14 @@
           "name": "Needs You",
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "id": "graphene.agents",
           "name": "Agents",
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "id": "graphene.plan",
@@ -85,7 +85,7 @@
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene",
           "visibility": "collapsed",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "id": "graphene.rounds",
@@ -93,7 +93,7 @@
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene",
           "visibility": "collapsed",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         }
       ]
     },
@@ -317,87 +317,103 @@
       "commandPalette": [
         {
           "command": "graphene.openCockpit",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.envelope",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.runReady",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.accept",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.acceptAll",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.addStep",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.link",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.editStep",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.dropStep",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.tell",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.refresh",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.answer",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.handBack",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.markDone",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.openDiff",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.compareForks",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.pickFork",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.signOff",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.editPlan",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.addStepByHand",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.diffWithAgent",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
+        },
+        {
+          "command": "graphene.watchDemo",
+          "when": "graphene.mode == strict"
+        },
+        {
+          "command": "graphene.stop",
+          "when": "graphene.mode == strict"
+        },
+        {
+          "command": "graphene.install",
+          "when": "graphene.mode == strict"
+        },
+        {
+          "command": "graphene.setKey",
+          "when": "graphene.mode == strict"
         }
       ],
       "editor/title": [
@@ -686,7 +702,7 @@
         "graphene.advanced": {
           "type": "boolean",
           "default": false,
-          "description": "Show the advanced views (Needs You, Agents, Plan, Rounds) and every Graphene command in the Command Palette. Off, Home and the graph do it all."
+          "description": "In strict mode (a folder with a Graphene plan), show the advanced views (Needs You, Agents, Plan, Rounds) and every Graphene command in the Command Palette. Off, Home and the graph do it all."
         },
         "graphene.graph.openOnStart": {
           "type": "boolean",

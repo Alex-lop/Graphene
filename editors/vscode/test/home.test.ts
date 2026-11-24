@@ -198,17 +198,21 @@ test("Home's commands: a send-back with its note, a set-up that asks nothing", (
   assert.throws(() => C.dropAll(["hello", "--all"]));
 });
 
-test("the palette shows seven commands; the rest, and the advanced views, only with graphene.advanced", () => {
+test("the palette shows three commands in any folder and seven in strict mode; the rest, and the advanced views, only with graphene.advanced", () => {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   const c = pkg.contributes;
-  const hidden = new Set(c.menus.commandPalette.filter((m: { when: string }) => m.when === "config.graphene.advanced").map((m: { command: string }) => m.command));
-  const shown = c.commands.map((x: { command: string }) => x.command).filter((x: string) => !hidden.has(x));
-  assert.deepEqual(shown.sort(), ["graphene.home", "graphene.init", "graphene.install", "graphene.setKey", "graphene.showGraph",
-                                  "graphene.stop", "graphene.watchDemo"]);
+  const STRICT = "graphene.mode == strict", ADVANCED = `config.graphene.advanced && ${STRICT}`;
+  const when = new Map<string, string>(c.menus.commandPalette.map((m: { command: string; when: string }) => [m.command, m.when]));
+  const every: string[] = c.commands.map((x: { command: string }) => x.command);
+  // a folder with no plan: Home, the graph, and the way into strict mode
+  assert.deepEqual(every.filter((x) => !when.has(x)).sort(), ["graphene.home", "graphene.init", "graphene.showGraph"]);
+  assert.deepEqual(every.filter((x) => when.get(x) !== ADVANCED).sort(), ["graphene.home", "graphene.init", "graphene.install", "graphene.setKey", "graphene.showGraph",
+                                                                         "graphene.stop", "graphene.watchDemo"]);
+  assert.deepEqual([...new Set(when.values())].sort(), [ADVANCED, STRICT].sort());
   for (const x of c.commands) assert.match(x.title, /^Graphene: /);
   const views = c.views.graphene;
   assert.equal(views[0].id, "graphene.home", "the side bar is Home: the graph is a tab of the editor, opened with it");
-  for (const v of views.slice(1)) assert.equal(v.when, "config.graphene.advanced", v.id);
+  for (const v of views.slice(1)) assert.equal(v.when, ADVANCED, v.id);
   assert.equal(c.configuration.properties["graphene.advanced"].default, false);
   assert.equal(c.walkthroughs[0].description, WHAT, "one sentence for what Graphene is, as Set Up says it");
   assert.equal(pkg.description, `${WHAT} ${HOW}`, "the Extensions view says it as Set Up does");

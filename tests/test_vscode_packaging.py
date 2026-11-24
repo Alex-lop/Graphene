@@ -25,10 +25,13 @@ COMMANDS = ["Home", "Open the Graph", "Open Cockpit", "Set Limits…", "Run Read
             "Mark Your Task Done", "Set API Key…", "Open Changes", "Compare Attempts", "Keep This Attempt",
             "Approve", "Edit Plan as Text", "Add Task by Hand…", "Watch the Demo",
             "Compare with the Agent's Copy"]
-# what the palette lists until graphene.advanced is set: the rest are buttons on Home, the graph and the diffs
-PALETTE = {"graphene.home", "graphene.showGraph", "graphene.watchDemo", "graphene.stop", "graphene.init",
-           "graphene.install", "graphene.setKey"}
-ADVANCED = "config.graphene.advanced"
+# what the palette lists in any folder: Home, the graph, and the way into strict mode
+ANYWHERE = {"graphene.home", "graphene.showGraph", "graphene.init"}
+# and in strict mode (a folder with a Graphene plan) until graphene.advanced is set: the rest are buttons on
+# Home, the graph and the diffs
+PALETTE = ANYWHERE | {"graphene.watchDemo", "graphene.stop", "graphene.install", "graphene.setKey"}
+STRICT = "graphene.mode == strict"
+ADVANCED = f"config.graphene.advanced && {STRICT}"
 
 
 def test_the_manifest_names_the_product_and_its_version():
@@ -58,11 +61,16 @@ def test_every_command_is_titled_graphene_and_the_list_is_the_promised_one():
     assert all(c["command"].startswith("graphene.") for c in MANIFEST["contributes"]["commands"])
 
 
-def test_the_palette_lists_seven_commands_until_advanced_is_set():
-    palette = MANIFEST["contributes"]["menus"]["commandPalette"]
-    hidden = {m["command"] for m in palette if m["when"] == ADVANCED}
-    shown = {c["command"] for c in MANIFEST["contributes"]["commands"]} - hidden
-    assert shown == PALETTE
+def test_the_palette_lists_three_commands_in_any_folder_and_seven_in_strict_mode():
+    """A person who installed a graph is not shown 28 commands: where there is no plan the palette has Home,
+    Open the Graph and Set Up This Folder; strict mode adds four, and graphene.advanced the rest."""
+    when = {m["command"]: m["when"] for m in MANIFEST["contributes"]["menus"]["commandPalette"]}
+    every = {c["command"] for c in MANIFEST["contributes"]["commands"]}
+    assert set(when.values()) == {STRICT, ADVANCED}
+    assert every - set(when) == ANYWHERE
+    assert {c for c in every if when.get(c) != ADVANCED} == PALETTE
+    # the key those rules read
+    assert 'setContext", "graphene.mode"' in (EXT / "src/extension.ts").read_text()
     assert MANIFEST["contributes"]["configuration"]["properties"]["graphene.advanced"]["default"] is False
 
 
