@@ -20,7 +20,12 @@ test("a file is read for what is new only, a last line with no newline waits, an
     appendFileSync(file, 'é"}\n');
     assert.deepEqual((await t.read()).lines, ['{"d":"éé"}']); // a character is never read as two halves
     writeFileSync(file, '{"z":0}\n');
-    assert.deepEqual(await t.read(), { lines: ['{"z":0}'], reset: true, error: "" });
+    assert.deepEqual(await t.read(), { lines: ['{"z":0}'], n: 1, reset: true, error: "" });
+    // handed over a line at a time, none is kept: a long session's first read holds a line, not the file
+    appendFileSync(file, '{"y":1}\n{"x":2}\n');
+    const got: string[] = [];
+    assert.deepEqual(await t.read((l) => got.push(l)), { lines: [], n: 2, reset: false, error: "" });
+    assert.deepEqual(got, ['{"y":1}', '{"x":2}']);
     const gone = await new Tail(path.join(dir, "none.jsonl")).read();
     assert.deepEqual(gone.lines, []);
     assert.match(gone.error, /^cannot read .*none\.jsonl: ENOENT$/); // one line, and no throw

@@ -34,10 +34,13 @@ test("working is said while something says it still runs, needs you only on proo
   assert.equal(status(m, last + 31 * 60_000), "idle"); // nothing for half an hour: nothing says it runs
   assert.equal(status(m, last + 1000, { status: "idle" }), "idle"); // its own process says so
   assert.equal(status(m, last + 31 * 60_000, { status: "busy" }), "working");
-  // a question put to the person and not answered is the proof
+  // a question put to the person and not answered is the proof, while something says it is still there to be answered
   fold(m, { k: "tool", at: "2026-11-24T10:00:50.000Z", id: "q1", name: "AskUserQuestion", input: { questions: [] }, side: "" });
-  assert.equal(status(m, last + 31 * 60_000), "needs you");
-  assert.equal(snapshot([m], last + 31 * 60_000).tasks.at(-1)!.needs_you, true);
+  const asked = at("2026-11-24T10:00:50.000Z");
+  assert.equal(status(m, asked + 20 * 60_000), "needs you");
+  assert.equal(snapshot([m], asked + 20 * 60_000).tasks.at(-1)!.needs_you, true);
+  assert.equal(status(m, asked + 23 * 86_400_000), "idle"); // three weeks on, no process: nobody is there to answer
+  assert.equal(status(m, asked + 23 * 86_400_000, { status: "idle" }), "needs you"); // its process is: it still waits
   fold(m, { k: "result", at: "2026-11-24T10:00:55.000Z", id: "q1", error: false, out: "", err: "", interrupted: false, exit: 0, more: {} });
   assert.equal(status(m, at("2026-11-24T10:00:56.000Z")), "working");
   fold(m, { k: "end", at: "2026-11-24T10:01:00.000Z", side: "" });
@@ -152,6 +155,37 @@ test("the preview's fixtures are these sessions' own snapshots (UPDATE=1 writes 
   }
 });
 
+test("what an earlier request left out or in progress does not make this one working, or take its work", () => {
+  const m = empty("claude", "x", "s1"), t = (s: number) => `2026-11-24T10:00:${String(s).padStart(2, "0")}.000Z`;
+  fold(m, { k: "ask", at: t(0), text: "first", side: "" });
+  fold(m, { k: "tool", at: t(1), id: "w", name: "TodoWrite", input: { todos: [{ content: "A", status: "in_progress", activeForm: "Doing A" }] }, side: "" });
+  fold(m, { k: "tool", at: t(2), id: "orphan", name: "Bash", input: { command: "sleep 999" }, side: "" }); // its result never came: a crash
+  fold(m, { k: "stop", at: t(3), side: "" });
+  fold(m, { k: "ask", at: t(10), text: "rename foo.py", side: "" });
+  fold(m, { k: "tool", at: t(11), id: "e", name: "Edit", input: { file_path: "/w/foo.py" }, side: "" });
+  fold(m, { k: "result", at: t(12), id: "e", error: false, out: "", err: "", interrupted: false, exit: 0, more: {} });
+  const s = snapshot([m], at(t(12)) + 5 * 60_000); // five minutes quiet, nothing of this request out
+  assert.equal(s.sessions![0]!.status, "idle"); // the first request's orphan does not hold it at working
+  assert.deepEqual(s.tasks.map((x) => [x.title, x.changed]), [["first", []], ["A", []], ["rename foo.py", ["/w/foo.py"]]]); // A did not edit foo.py
+});
+
+test("a request that left a subagent running behind it is working while that thread is, though the request is over", async () => {
+  const m = await read("subagents.jsonl");
+  fold(m, { k: "end", at: "2026-11-24T10:00:42.000Z", side: "" }); // the second request ends; the printer's review is still out
+  assert.equal(status(m, at("2026-11-24T10:00:43.000Z")), "idle"); // nothing of the last request is behind it
+  const n = await read("subagents.jsonl");
+  n.turns.pop(); // as it stood before the second request: over, its background review at work
+  assert.equal(status(n, at("2026-11-24T10:00:30.000Z")), "working");
+  assert.equal(status(n, at("2026-11-24T11:30:00.000Z")), "idle"); // an hour and a half quiet: nothing says it runs
+});
+
+test("two sessions whose ids begin alike (Codex's begin with the time) keep cards apart", () => {
+  const a = empty("codex", "a", "019a1b2c-0000-7000-8000-00000000000a"), b = empty("codex", "b", "019a1b2c-0000-7000-8000-00000000000b");
+  for (const m of [a, b]) fold(m, { k: "ask", at: "2026-11-24T10:00:00.000Z", text: "go", side: "" });
+  const ids = snapshot([a, b], 0).tasks.map((t) => t.id);
+  assert.equal(new Set(ids).size, 2);
+});
+
 test("a long session folds its oldest requests into one card", () => {
   const m = empty("claude", "x", "s1");
   for (let i = 1; i <= 11; i++) {
@@ -167,6 +201,7 @@ test("a long session folds its oldest requests into one card", () => {
 test("a title is the first line that says something, without its markup, cut at a word", () => {
   assert.equal(titleOf("\n\n## Fix `the` bug\nmore"), "Fix `the` bug");
   assert.equal(titleOf("- [ ] one\n- two"), "[ ] one");
-  assert.equal(titleOf("```\n---\n"), "");
+  assert.equal(titleOf("```python\n---\n"), ""); // a code fence's line is not words
+  assert.equal(titleOf("`slug()` now collapses dashes."), "`slug()` now collapses dashes."); // code in a sentence keeps its marks
   assert.ok(titleOf("word ".repeat(40)).length <= 72);
 });

@@ -81,6 +81,7 @@ export class HomeHost implements vscode.WebviewViewProvider {
 
   /** Home in a folder with no plan: its sessions, the last written first. */
   private async pushSessions(hub: Hub) {
+    if (!this.views.size) return; // Home was never opened: no session is read for a list nobody sees
     const model = { type: "sessions", folder: Boolean(hub.folder), sessions: await hub.list() };
     for (const v of this.views) { v.badge = undefined; void v.webview.postMessage(model); }
   }

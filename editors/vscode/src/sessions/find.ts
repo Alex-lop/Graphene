@@ -56,14 +56,15 @@ async function real(folder: string): Promise<string> {
   try { return await realpath(folder); } catch { return folder; }
 }
 
-const started = new Map<string, string>(); // a session file -> where it started: read once, it never changes
+/** A session file -> where it started: read once, it never changes. A file that does not say yet (no line of
+ *  the session's own so far) is asked again only once it has grown. */
+const started = new Map<string, { cwd: string; size: number }>();
 
-async function cwdIn(file: string): Promise<string> {
-  let cwd = started.get(file);
-  if (cwd === undefined) {
-    cwd = cwdOf(await head(file)) || cwdOf(await head(file, 1 << 20)); // past a long first line
-    if (cwd) started.set(file, cwd);
-  }
+async function cwdIn(file: string, size: number): Promise<string> {
+  const was = started.get(file);
+  if (was && (was.cwd || was.size === size)) return was.cwd;
+  const cwd = cwdOf(await head(file)) || cwdOf(await head(file, 1 << 20)); // past a long first line
+  started.set(file, { cwd, size });
   return cwd;
 }
 
@@ -71,7 +72,7 @@ async function found(agent: Agent, file: string, id: string, folders: readonly s
   try {
     const s = await stat(file);
     if (!s.isFile() || !s.size) return null;
-    const cwd = await cwdIn(file);
+    const cwd = await cwdIn(file, s.size);
     return folders.some((f) => inside(cwd, f)) ? { agent, file, id, cwd, mtime: s.mtimeMs, size: s.size } : null;
   } catch { return null; }
 }
@@ -88,7 +89,8 @@ export async function findClaude(folder: string, home = claudeHome()): Promise<F
   const out: (Found | null)[] = [];
   for (const d of dirs) {
     let files: string[];
-    try { files = (await readdir(path.join(root, d))).filter((f) => f.endsWith(".jsonl")); } catch { continue; }
+    // a session's own file: an older Claude Code kept its subagents' transcripts beside it, as agent-<id>.jsonl
+    try { files = (await readdir(path.join(root, d))).filter((f) => f.endsWith(".jsonl") && !f.startsWith("agent-")); } catch { continue; }
     out.push(...await Promise.all(files.map((f) => found("claude", path.join(root, d, f), f.slice(0, -6), here))));
   }
   return out.filter((f): f is Found => f !== null);
@@ -118,6 +120,75 @@ export const readerOf = (agent: Agent): Reader => (agent === "codex" ? CODEX : C
 export async function findAll(folder: string, homes: { claude?: string; codex?: string } = {}): Promise<Found[]> {
   const all = await Promise.all([findClaude(folder, homes.claude), findCodex(folder, homes.codex)]);
   return all.flat().sort((a, b) => b.mtime - a.mtime);
+}
+
+/** A folder's sessions looked for again and again, cheaply. Everything is listed once every `FULL_MS`; between,
+ *  only the newest few files are asked their size, and the directories sessions appear in are asked whether
+ *  anything was added, which is the one thing that brings the whole listing forward. A folder with thousands of
+ *  sessions under it (a home directory) costs a few dozen stats a look, not thousands. */
+export const FULL_MS = 30_000, NEWEST = 30;
+export class Scan {
+  found: Found[] = [];
+  private fullAt = 0;
+  private dirs = new Map<string, number>(); // where a new session shows: each directory's mtime at the last full listing
+  private readonly folder: string;
+  private readonly homes: { claude: string; codex: string };
+
+  constructor(folder: string, homes: { claude?: string; codex?: string } = {}) {
+    this.folder = folder;
+    this.homes = { claude: homes.claude ?? claudeHome(), codex: homes.codex ?? codexHome() };
+  }
+
+  /** The folder's sessions now, the last written first. */
+  async look(now = Date.now()): Promise<Found[]> {
+    if (now - this.fullAt >= FULL_MS || await this.added(now)) {
+      this.fullAt = now;
+      this.found = await findAll(this.folder, this.homes);
+      this.dirs = new Map();
+      for (const d of this.watched(now)) this.dirs.set(d, await mtime(d));
+      return this.found;
+    }
+    const newest = await Promise.all(this.found.slice(0, NEWEST).map(async (f) => {
+      try { const s = await stat(f.file); return { ...f, mtime: s.mtimeMs, size: s.size }; } catch { return null; }
+    }));
+    this.found = [...newest.filter((f): f is Found => f !== null), ...this.found.slice(NEWEST)].sort((a, b) => b.mtime - a.mtime);
+    return this.found;
+  }
+
+  /** The directories a new session of this folder is written into: Claude Code's projects and the ones of them
+   *  that hold a session of the folder's; Codex's sessions and today's. */
+  private watched(now: number): string[] {
+    const day = new Date(now), codex = path.join(this.homes.codex, "sessions");
+    const today = path.join(codex, String(day.getFullYear()), String(day.getMonth() + 1).padStart(2, "0"), String(day.getDate()).padStart(2, "0"));
+    return [...new Set([path.join(this.homes.claude, "projects"), codex, today, ...this.found.map((f) => path.dirname(f.file))])];
+  }
+
+  private async added(now: number): Promise<boolean> {
+    for (const d of this.watched(now)) if ((await mtime(d)) !== (this.dirs.get(d) ?? 0)) return true;
+    return false;
+  }
+}
+
+/** When a directory last had an entry added or removed; 0 for one that is not there. */
+async function mtime(dir: string): Promise<number> {
+  try { return (await stat(dir)).mtimeMs; } catch { return 0; }
+}
+
+/** A session at a glance, for a list: its first request from the file's start and what it is doing from its end,
+ *  a few hundred kilobytes of however many, and nothing kept of the rest. */
+export const GLANCE = { head: 1 << 16, tail: 1 << 18 };
+export async function glance(f: Found): Promise<string[]> {
+  try {
+    if (f.size <= GLANCE.head + GLANCE.tail) return (await readFile(f.file, "utf8")).split("\n");
+    const fh = await open(f.file, "r");
+    try {
+      const a = Buffer.alloc(GLANCE.head), b = Buffer.alloc(GLANCE.tail);
+      await fh.read(a, 0, a.length, 0);
+      await fh.read(b, 0, b.length, f.size - b.length);
+      // the line a part ends in, and the one the other begins in, are cut: neither is read
+      return [...a.toString("utf8").split("\n").slice(0, -1), ...b.toString("utf8").split("\n").slice(1)];
+    } finally { await fh.close(); }
+  } catch { return []; }
 }
 
 /** A running Claude Code's own record of itself, ~/.claude/sessions/<pid>.json: the session it has open and

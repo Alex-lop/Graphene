@@ -4,7 +4,7 @@
 // records that name the command, its exit code and the files a patch changed. This reads the records: they
 // say what ran, not how it was asked for. Undocumented, and read here as 0.150 to 0.170 write it.
 // A record arrives when its work is over, so a command shows once it has ended. Pure: a line in, events out.
-import { COMMAND, json, list, obj, str, type Ev, type Raw } from "./events.ts";
+import { clip, COMMAND, json, list, obj, str, type Ev, type Raw } from "./events.ts";
 
 /** A command as a person would type it: Codex wraps each in `shell -lc "<command>"`. */
 function typed(command: unknown): string {
@@ -29,7 +29,10 @@ export function codexLine(line: string): Ev[] {
   // a subagent launched: the call names it; Codex says its end nowhere in this file
   if (type === "response_item" && kind === "function_call" && str(p.name) === "spawn_agent" && str(p.call_id)) {
     const args = json(str(p.arguments)) ?? {};
-    return [{ k: "tool", at, id: str(p.call_id), name: "Agent", input: { description: str(args.task_name), prompt: str(args.message), model: str(args.model) }, side: "" }];
+    const id = str(p.call_id);
+    // launched, and left running behind the request: the call itself is answered at once
+    return [{ k: "tool", at, id, name: "Agent", input: { description: str(args.task_name), prompt: str(args.message), model: str(args.model) }, side: "" },
+            { k: "result", at, id, error: false, out: "", err: "", interrupted: false, exit: null, more: { isAsync: true, status: "async_launched" } }];
   }
   if (type !== "event_msg" || kind !== "item_completed") return [];
   const item = obj(p.item), id = str(item.id);
@@ -47,7 +50,7 @@ export function codexLine(line: string): Ev[] {
       const exit = typeof item.exit_code === "number" ? item.exit_code : null;
       return [
         { k: "tool", at, id, name: COMMAND, input: { command: typed(item.command) }, side: "" },
-        { k: "result", at, id, error: exit !== 0, out: str(item.aggregated_output) || str(item.stdout), err: str(item.stderr), interrupted: false, exit, more: {} },
+        { k: "result", at, id, error: exit !== 0, out: clip(str(item.aggregated_output) || str(item.stdout)), err: clip(str(item.stderr)), interrupted: false, exit, more: {} },
       ];
     }
     case "FileChange": {

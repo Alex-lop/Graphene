@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { appendFileSync, copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { test } from "node:test";
-import { cwdOf, encoded, findAll, findCodex, inside, procs } from "../src/sessions/find.ts";
+import { cwdOf, encoded, findAll, findCodex, glance, GLANCE, inside, NEWEST, procs, Scan } from "../src/sessions/find.ts";
 import { Follow } from "../src/sessions/follow.ts";
 import { empty, fold, sidesOf, subOver } from "../src/sessions/model.ts";
 import { FIX, read, ROLLOUT, scratch } from "./sessions.ts";
@@ -82,6 +82,7 @@ test("a session is a folder's by the cwd its lines say, in the folder or inside 
     mkdirSync(path.join(projects, encoded(folder)), { recursive: true });
     here(path.join(projects, encoded(folder), "aaaa.jsonl"), folder);
     here(path.join(projects, encoded(folder), "bbbb.jsonl"), `${folder}-other`); // another folder under the same name: its lines say so
+    here(path.join(projects, encoded(folder), "agent-old1.jsonl"), folder); // an older version's subagent transcript: not a session
     mkdirSync(path.join(projects, `${encoded(folder)}-sub`), { recursive: true });
     here(path.join(projects, `${encoded(folder)}-sub`, "cccc.jsonl"), path.join(folder, "sub")); // started inside the folder
     const day = path.join(home, "codex", "sessions", "2026", "11", "24");
@@ -119,9 +120,53 @@ test("a session is followed as it grows, its subagents' files beside it, and a f
     assert.equal(await f.read(), true);
     assert.equal(f.model.turns.length, 2);
     assert.equal(f.model.subs.length, 3);
+    // rewritten shorter (a compaction, a restore): read from its start, and nothing is there twice
+    writeFileSync(file, `${whole.slice(0, 5).join("\n")}\n`);
+    assert.equal(await f.read(), true);
+    assert.deepEqual([f.model.turns.length, f.model.subs.length, f.model.sides.size], [1, 2, 3]);
+    appendFileSync(file, `${whole.slice(5).join("\n")}\n`);
+    await f.read();
+    assert.deepEqual([f.model.turns.length, f.model.subs.length, f.model.sides.get("aaa111")!.calls.length], [2, 3, 1]);
     rmSync(file);
     assert.equal(await f.read(), true);
     assert.match(f.model.error, /^cannot read .*s\.jsonl: ENOENT$/);
     assert.equal(f.model.turns.length, 2); // and what was read of it is still there
+  } finally { rmSync(dir, { recursive: true }); }
+});
+
+test("the folder is looked at cheaply: a full listing now and then, a few stats between, and at once when a session is added", async () => {
+  const home = scratch(), folder = path.join(home, "work", "app");
+  try {
+    const dir = path.join(home, "claude", "projects", encoded(folder));
+    mkdirSync(dir, { recursive: true });
+    mkdirSync(folder, { recursive: true });
+    const line = (text: string) => `${JSON.stringify({ type: "user", cwd: folder, sessionId: "s", timestamp: "2026-11-24T10:00:00.000Z", message: { content: text } })}\n`;
+    for (let i = 0; i < NEWEST + 5; i++) writeFileSync(path.join(dir, `s${String(i).padStart(2, "0")}.jsonl`), line("go"));
+    const scan = new Scan(folder, { claude: path.join(home, "claude"), codex: path.join(home, "codex") });
+    assert.equal((await scan.look(1_000_000)).length, NEWEST + 5);
+    const newest = scan.found[0]!.file, oldest = scan.found.at(-1)!.file;
+    appendFileSync(newest, line("more"));
+    appendFileSync(oldest, line("more"));
+    const quick = await scan.look(1_002_000); // two seconds on: only the newest few are asked their size
+    assert.ok(quick.find((f) => f.file === newest)!.size > line("go").length);
+    assert.equal(quick.find((f) => f.file === oldest)!.size, line("go").length); // not asked, until the next full listing
+    writeFileSync(path.join(dir, "new.jsonl"), line("a new session")); // a session begins: its directory says something was added
+    assert.ok((await scan.look(1_004_000)).some((f) => f.id === "new"));
+    assert.ok((await scan.look(1_004_000 + 31_000)).find((f) => f.file === oldest)!.size > line("go").length); // the full listing catches up
+  } finally { rmSync(home, { recursive: true }); }
+});
+
+test("a session at a glance: its start and its end, and never the megabytes between", async () => {
+  const dir = scratch(), file = path.join(dir, "big.jsonl");
+  try {
+    const line = (n: number) => `${JSON.stringify({ n, pad: "x".repeat(2000) })}\n`;
+    let text = "";
+    for (let n = 0; text.length < 3 * (GLANCE.head + GLANCE.tail); n++) text += line(n);
+    writeFileSync(file, text);
+    const got = (await glance({ agent: "claude", file, id: "big", cwd: "/w", mtime: 0, size: text.length })).filter(Boolean).map((l) => JSON.parse(l).n as number);
+    assert.equal(got[0], 0);
+    assert.equal(got.at(-1), text.split("\n").length - 2); // the last whole line
+    assert.ok(got.length < (GLANCE.head + GLANCE.tail) / 2000, "only the two ends are read"); // and every line read is whole: JSON.parse did not throw
+    assert.deepEqual(await glance({ agent: "claude", file: path.join(dir, "none"), id: "x", cwd: "/w", mtime: 0, size: 9 }), []);
   } finally { rmSync(dir, { recursive: true }); }
 });

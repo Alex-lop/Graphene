@@ -42,12 +42,33 @@ test("Codex: the records of what ran, in Claude Code's names: a command by its e
   assert.deepEqual(evs[0], { k: "meta", id: "01a20f92-0000-7000-8000-000000000001", cwd: "/work/app", branch: "main", head: "25af821668c07e663e06a4bba858439a3cb4fe7e" });
   assert.deepEqual(kinds(evs.slice(1)), [
     "ask slug() keeps punctuation. Strip it, add a test, and run the tests.", // the environment Codex writes into the person's turn is no request
-    "say", "tool Bash", "result", "tool Edit", "result", "tool Write", "result", "tool Bash", "result", "tool Agent", "tool Bash", "result", "say", "end",
+    "say", "tool Bash", "result", "tool Edit", "result", "tool Write", "result", "tool Bash", "result",
+    "tool Agent", "result", // a subagent is launched and left running: the call itself is answered at once
+    "tool Bash", "result", "say", "end",
   ]);
   const results = evs.filter((e) => e.k === "result");
-  assert.deepEqual(results.map((e) => e.k === "result" && [e.exit, e.error]), [[0, false], [null, false], [null, false], [1, true], [0, false]]);
+  assert.deepEqual(results.map((e) => e.k === "result" && [e.exit, e.error]), [[0, false], [null, false], [null, false], [1, true], [null, false], [0, false]]);
   const tools = evs.filter((e) => e.k === "tool");
   assert.deepEqual(tools.map((e) => e.k === "tool" && (e.input.command ?? e.input.file_path ?? e.input.description)),
                    ["cat slug.py", "/work/app/slug.py", "/work/app/test_punctuation.py", "python3 -m unittest", "check the docs", "python3 -m unittest"]);
   assert.deepEqual(codexLine('{"type":"event_msg","payload":{"type":"turn_aborted"},"timestamp":"t"}'), [{ k: "stop", at: "t", side: "" }]);
+});
+
+test("a call keeps what a card reads of it, never a file's text or megabytes of output", () => {
+  const big = "x".repeat(50_000);
+  const line = (o: object) => JSON.stringify({ type: "assistant", timestamp: "t", sessionId: "s", message: { stop_reason: "tool_use", content: [o] } });
+  const [, write] = claudeLine(line({ type: "tool_use", id: "w", name: "Write", input: { file_path: "/w/a.py", content: big } }));
+  assert.deepEqual(write && write.k === "tool" && [write.input.file_path, String(write.input.content).length], ["/w/a.py", 2000]);
+  const [, agent] = claudeLine(line({ type: "tool_use", id: "a", name: "Agent", input: { description: "d", prompt: big } }));
+  assert.equal(agent && agent.k === "tool" && String(agent.input.prompt).length, 50_000); // a prompt stays whole: its subagent is matched by it
+  const result = JSON.stringify({ type: "user", timestamp: "t", sessionId: "s", message: { content: [{ type: "tool_result", tool_use_id: "w", content: "ok" }] },
+                                  toolUseResult: { stdout: `Exit code 1\n${big}\nFAILED (failures=1)`, originalFile: big, agentId: "abc", filePath: "/w/a.py" } });
+  const r = claudeLine(result).find((e) => e.k === "result");
+  assert.ok(r && r.k === "result" && r.out.length < 8000 && r.out.startsWith("Exit code 1") && r.out.endsWith("FAILED (failures=1)")); // its start and its end
+  assert.deepEqual(r && r.k === "result" && r.more, { agentId: "abc", filePath: "/w/a.py" });
+});
+
+test("an older Claude Code's subagent lines, in the session's own file with no id, are a thread apart", () => {
+  const side = JSON.stringify({ type: "user", isSidechain: true, timestamp: "t", sessionId: "s", message: { content: "Read parser.py" } });
+  assert.deepEqual(claudeLine(side).filter((e) => e.k === "ask"), [{ k: "ask", at: "t", text: "Read parser.py", side: "sidechain" }]); // never a request of the person's
 });

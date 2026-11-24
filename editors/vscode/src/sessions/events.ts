@@ -29,6 +29,27 @@ export function json(line: string): Raw | null {
   }
 }
 
+/** A command's output as a card keeps it: its start (where an exit code is said) and its end (where a test
+ *  run sums up), not the megabytes between. */
+export const clip = (s: string, head = 1000, tail = 6000): string => (s.length <= head + tail ? s : `${s.slice(0, head)}\n…\n${s.slice(-tail)}`);
+
+/** A tool call's input as a card keeps it: a file's whole text, both sides of an edit and a workflow's script are
+ *  cut (the transcript has them; a card says which file). A command and a subagent's prompt stay whole. */
+const LONG: readonly string[] = ["content", "old_string", "new_string", "new_source", "script", "edits"];
+export function slim(input: Raw): Raw {
+  const out: Raw = {};
+  for (const [k, v] of Object.entries(input)) out[k] = !LONG.includes(k) ? v : typeof v === "string" ? v.slice(0, 2000) : undefined;
+  return out;
+}
+
+/** What of a tool's own result record is read later (model.ts, snapshot.ts): never a file's text before an edit. */
+const READ: readonly string[] = ["agentId", "status", "isAsync", "runId", "workflowName", "resolvedModel", "task", "type", "filePath"];
+export function kept(more: Raw): Raw {
+  const out: Raw = {};
+  for (const k of READ) if (k in more) out[k] = more[k];
+  return out;
+}
+
 /** The names both agents' tools are read under: a command, a write to a file, a subagent, a workflow. Codex's
  *  rollout is read into Claude Code's names, so what follows asks one question, not two. */
 export const COMMAND = "Bash";

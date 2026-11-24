@@ -29,11 +29,15 @@ const ms = (iso: string): number => { const t = Date.parse(iso); return Number.i
  *  person, unanswered), `working` while a request is under way and something says it still runs, else `idle`. */
 export function status(m: Model, now: number, live?: Live | null): Status {
   const t = m.turns.at(-1);
-  if (!t || t.ended) return "idle";
-  if (t.calls.some((c) => !c.done && ASKS.includes(c.name))) return "needs you";
-  if (live) return live.status === "idle" ? "idle" : "working";
+  if (!t) return "idle";
   const quiet = now - ms(m.last);
-  return quiet < QUIET || (quiet < OUT && [...m.calls.values()].some((c) => !c.done)) ? "working" : "idle";
+  // a subagent or a workflow the request left running behind it: the request is over, the work is not
+  const behind = m.agent === "claude" && m.subs.some((s) => s.turn === t.n && !subOver(m, s));
+  if (t.ended) return behind && quiet < OUT ? "working" : "idle";
+  // it asked, and something says it is still there to be answered: its process, or a line written not long ago
+  if (t.calls.some((c) => !c.done && ASKS.includes(c.name))) return live || quiet < OUT ? "needs you" : "idle";
+  if (live) return live.status === "idle" ? "idle" : "working";
+  return quiet < QUIET || (quiet < OUT && (behind || t.calls.some((c) => !c.done))) ? "working" : "idle";
 }
 
 /** A path as a person reads it: from the session's folder when it is inside it. */
@@ -61,7 +65,8 @@ export function doing(c: Call, cwd: string): string {
 /** A card's title, from the person's words: their first line that says something, without its markup, cut at
  *  a word. */
 export function titleOf(text: string, n = 72): string {
-  const line = text.split(/\r?\n/).map((l) => l.replace(/^[#>*\-\s`]+/, "").trim()).find((l) => /\p{L}|\p{N}/u.test(l)) ?? "";
+  // a heading's, a quote's or a list's mark goes; a code fence's line is not words
+  const line = text.split(/\r?\n/).filter((l) => !/^\s*```/.test(l)).map((l) => l.replace(/^[#>*\-\s]+/, "").trim()).find((l) => /\p{L}|\p{N}/u.test(l)) ?? "";
   return cutWhole(oneLine(line), n);
 }
 
@@ -101,7 +106,8 @@ function line(calls: readonly Call[], said: readonly string[], over: boolean, cw
 /** One session's cards and the lines between them. `band`: the sub-goal they stand under, when the page draws
  *  more than one session. */
 export function cards(m: Model, st: Status, now: number, band: string | null): Drawn {
-  const key = m.id.slice(0, 8) || "session", id = (k: string) => `${key}/${k}`;
+  // the end of a session's id, not its start: Codex's begins with the time, which two sessions a minute apart share
+  const key = m.id.slice(-12) || "session", id = (k: string) => `${key}/${k}`;
   const who = m.agent === "codex" ? "Codex" : "Claude Code";
   const idle = m.last ? Math.max(0, Math.round((now - ms(m.last)) / 1000)) : null;
   // a card still under way says what the session says: working, needs you (a diamond, as a task that asks), or idle

@@ -3,7 +3,8 @@
 // rewritten) is read from its start again. It never throws: a file it cannot read says so in one line.
 import { open, stat } from "node:fs/promises";
 
-export interface Read { lines: string[]; reset: boolean; error: string }
+/** `n`: how many lines were read; `lines`: the lines themselves, unless they were handed to `each`. */
+export interface Read { lines: string[]; n: number; reset: boolean; error: string }
 
 const CHUNK = 1 << 20;
 
@@ -12,25 +13,30 @@ export class Tail {
   private offset = 0;
   private rest: Buffer = Buffer.alloc(0); // the bytes after the last newline: a line still being written
   private busy: Promise<Read> | null = null;
+  /** How many times the file was found shorter than what was read of it, and read from its start again: it moves
+   *  before the first line of the new reading is handed over. */
+  resets = 0;
 
   constructor(file: string) { this.file = file; }
 
   /** The bytes read so far: what `size` is compared with to know whether there is more. */
   get at(): number { return this.offset; }
 
-  /** The whole lines written since the last read, in order. One read at a time: a second call while one runs
-   *  gets the same answer. */
-  read(): Promise<Read> {
-    return this.busy ??= this.next().finally(() => { this.busy = null; });
+  /** The whole lines written since the last read, in order. With `each`, a line is handed over as it is read
+   *  and none is kept: the first read of a long session holds a line at a time, not the file. One read at a
+   *  time: a second call while one runs gets the same answer. */
+  read(each?: (line: string) => void): Promise<Read> {
+    return this.busy ??= this.next(each).finally(() => { this.busy = null; });
   }
 
-  private async next(): Promise<Read> {
+  private async next(each?: (line: string) => void): Promise<Read> {
     const lines: string[] = [];
+    let n = 0;
     let reset = false;
     try {
       const size = (await stat(this.file)).size;
-      if (size < this.offset) { this.offset = 0; this.rest = Buffer.alloc(0); reset = true; }
-      if (size === this.offset) return { lines, reset, error: "" };
+      if (size < this.offset) { this.offset = 0; this.rest = Buffer.alloc(0); reset = true; this.resets++; }
+      if (size === this.offset) return { lines, n, reset, error: "" };
       const fh = await open(this.file, "r");
       try {
         const buf = Buffer.alloc(CHUNK);
@@ -44,16 +50,18 @@ export class Tail {
             const line = Buffer.concat([this.rest, buf.subarray(from, nl)]).toString("utf8");
             this.rest = Buffer.alloc(0);
             from = nl + 1;
-            if (line.trim()) lines.push(line);
+            if (!line.trim()) continue;
+            n++;
+            if (each) each(line); else lines.push(line);
           }
           this.rest = Buffer.concat([this.rest, buf.subarray(from, bytesRead)]);
         }
       } finally {
         await fh.close();
       }
-      return { lines, reset, error: "" };
+      return { lines, n, reset, error: "" };
     } catch (e) {
-      return { lines, reset, error: `cannot read ${this.file}: ${(e as NodeJS.ErrnoException).code ?? (e as Error).message}` };
+      return { lines, n, reset, error: `cannot read ${this.file}: ${(e as NodeJS.ErrnoException).code ?? (e as Error).message}` };
     }
   }
 }

@@ -41,7 +41,7 @@
  "goals": [],
  "tasks": [
   {
-   "id": "subagent/r1",
+   "id": "subagents/r1",
    "title": "Review the parser and the printer, each on its own, then run the…",
    "full": "Review the parser and the printer, each on its own, then run the release workflow.",
    "state": "done",
@@ -97,7 +97,7 @@
    }
   },
   {
-   "id": "subagent/r1s1",
+   "id": "subagents/r1s1",
    "title": "Review the parser",
    "full": "Read parser.py and list what is wrong.",
    "state": "done",
@@ -151,7 +151,7 @@
    }
   },
   {
-   "id": "subagent/r1s2",
+   "id": "subagents/r1s2",
    "title": "Review the printer",
    "full": "Read printer.py and list what is wrong.",
    "state": "running",
@@ -205,7 +205,7 @@
    }
   },
   {
-   "id": "subagent/r1s3",
+   "id": "subagents/r1s3",
    "title": "release-check",
    "full": "release-check",
    "state": "done",
@@ -261,7 +261,7 @@
    }
   },
   {
-   "id": "subagent/r2",
+   "id": "subagents/r2",
    "title": "Thanks. Fix what the parser review found.",
    "full": "Thanks. Fix what the parser review found.",
    "state": "running",
@@ -317,28 +317,28 @@
  ],
  "edges": [
   [
-   "subagent/r1",
-   "subagent/r1s1",
+   "subagents/r1",
+   "subagents/r1s1",
    "needs"
   ],
   [
-   "subagent/r1",
-   "subagent/r1s2",
+   "subagents/r1",
+   "subagents/r1s2",
    "needs"
   ],
   [
-   "subagent/r1",
-   "subagent/r1s3",
+   "subagents/r1",
+   "subagents/r1s3",
    "needs"
   ],
   [
-   "subagent/r1s1",
-   "subagent/r2",
+   "subagents/r1s1",
+   "subagents/r2",
    "needs"
   ],
   [
-   "subagent/r1s3",
-   "subagent/r2",
+   "subagents/r1s3",
+   "subagents/r2",
    "needs"
   ]
  ],

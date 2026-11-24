@@ -45,6 +45,12 @@ export const empty = (agent: Agent, file: string, id = ""): Model => ({
   turns: [], subs: [], sides: new Map(), calls: new Map(), first: "", last: "", doing: null, error: "",
 });
 
+/** The session as it was before a line was read: for a file that was rewritten, and is read from its start again.
+ *  In place, as a page holds the model itself. */
+export function reset(m: Model): void {
+  Object.assign(m, empty(m.agent, m.file, m.id), { cwd: m.cwd });
+}
+
 const SAID = 40; // the agent's last words kept for a card: the terminal view reads the file itself
 
 /** The thread a subagent's lines belong to, made when its first line is read. */
@@ -102,6 +108,7 @@ export function fold(m: Model, ev: Ev): void {
     case "ask":
       if (side) { side.prompt ||= ev.text; return; }
       m.turns.push(newTurn(m.turns.length + 1, ev.at, ev.text));
+      m.doing = null; // a task an earlier request left in progress does not take this one's work
       return;
     case "say": {
       if (ev.model) m.model = ev.model;
