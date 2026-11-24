@@ -7,7 +7,7 @@
 // It fails when a step does not show what it should, and keeps a screenshot of each step under --out.
 // The folder is a scratch one of its own: for Cursor, close() deletes the folder's entry under ~/.cursor/projects.
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import * as L from "./lib.mjs";
 
@@ -25,10 +25,14 @@ const until = async (what, fn, timeout = 60000) => {
 const app = await L.findApp(appName);
 if (!app) { console.error(`no ${appName} here`); process.exit(1); }
 const claude = execFileSync("/bin/sh", ["-c", "command -v claude"], { encoding: "utf8" }).trim(); // found before the PATH loses graphene's directory
-// no graphene anywhere the editor looks on its PATH, and its setting names none
-process.env.PATH = L.noGraphene(process.env.PATH);
+// no graphene anywhere the editor looks on its PATH, and its setting names none; `claude` is on it, by a link in a
+// directory of the walk's own (the agent is the person's, wherever they installed it)
 const base = L.scratch(`gw-${appName}-`);
-const profile = L.makeProfile(base, { graphene: undefined });
+mkdirSync(path.join(base, "bin"));
+symlinkSync(claude, path.join(base, "bin", "claude"));
+process.env.PATH = `${path.join(base, "bin")}${path.delimiter}${L.noGraphene(process.env.PATH)}`;
+// the terminal's rows as text (no canvas), so the walk reads what a person sees in it
+const profile = L.makeProfile(base, { graphene: undefined, settings: { "terminal.integrated.gpuAcceleration": "off", "terminal.integrated.shellIntegration.enabled": false } });
 L.installVsix(app, profile, vsix);
 
 /** A new repository with two small files and one commit: a word counter and its test. */
@@ -62,6 +66,14 @@ async function pages(page) {
   }
   return all;
 }
+
+/** The terminal in front, as text: its rows, and the names of the terminals there are. */
+const terminal = (page) => page.evaluate(() => ({
+  rows: [...document.querySelectorAll(".terminal-wrapper.active .xterm-rows > div")].map((r) => r.textContent.replace(/\u00a0/g, " ").trimEnd()).filter(Boolean),
+  names: [...document.querySelectorAll(".terminal-tabs-entry .monaco-icon-label, .panel .composite.title .single-terminal-tab")].map((e) => e.textContent.trim()),
+}));
+/** A card of a page, clicked as a person clicks it: on the canvas, or its row in a narrow tab's lanes. */
+const clickCard = (p, title) => p.frame.locator(`g.task:has(text.title), #lanes:not([hidden]) .lane`).filter({ hasText: title.slice(0, 14) }).first().click();
 
 /** What the file in front holds, and whether the keyboard is in it. */
 const typed = (page) => page.evaluate(() => ({
@@ -183,6 +195,44 @@ try {
     const other = await until("the second page drawn again", async () => (await pages(page)).find((p) => p.bands.length < 2 && p.tasks.length), 30000);
     const back = [front, other];
     say(`after a reload the pages are back: ${JSON.stringify(back.map((p) => [p.goal, p.bands.length]))}`);
+    // --- the terminal on click, three ways ---
+    // (a) a session started outside the editor: its card opens its transcript's tail, read like a terminal
+    await page.locator(".tabs-container .tab", { hasText: "2 sessions" }).first().click();
+    const both = await until("the page of two bands in front", async () => (await pages(page)).find((p) => p.bands.length === 2), 15000);
+    await clickCard(both, one.goal);
+    const tail = await until("the transcript's tail in a terminal", async () => { const t = await terminal(page); return t.rows.some((r) => r.includes("its turn ended")) ? t : null; }, 20000);
+    say(`a click on a card of a session started outside the editor: its transcript's tail in a terminal, ending ${JSON.stringify(tail.rows.slice(-3))}`);
+    await shot(page, "terminal-transcript-tail");
+    // (c) it is idle and nothing has it open: its card offers Resume in terminal, which runs claude --resume with its id
+    const resume = both.frame.locator("#details .d-acts button", { hasText: "Resume in terminal" });
+    await resume.waitFor({ timeout: 10000 });
+    await resume.click();
+    const resumed = await until("claude --resume in a new terminal", async () => { const t = await terminal(page); return t.rows.find((r) => /claude --resume [0-9a-f-]{36}/.test(r)); }, 20000);
+    say(`Resume in terminal typed: ${JSON.stringify(resumed.trim().replace(/^.*?(claude --resume)/, "$1"))}`);
+    await page.waitForTimeout(6000); // Claude Code starts in it
+    await shot(page, "resume-in-terminal");
+    // (b) a session that runs in one of the editor's own terminals: a click on its card reveals that terminal
+    await L.palette(page, "Terminal: Create New Terminal");
+    await page.waitForTimeout(1500);
+    await page.keyboard.type("PROMPT='%1~ %# '; clear"); // the pictures name the folder, not whose machine it is
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(500);
+    await page.keyboard.type('claude -p "Add a line to notes.md that says what test_wordcount.py tests. Then wait: run sleep 20." --model haiku --permission-mode acceptEdits --allowedTools "Bash(sleep 20)" Edit Read');
+    await page.keyboard.press("Enter");
+    const own = await until("a page for the session in the editor's terminal", async () => (await pages(page)).find((p) => p.goal.startsWith("Add a line to notes.md")), 90000);
+    await page.locator(".tabs-container .tab", { hasText: "2 sessions" }).first().click(); // another terminal is put in front first: the tail's
+    await clickCard(await until("the page of two bands again", async () => (await pages(page)).find((p) => p.bands.length === 2), 15000), one.goal);
+    await until("the tail's terminal in front", async () => (await terminal(page)).rows.some((r) => r.includes("its turn ended")), 15000);
+    await page.locator(".tabs-container .tab", { hasText: "Add a line to notes" }).first().click();
+    const live = await until("its page in front", async () => { const p = (await pages(page)).find((x) => x.goal.startsWith("Add a line to notes.md")); return p && (await p.frame.locator("#goal").isVisible().catch(() => false)) ? p : null; }, 15000);
+    await clickCard(live, "Add a line to notes.md");
+    const revealed = await until("the editor's own terminal revealed", async () => { const t = await terminal(page); return t.rows.some((r) => r.includes('claude -p "Add a line to notes.md')) ? t : null; }, 20000);
+    say(`a click on the card of a session running in the editor's terminal revealed that terminal: ${JSON.stringify(revealed.rows.find((r) => r.includes("claude -p")).trim().slice(0, 60))}`);
+    // and while it writes, its card does not offer to resume it
+    if (await live.frame.locator("#details .d-acts button", { hasText: "Resume in terminal" }).count()) throw new Error("a session still writing offers Resume in terminal");
+    say("while it is working its card offers Terminal, and not Resume in terminal");
+    await shot(page, "terminal-of-the-editor");
+    void own;
     writeFileSync(path.join(out, `${appName}-walk.json`), JSON.stringify({ folder: dir, typedKeys: keys, pages: back.map((p) => ({ goal: p.goal, line: p.line, bands: p.bands, tasks: p.tasks })) }, null, 1));
   }
 } catch (e) {
