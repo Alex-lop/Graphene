@@ -46,6 +46,7 @@ def test_the_extension_wakes_in_any_folder():
     folder that has one is strict mode, which the extension tells by looking (src/extension.ts)."""
     events = MANIFEST["activationEvents"]
     assert "onStartupFinished" in events
+    assert "onWebviewPanel:graphene.sessionPage" in events  # a page a reload brings back wakes it too
     assert not any(e.startswith("workspaceContains") for e in events)
     # the store's name is still the code's
     assert f'"{STORE.split("/")[1]}")' in (EXT / "src/session.ts").read_text()
