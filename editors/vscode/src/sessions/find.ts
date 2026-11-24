@@ -141,6 +141,7 @@ export class Scan {
 
   /** The folder's sessions now, the last written first. */
   async look(now = Date.now()): Promise<Found[]> {
+    if (!this.names.length) this.names = [...new Set([encoded(await real(this.folder)), encoded(this.folder)])];
     if (now - this.fullAt >= FULL_MS || await this.added(now)) {
       this.fullAt = now;
       this.found = await findAll(this.folder, this.homes);
@@ -158,10 +159,12 @@ export class Scan {
   /** The directories a new session of this folder is written into: Claude Code's projects and the ones of them
    *  that hold a session of the folder's; Codex's sessions and today's. */
   private watched(now: number): string[] {
-    const day = new Date(now), codex = path.join(this.homes.codex, "sessions");
+    const day = new Date(now), codex = path.join(this.homes.codex, "sessions"), projects = path.join(this.homes.claude, "projects");
     const today = path.join(codex, String(day.getFullYear()), String(day.getMonth() + 1).padStart(2, "0"), String(day.getDate()).padStart(2, "0"));
-    return [...new Set([path.join(this.homes.claude, "projects"), codex, today, ...this.found.map((f) => path.dirname(f.file))])];
+    // the folder's own directory too, though it may hold no session of the folder's yet (its old ones cleaned away)
+    return [...new Set([projects, ...this.names.map((n) => path.join(projects, n)), codex, today, ...this.found.map((f) => path.dirname(f.file))])];
   }
+  private names: string[] = []; // the folder as Claude Code names its directory: by its real path, and as the editor has it
 
   private async added(now: number): Promise<boolean> {
     for (const d of this.watched(now)) if ((await mtime(d)) !== (this.dirs.get(d) ?? 0)) return true;

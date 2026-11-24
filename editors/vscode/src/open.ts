@@ -50,3 +50,14 @@ export function wrote(before: ReadonlyMap<string, number> | null, now: readonly 
  *  draws it already. `opened`: its page opened by itself once in this window, so a person who closed it is not
  *  chased by the session's next line. */
 export const pages = (o: { on: boolean; paged: boolean; opened: boolean }): boolean => o.on && !o.paged && !o.opened;
+
+/** Where a page that opens by itself goes, so it never covers what a person has in front. `front`: what the
+ *  active group has in front (`beside`'s). `active`: the active group's column. `pages`: the columns the pages
+ *  that are open stand in. With a file in front: a group of pages that is not the file's own, so pages gather in
+ *  one group and do not halve the editor again; else beside the file. With nothing in front there is nothing to
+ *  cover: with the other pages, or in the active group. */
+export function column(o: { front: unknown; active: number | undefined; pages: readonly (number | undefined)[] }): number | "beside" | "active" {
+  const elsewhere = o.pages.find((c) => c !== undefined && c !== o.active);
+  if (beside(o.front)) return elsewhere ?? "beside";
+  return elsewhere ?? o.pages.find((c) => c !== undefined) ?? "active";
+}

@@ -628,6 +628,7 @@ function graph(s: StateX, dir: "across" | "down") {
   gates(s, here, awayW);
   // bands: few, redrawn; their headers over the edges, which cross them on the way to a later column
   const bands = $("bands") as unknown as SVGGElement, heads = $("heads") as unknown as SVGGElement;
+  offFocus = document.activeElement?.closest?.(".band-off")?.getAttribute("data-session") ?? null; // a band's × with the keyboard: a live page redraws every second
   bands.replaceChildren();
   heads.replaceChildren();
   sticky = [];
@@ -823,11 +824,13 @@ function graph(s: StateX, dir: "across" | "down") {
 
 /** A session's band is named `session <its id>` (sessions/snapshot.ts). */
 const SESSION = "session ";
+let offFocus: string | null = null; // the session whose × had the keyboard when the bands were last redrawn
 
 /** The × at the end of a session's band header: takes that session off the page. A button: Tab reaches it, Enter
  *  and Space press it. In the bands' own group, under the cards, so it never covers one. */
 function takeOff(root: SVGGElement, session: string, title: string, x: number, y: number) {
-  const b = root.appendChild(el("g", { class: "band-off", role: "button", tabindex: 0, "aria-label": `take “${title}” off this page` }));
+  const b = root.appendChild(el("g", { class: "band-off", role: "button", tabindex: 0, "data-session": session, "aria-label": `take “${title}” off this page` }));
+  if (offFocus === session) queueMicrotask(() => b.focus({ preventScroll: true })); // it had the keyboard before this redraw: it keeps it
   b.appendChild(el("circle", { cx: x, cy: y, r: 9 }));
   b.appendChild(el("path", { d: `M${x - 3.5},${y - 3.5}l7,7M${x + 3.5},${y - 3.5}l-7,7` }));
   b.appendChild(el("title", {}, "take this session off the page (its file is not touched)"));
@@ -2275,6 +2278,7 @@ function notice(st: Status) {
   $("replay").hidden = true;
   $("pipe").hidden = true; // no plan to read: no stage to be at, and nothing to run or add to
   for (const [id] of HEADER_ACTS) $(id).hidden = true;
+  $("b-session").hidden = true;
   $("zoom").style.display = "none";
   $("hint").hidden = true;
   $("planning").hidden = true;
@@ -2593,6 +2597,7 @@ function wire() {
   top("b-save", "Save as workflow", "bookmark", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
   top("b-session", "Add to page…", "add", "Add to page…: another of this folder's sessions, drawn here as a band of its own", () => api.postMessage({ type: "act", act: "addSession", id: "" }));
+  $("b-session").hidden = true; // until a page of sessions says it is one (`header`): a plan's page never has it
   top("b-run", "Run", "play", "", () => {
     const a = state && mainAct(state, exact);
     if (!a || startedAt) return; // Starting…: one run a click

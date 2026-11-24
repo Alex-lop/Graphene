@@ -153,6 +153,15 @@ test("the folder is looked at cheaply: a full listing now and then, a few stats 
     writeFileSync(path.join(dir, "new.jsonl"), line("a new session")); // a session begins: its directory says something was added
     assert.ok((await scan.look(1_004_000)).some((f) => f.id === "new"));
     assert.ok((await scan.look(1_004_000 + 31_000)).find((f) => f.file === oldest)!.size > line("go").length); // the full listing catches up
+    // a folder whose directory holds no session of its own yet (another folder's, under the same name) is watched all the same
+    const bare = path.join(home, "work", "bare"), its = path.join(home, "claude", "projects", encoded(bare));
+    mkdirSync(its, { recursive: true });
+    mkdirSync(bare, { recursive: true });
+    writeFileSync(path.join(its, "other.jsonl"), line("go")); // its lines say another folder
+    const empty = new Scan(bare, { claude: path.join(home, "claude"), codex: path.join(home, "codex") });
+    assert.deepEqual(await empty.look(2_000_000), []);
+    writeFileSync(path.join(its, "first.jsonl"), line("go").replace(JSON.stringify(folder), JSON.stringify(bare)));
+    assert.deepEqual((await empty.look(2_002_000)).map((f) => f.id), ["first"], "found at the next look, not at the next full listing");
   } finally { rmSync(home, { recursive: true }); }
 });
 

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { pages, wrote } from "../src/open.ts";
+import { column, pages, wrote } from "../src/open.ts";
 import { checkPage } from "../src/sessions/acts.ts";
 import { parseState } from "../src/state.ts";
 
@@ -37,4 +37,15 @@ test("a session gets a page when it begins or writes while the window is open, o
   assert.equal(pages({ on: false, paged: false, opened: false }), false); // graphene.graph.openOnStart is off
   assert.equal(pages({ on: true, paged: true, opened: false }), false); // a page draws it already
   assert.equal(pages({ on: true, paged: false, opened: true }), false); // opened once, and closed: not chased
+});
+
+test("a page that opens by itself never covers the file in front: beside it, or with the other pages where they are not in its group", () => {
+  const file = { uri: "notes.md" };
+  assert.equal(column({ front: file, active: 1, pages: [] }), "beside");
+  assert.equal(column({ front: file, active: 1, pages: [2] }), 2); // the pages' own group: they gather there
+  assert.equal(column({ front: file, active: 1, pages: [1] }), "beside"); // a page shares the file's group: not there, over the file
+  assert.equal(column({ front: file, active: 1, pages: [1, 3] }), 3);
+  assert.equal(column({ front: undefined, active: 1, pages: [] }), "active"); // nothing in front: nothing to cover
+  assert.equal(column({ front: undefined, active: 1, pages: [1] }), 1);
+  assert.equal(column({ front: undefined, active: 2, pages: [undefined, 1] }), 1);
 });

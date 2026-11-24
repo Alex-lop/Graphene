@@ -6,7 +6,7 @@
 import { readFile } from "node:fs/promises";
 import * as vscode from "vscode";
 import { graphHtml } from "../graph.ts";
-import { beside, pages, wrote } from "../open.ts";
+import { column, pages, wrote } from "../open.ts";
 import type { SessionInfo, State } from "../state.ts";
 import { checkPage, type FromPage } from "./acts.ts";
 import { glance, procs, readerOf, Scan, type Found, type Proc } from "./find.ts";
@@ -22,6 +22,7 @@ const SCAN_MS = 2000, READ_MS = 1000;
 /** A replay plays an event this often: the recording's two minutes in half of one. */
 const REPLAY_MS = 350;
 export const PAGE = "graphene.sessionPage";
+const PAGED = "graphene.sessions.paged"; // the workspace's memory of which session files a page draws
 
 /** One graph tab: the sessions it draws, each followed while the tab is there; or a replay of the recorded one. */
 export class Page {
@@ -85,6 +86,9 @@ function title(s: State): string {
 function front(): unknown {
   try { return vscode.window.tabGroups.activeTabGroup.activeTab?.input; } catch { return undefined; }
 }
+function activeColumn(): number | undefined {
+  try { return vscode.window.tabGroups.activeTabGroup.viewColumn; } catch { return undefined; }
+}
 
 export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   /** The folder's sessions, the last written first. */
@@ -95,7 +99,9 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   private readonly changed = new vscode.EventEmitter<void>();
   /** The folder's sessions changed: one began, one wrote, one went quiet. */
   readonly onDidChange = this.changed.event;
-  private timers: NodeJS.Timeout[] = [];
+  private timers: NodeJS.Timeout[] = []; // the folder looked at: while there is no plan
+  private pageTimers: NodeJS.Timeout[] = []; // the open pages read and replayed: while there is a page, in either mode
+  private watching = false; // sessions get pages by themselves: only where there is no plan
   private scanning: Promise<void> | null = null;
   private key = "";
   private sizes: Map<string, number> | null = null; // each session file's size at the last look; none before the first
@@ -105,17 +111,38 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
 
   get folder(): string | undefined { return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath; }
 
-  /** Start looking: at the folder for its sessions, at the open pages for what is new. */
+  /** Start looking at the folder for its sessions: one that begins or writes from now on gets a page. What is
+   *  there at this first look is old, whatever was seen before a stop. */
   start() {
     if (this.timers.length) return;
-    this.timers = [setInterval(() => void this.scan(), SCAN_MS), setInterval(() => void this.read(), READ_MS),
-                   setInterval(() => this.play(), REPLAY_MS)];
+    this.watching = true;
+    this.sizes = null;
+    this.timers = [setInterval(() => void this.scan(), SCAN_MS)];
     void this.scan();
   }
 
   stop() {
+    this.watching = false;
     for (const t of this.timers) clearInterval(t);
     this.timers = [];
+  }
+
+  /** The open pages are read for what is new, and a replay moves on, while there is a page: in a folder with a
+   *  plan too, where a page a reload brought back is still a page. */
+  private tick() {
+    if (this.pages.length && !this.pageTimers.length) this.pageTimers = [setInterval(() => void this.read(), READ_MS), setInterval(() => this.play(), REPLAY_MS)];
+    if (!this.pages.length) { for (const t of this.pageTimers) clearInterval(t); this.pageTimers = []; }
+    // which sessions have a page, for the next window: a page behind another is brought back only when it is shown
+    void this.context.workspaceState.update(PAGED, [...new Set([...this.pages.flatMap((p) => p.follows.map((f) => f.found.file)), ...this.dormant()])]);
+  }
+
+  /** The sessions of pages a reload has not brought back yet: the editor restores a page behind another only when
+   *  its tab is shown, so until then its sessions are a page's all the same, and get no second one. */
+  private dormant(): string[] {
+    try {
+      const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputWebview && t.input.viewType.includes(PAGE)).length;
+      return tabs > this.pages.length ? this.context.workspaceState.get<string[]>(PAGED, []) : [];
+    } catch { return []; }
   }
 
   /** The folder's sessions and the running agents' own records, read again; one read at a time. */
@@ -131,13 +158,14 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     if (folder !== this.scanned) { this.scanned = folder ?? ""; this.scanner = folder ? new Scan(folder) : null; }
     [this.found, this.live] = await Promise.all([this.scanner?.look() ?? Promise.resolve([]), procs()]);
     // a session that began or wrote since the last look gets a page, beside what is in front, once
-    const on = vscode.workspace.getConfiguration("graphene").get<boolean>("graph.openOnStart", true);
+    const on = this.watching && vscode.workspace.getConfiguration("graphene").get<boolean>("graph.openOnStart", true);
+    const dormant = this.dormant();
     for (const file of wrote(this.sizes, this.found)) {
-      if (!pages({ on, paged: this.pages.some((p) => p.has(file)), opened: this.opened.has(file) })) continue;
+      if (!pages({ on, paged: this.pages.some((p) => p.has(file)) || dormant.includes(file), opened: this.opened.has(file) })) continue;
       this.opened.add(file);
       void this.show(file, true);
     }
-    this.sizes = new Map(this.found.map((f) => [f.file, f.size]));
+    if (this.watching) this.sizes = new Map(this.found.map((f) => [f.file, f.size]));
     const key = JSON.stringify([this.found.map((f) => [f.file, f.size]), [...this.live.values()].map((p) => [p.session, p.status])]);
     if (key === this.key) return;
     this.key = key;
@@ -187,8 +215,8 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     if (file && !found) return undefined; // a session the folder no longer has: no page opens in its place
     const have = found ? this.pages.find((p) => p.has(found.file)) : this.pages.find((p) => !p.replay);
     if (have) { if (!quiet) have.panel.reveal(undefined, false); return have; }
-    const other = this.pages[0]?.panel.viewColumn;
-    const viewColumn = quiet ? other ?? (beside(front()) ? vscode.ViewColumn.Beside : vscode.ViewColumn.Active) : vscode.ViewColumn.Active;
+    const to = quiet ? column({ front: front(), active: activeColumn(), pages: this.pages.map((p) => p.panel.viewColumn) }) : "active";
+    const viewColumn = to === "beside" ? vscode.ViewColumn.Beside : to === "active" ? vscode.ViewColumn.Active : to;
     const panel = vscode.window.createWebviewPanel(PAGE, "Graphene", { viewColumn, preserveFocus: quiet }, { enableScripts: true, retainContextWhenHidden: true });
     return this.adopt(panel, found ? [found] : []);
   }
@@ -196,13 +224,14 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   /** A panel as one of the pages: its sessions followed, its messages heard, forgotten when it is closed. */
   adopt(panel: vscode.WebviewPanel, sessions: Found[]): Page {
     const page = new Page(panel, this.context);
-    for (const f of sessions) { page.add(f); this.opened.add(f.file); }
+    for (const f of sessions) { page.add(f); this.opened.add(f.file); } // a session may be on two pages (Add to page…): each keeps its own
     this.pages.push(page);
+    this.tick();
     panel.webview.onDidReceiveMessage((m: unknown) => {
       const msg = checkPage(m, page.drawn);
       if (msg) void this.act(page, msg);
     });
-    panel.onDidDispose(() => { this.pages.splice(this.pages.indexOf(page), 1); });
+    panel.onDidDispose(() => { this.pages.splice(this.pages.indexOf(page), 1); this.tick(); });
     return page;
   }
 
@@ -210,8 +239,9 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
    *  has them. */
   async deserializeWebviewPanel(panel: vscode.WebviewPanel, state: unknown) {
     const files = ((state ?? {}) as { page?: unknown }).page;
-    await this.scan();
     const wanted = Array.isArray(files) ? files.filter((f): f is string => typeof f === "string") : [];
+    for (const f of wanted) this.opened.add(f); // before the look below: its sessions have this page, and get no other
+    await this.scan();
     this.adopt(panel, wanted.map((f) => this.found.find((x) => x.file === f)).filter((f): f is Found => f !== undefined));
   }
 
@@ -219,7 +249,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     if (m.type === "ready") return page.refresh(this.live, true);
     switch (m.act) {
       case "addSession": return this.add(page);
-      case "takeOff": page.remove(m.id); return page.refresh(this.live, true);
+      case "takeOff": page.remove(m.id); this.tick(); return page.refresh(this.live, true);
       case "replay": return this.playRecorded(page);
       case "terminal": return this.terminal(page, m.id);
       case "resume": return this.resume(page, m.id);
@@ -275,6 +305,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     if (!found) return;
     page.replay = null;
     page.add(found);
+    this.tick();
     await page.refresh(this.live, true);
   }
 
@@ -292,6 +323,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
 
   dispose() {
     this.stop();
+    for (const t of this.pageTimers) clearInterval(t);
     this.changed.dispose();
   }
 }
