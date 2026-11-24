@@ -40,6 +40,8 @@ header {
 }
 header::after { content: ""; order: 4; flex-basis: 100%; } /* where the second row starts */
 header:has(#pipe[hidden])::after { display: none; }
+/* a page of sessions has no stages: what its sessions are doing and their receipt have the second row to themselves */
+body[data-source="sessions"] header:has(#pipe[hidden])::after { display: block; }
 /* a basis of 10em (or its own width, if less): a long goal is cut to the room its buttons leave; a tab that leaves
    it less than that (narrow, beside an agent's chat) gives the goal its own row and the buttons the next */
 #goal { order: 1; flex: 1000 1 10em; max-width: max-content; min-width: 0; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -78,6 +80,8 @@ header:has(#pipe[hidden])::after { display: none; }
 }
 #auto::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--running); }
 #auto[hidden] { display: none; }
+#auto[data-status="idle"]::before { background: var(--waiting); } /* a session that is idle is not at work: its dot is not the working colour */
+#auto[data-status="needs you"]::before { background: var(--review); }
 .stage { display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 99px; color: var(--dim); white-space: nowrap; }
 .stage + .stage { margin-left: 22px; position: relative; }
 .stage + .stage::before { content: ""; position: absolute; left: -20px; top: 50%; width: 18px; height: 1px; background: var(--line-2); }
@@ -447,6 +451,17 @@ button:disabled { opacity: 0.45; cursor: default; }
 .ring { fill: var(--accent-soft); stroke: var(--edge-hot); stroke-width: 2; }
 .task:not(.selected):focus-visible .box, .goal:focus-visible .goal-box { stroke: var(--focus); stroke-width: 2; stroke-dasharray: 3 2; } /* a chosen card's ring says it */
 .task:focus-visible, .goal:focus-visible { outline: none; } /* the dashed card says the focus: no square frame round its attempts too */
+/* the tile at a card's top left: who is working on it. A letter on a tint of that agent's one colour */
+.tile { pointer-events: none; --who: var(--fg); }
+.tile rect { fill: color-mix(in srgb, var(--who) 16%, transparent); }
+.tile text { fill: color-mix(in srgb, var(--who) 80%, var(--fg)); font-size: 12px; font-weight: 700; font-family: var(--font); }
+.tile.claude { --who: var(--agent-claude); }
+.tile.codex { --who: var(--agent-codex); }
+.tile.sub { --who: var(--agent-sub); }
+.tile.you { --who: var(--review); }
+.tile.cmd text { font-family: var(--mono); font-size: 10px; font-weight: 600; }
+:is(body.vscode-high-contrast, body.vscode-high-contrast-light) .tile rect { fill: none; stroke: var(--border); }
+:is(body.vscode-high-contrast, body.vscode-high-contrast-light) .tile text { fill: var(--fg); }
 .pill rect { fill: var(--tint); }
 .pill-text, .pill-mark { fill: var(--dim); font-size: 12px; font-family: var(--font); } /* the UI's font, as the check on its foot: one face on a card, and `2 files` is words */
 .pill-mark { opacity: 0.75; }
@@ -470,6 +485,7 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 /* the ports, where a card's lines join; the out port is the dot a link is dragged from */
 .port { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; opacity: 0; transition: opacity 0.15s; }
 .task:hover .port, .goal:hover .port, #canvas.wiring .port { opacity: 1; } /* where a hand is: unseen, it still takes a drag. Not on the chosen or focused card: a drag is a hand's, and there they were two rivets on its ring */
+.port.wired { opacity: 1; } /* where a line joins the card: it leaves from a port, and arrives at one */
 .port[data-port] { cursor: crosshair; }
 .port[data-port]:hover, #canvas.wiring .port[data-port] { fill: var(--edge-hot); stroke: var(--edge-hot); }
 .wire { fill: none; stroke: var(--edge-hot); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
@@ -540,6 +556,9 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 #notice button { display: flex; margin: 10px auto 0; }
 .title, .goal-title { fill: var(--fg); font-size: 14px; font-weight: 600; font-family: var(--font); }
 .goal-title { font-size: 16px; }
+/* laid downward a card's line leaves from its foot, through where its status line is written: the words wear the
+   canvas's own colour round them, so the line passes behind them and is not struck through them */
+body[data-mode="down"] .task > .sub { paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
 .sub, .covers { fill: var(--dim); font-size: 12px; font-family: var(--font); } /* what a task covers, on its title's second line: words as its status, never its status's colour */
 .model { fill: var(--dim); font-size: 12px; font-family: var(--font); }
 .times { fill: var(--dim); font-size: 12px; font-family: var(--font); font-variant-numeric: tabular-nums; } /* 3 agents at once: what a task is set to and has not started */
@@ -562,6 +581,14 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 [data-mark="landed"], .mk.landed { --c: var(--done); }
 [data-mark="suggested"], .mk.suggested { --c: var(--proposed); }
 [data-mark="you"] > .box, [data-mark="back"] > .box { stroke: var(--c); stroke-width: 1.5; }
+/* colour on the card for its state: at work its border is the working colour; landed, a quiet green. A session's
+   card that is over wears what its tests said: green for a pass that was seen, red for a failure, else a card's own */
+[data-mark="working"] > .box { stroke: color-mix(in srgb, var(--running) 70%, var(--card-border)); stroke-width: 1.25; }
+[data-mark="landed"] > .box { stroke: color-mix(in srgb, var(--done) 45%, var(--card-border)); }
+[data-mark="over"], .mk.over { --c: var(--waiting); }
+[data-mark="over"][data-tests="passed"] > .box { stroke: color-mix(in srgb, var(--done) 55%, var(--card-border)); }
+[data-mark="over"][data-tests="failed"] > .box { stroke: var(--came-back); stroke-width: 1.5; }
+[data-mark="over"] .title { fill: var(--dim); font-weight: 500; } /* steps back as landed does: what is at work reads first */
 [data-mark="yours"] > .box { stroke: color-mix(in srgb, var(--c) 55%, transparent); }
 [data-mark="landed"] .title { fill: var(--dim); font-weight: 500; }
 /* a working card says so by its ring alone: on a light card the amber is darkened to read as a graphic does (3:1) */

@@ -37,6 +37,11 @@
   --done: var(--vscode-charts-green, #89d185);
   --waiting: var(--dim);
 
+  /* who is working: a tile's tint on a card, one colour an agent */
+  --agent-claude: var(--vscode-charts-orange, #d18616);
+  --agent-codex: var(--vscode-charts-blue, #3794ff);
+  --agent-sub: var(--vscode-charts-purple, #b180d7);
+
   /* shape: a button's corner is Cursor's own (.monaco-text-button), a card's and a popover's a little rounder */
   --r-sm: 4px;
   --r: 6px;

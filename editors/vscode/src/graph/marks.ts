@@ -7,12 +7,12 @@ import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, fit
 
 /** The one mark a step's state wears, the same shape at every size: a circle is the run's own business
  *  (waiting, ready, working, landed, suggested), a diamond is the person (you, yours), a triangle is trouble (back). */
-export type Mark = "waiting" | "ready" | "working" | "you" | "yours" | "back" | "landed" | "suggested";
+export type Mark = "waiting" | "ready" | "working" | "you" | "yours" | "back" | "landed" | "over" | "suggested";
 
-type Stated = Pick<TaskX, "state" | "needs_you" | "leaves">;
+type Stated = Pick<TaskX, "state" | "needs_you" | "leaves"> & { card?: unknown };
 
 /** Loudest first, as the legend lists them. A bar reads landed first, then the same order. */
-const LOUD: readonly Mark[] = ["you", "back", "yours", "working", "landed", "ready", "waiting", "suggested"];
+const LOUD: readonly Mark[] = ["you", "back", "yours", "working", "landed", "over", "ready", "waiting", "suggested"];
 const BAR: readonly Mark[] = ["landed", ...LOUD.filter((m) => m !== "landed")];
 /** The marks that want the person: the "need you" chip, and a band's words, count these. */
 const WANTS: readonly Mark[] = ["you", "yours", "back"];
@@ -23,7 +23,8 @@ const WANTS: readonly Mark[] = ["you", "yours", "back"];
  *  stays `yours` whatever `needs_you` says: the snapshot says it of every yours step (cockpit/model.py
  *  `needs_you`), so read first it would leave no step to wear the hollow diamond. */
 export function stateMark(t: Stated): Mark {
-  if (t.state === "done") return "landed";
+  // a session's card that is over is over, and no more: a tick is for a test that was seen to pass, on its foot
+  if (t.state === "done") return t.card ? "over" : "landed";
   if (t.state === "came back") return "back";
   if (t.state === "proposed") return "suggested";
   if (t.state === "yours") return asksYou(t) ? "you" : "yours";
@@ -35,11 +36,11 @@ export function stateMark(t: Stated): Mark {
  *  wears its dashed ring there: its border is a card's, and its status says what it covers. */
 export function cornerMark(t: Stated): Mark | "" {
   const m = stateMark(t);
-  return m === "waiting" || m === "ready" ? "" : m;
+  return m === "waiting" || m === "ready" || m === "over" ? "" : m;
 }
 
 const WORD: Record<Mark, string> = { waiting: SAY.waiting, ready: SAY.ready, working: SAY.running, you: SAY.review, yours: SAY.yours,
-                                     back: SAY["came back"], landed: SAY.done, suggested: SAY.proposed };
+                                     back: SAY["came back"], landed: SAY.done, over: SAY.done, suggested: SAY.proposed };
 const ASKS = "asks you";
 /** What the legend says of a hand-drawn draft or a planner's drafted step: no task yet, the same dashed ring, in
  *  the word its cards say. */

@@ -73,9 +73,15 @@ export function cornerWord(t: TaskX): string {
 
 /** Who does a step, for the tile on its card: you, or the executor by a letter (Claude Code `C`, Codex `X`, any
  *  other named one by its first), or a command of your own by its first two letters, as a terminal names it. */
-export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | null }, executor: string):
-  { kind: "you" | "claude" | "codex" | "agent" | "cmd"; mark: string; label: string } {
+export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | null; card?: TaskX["card"]; agent?: string }, executor: string):
+  { kind: "you" | "claude" | "codex" | "agent" | "cmd" | "sub"; mark: string; label: string } {
   if (t.command) return { kind: "cmd", mark: commandWord(t.command).slice(0, 3), label: "a command, with no agent" }; // a workflow's `run:` step
+  if (t.card) { // a session's card: the agent whose session it is; a subagent or a workflow it launched, by what it is
+    const a = t.agent ?? "";
+    if (t.card.kind === "subagent") return { kind: "sub", mark: "S", label: `a subagent (${a || "its type is not said"})` };
+    if (t.card.kind === "workflow") return { kind: "sub", mark: "W", label: "a workflow's agents" };
+    return a === "Codex" ? { kind: "codex", mark: "X", label: "Codex" } : { kind: "claude", mark: "C", label: "Claude Code" };
+  }
   if (t.state === "yours" || (t.owner && t.owner !== "agent")) return { kind: "you", mark: "◆", label: "you" };
   const words = executor.trim().split(/\s+/).filter(Boolean);
   const name = family((words[0] ?? "").split("/").pop() ?? ""); // `claude` of the setting's `claude:opus`

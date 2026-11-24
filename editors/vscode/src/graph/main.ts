@@ -3,7 +3,7 @@
 // the sidebar, the same plan as lanes, one row a task, grouped by sub-goal. A click selects and opens the details
 // pane whose buttons ask the extension to run graphene. No network, no library: SVG and DOM from the state.
 // Boxes are keyed by task id and updated in place, so a snapshot that changed nothing moves nothing.
-import { DOWN, flip, layout, modeFor, rounded, route, routeDown, spread, step, type Box, type Edge, type Layout, type Point } from "../layout.ts";
+import { curve, layout, modeFor, step, type Box, type Edge, type Layout } from "../layout.ts";
 import { autoLine, SAY, screenWords, usd, type DraftStep, type Receipt, type State } from "../state.ts";
 import { wearInk } from "../ink.ts";
 import { ICONS } from "./icons.ts";
@@ -35,7 +35,12 @@ const PLAN = " p"; // before a step the planner is writing: a space first, so it
 // A card (dev/ui/canvas.html), all of it inside its border: its title on up to two lines and a chip for its files;
 // its status, its one act at the right; its attempts, a chip each, which make it taller; at its foot its check.
 const BOX_W = CARD.full.w, BOX_H = CARD.full.h, PAD = 12, FORK_H = 22, FOOT_H = 22;
-const STATUS_Y = BOX_H - FOOT_H - 11; // the status line's baseline: its act stands beside it
+// A card's cell is as zoom.ts measures it (CARD.full); in it the card's own frame, and under the frame one line of
+// status. So the plan fits and zooms as it did, and the card says what it is doing outside its border.
+const SUB_H = 22, FRAME_H = BOX_H - SUB_H;
+const STATUS_Y = BOX_H - 7; // that line's baseline, under a card with no attempts: its act stands at its right end
+// The tile at a card's top left, for who is working on it; its title starts beside it
+const TILE = 22, TEXT_X = PAD + TILE + 7;
 // A row, the card at the compact level (zoom.ts): its state's mark, its title on up to two lines, and what is news.
 const ROW_W = CARD.compact.w, ROW_H = CARD.compact.h, ROW_X = 36;
 // The goal, alone in the last column, a little wider than a card: its title on up to three lines, a cell a task
@@ -323,6 +328,7 @@ function direction(s: StateX): "across" | "down" {
   if (forced === "down" || forced === "across") return forced;
   if (tabMode() === "down") return "down";
   if (!narrow() || !s.tasks.length) return "across";
+  if ((s.sessions?.length ?? 0) > 1) return "across"; // two sessions are two bands, and laid downward no band is drawn: they would read as one
   const page = { w: tabSize().w, h: 1.3 * tabSize().w }, full = place(s, false, "full", 1);
   if (fitPlan(page, sizeOf(full.lay), () => ({ w: Infinity, h: Infinity }), FOOT, "compact", margin(full)).level === "full") return "across";
   return place(s, true, "full", 1).lay.height <= 1.5 * page.h ? "down" : "across";
@@ -449,6 +455,10 @@ function header(s: StateX, blank: boolean) {
   $("goal").textContent = $("goal").title = h.goal; // cut to its row: the hover says it whole
   $("auto").textContent = $("auto").title = h.auto;
   $("auto").hidden = !h.auto;
+  // a page of sessions: the line's dot says what they are doing between them, loudest first
+  const doing = s.sessions?.map((x) => x.status) ?? [];
+  $("auto").dataset.status = !s.sessions ? "" : doing.includes("needs you") ? "needs you" : doing.includes("working") ? "working" : "idle";
+  document.body.dataset.source = s.sessions ? "sessions" : "plan";
   // one pipeline, the plan first: Plan, Run, Review; none before there is a plan to be at a stage of
   $("pipe").hidden = !s.tasks.length || !h.stages.length; // a page of sessions has no stages: nothing there is started
   $("stages").replaceChildren(...h.stages.map((st, i) => {
@@ -513,20 +523,16 @@ function place(s: StateX, down: boolean, lv: Level, k = zoom.k): Placed {
   const d = DIMS[lv], h = d.h;
   const g = boxes(s, lv);
   // laid downward, a row wraps at what the canvas shows; zoomed out it shows more, and the rows stay as they are
-  const opts = { goal: g.goal, boxW: d.w, boxH: h, labelH: d.label, gapX: d.gapX, gapY: d.gapY, bandGap: d.bandGap, stack: STACK,
+  const opts = { goal: g.goal, boxW: d.w, boxH: h, labelH: d.label, gapX: d.gapX, gapY: d.gapY, bandGap: d.bandGap,
                  ...(down ? {} : { padX: d.padX, padY: d.padY }), down, width: down ? $("canvas").clientWidth / Math.max(1, k) : undefined };
+  // the flow is the default: left to right by what waits on what, each card where its lines put it. Tasks that wait
+  // on nothing stand one over another in their column. Only a plan the tab would not hold whole at its own size is
+  // wrapped: its loose tasks then stand `STACK` high and side by side, where that fits better than the tower did
   let lay = layout(g.boxes, g.edges, opts);
-  // loose tasks in a tab wider than tall, with no sub-goal or one (which says the goal again): not a narrow tower in
-  // the middle of an empty canvas. Two to four stand in one row where it holds them whole at their own size (Start's
-  // terminal under it), but not beside a goal card with no sub-goal to gather their lines: each would climb over the
-  // next card and read as a chain. With no sub-goal, a tower the tab would not hold whole stands as a block, and so do
-  // five or more with no goal card, so a fifth task does not turn their row into a tower
-  const tab = tabSize(), named = lay.bands.filter((b) => b.id).length, n = g.boxes.filter((b) => b.id !== g.goal).length;
-  const whole = (l: Layout) => fitView(tab, sizeOf(l), FOOT).k >= 1;
-  if (!down && tab.w > tab.h && named <= 1) {
-    const row = n <= 4 && lay.bands.length === 1 && (named || !g.goal) ? layout(g.boxes, g.edges, { ...opts, stack: 1, stackAll: true }) : null;
-    if (row && whole(row)) lay = row;
-    else if (!named && ((n > 4 && !g.goal) || !whole(lay))) lay = layout(g.boxes, g.edges, { ...opts, stackAll: true });
+  const tab = tabSize(), fits = (l: Layout) => fitView(tab, sizeOf(l), FOOT).k;
+  if (!down && fits(lay) < 1) {
+    const wrapped = layout(g.boxes, g.edges, { ...opts, stack: STACK, stackAll: true });
+    if (fits(wrapped) > fits(lay)) lay = wrapped;
   }
   // across, the goal stands one gap further out: its lines gather on a trunk with a gap of its own (`graph`)
   const gp = g.goal && !down ? lay.boxes[g.goal] : undefined;
@@ -633,14 +639,8 @@ function graph(s: StateX, dir: "across" | "down") {
   heads.replaceChildren();
   sticky = [];
   // across, a band ends half a gap past its last column, short of the goal's (`place` set it a gap further out):
-  // the goal is no band's, and each band runs into it as one line along a trunk in the gap between
+  // the goal is no band's, and each card that nothing else waits on runs its own line into it
   const gAt = g.goal && !down ? lay.boxes[GOAL] : undefined, right = gAt ? gAt.x - 1.5 * D.gapX : here - 18;
-  const trunk = gAt ? (right + gAt.x) / 2 : 0;
-  /** A bracket into the goal: along from x1 to the trunk, round a corner, down or up it, and into the goal. */
-  const bracket = (x1: number, y1: number) => {
-    const y2 = gAt!.y + gAt!.h / 2, x2 = gAt!.x, t = trunk, r = Math.min(8, Math.abs(y2 - y1) / 2), dir = Math.sign(y2 - y1);
-    return r < 1 ? `M${x1},${y1} H${x2}` : `M${x1},${y1} H${t - r} Q${t},${y1} ${t},${y1 + dir * r} V${y2 - dir * r} Q${t},${y2} ${t + r},${y2} H${x2}`;
-  };
   // a band is as wide as its tasks: from its first column to its last, or on to where its header ends, as far as
   // the trunk (a band one column wide is not one column of its title)
   const spans = new Map<string, { x0: number; x1: number }>();
@@ -656,7 +656,8 @@ function graph(s: StateX, dir: "across" | "down") {
     // cuts it to the part that was on it; a band whose start is panned off the canvas keeps it at the canvas's
     // edge while the band is there (`applyZoom`), not cut to its last words
     const off = band.id.startsWith(SESSION) ? 22 : 0; // a session's band: the room at its header's end for its ×
-    const ts = s.tasks.filter((t) => t.parent === band.id), said = bandHead(heads, name, ts, x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset - off);
+    const of = off ? s.sessions?.find((x) => x.id === band.id.slice(SESSION.length)) : undefined;
+    const ts = s.tasks.filter((t) => t.parent === band.id), said = bandHead(heads, name, ts, x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset - off, [], of);
     const end = Math.min(most, Math.max(x1, x0 + said + off + 2 * D.inset));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
@@ -664,53 +665,23 @@ function graph(s: StateX, dir: "across" | "down") {
     sticky.push({ g: heads.lastElementChild as SVGGElement, x: x0, room: end - x0 - said - off - 2 * D.inset });
     if (off) takeOff(bands, band.id.slice(SESSION.length), name, end - 15, band.y0 + D.label / 2 + 1);
   }
-  // edges: keyed by their ends; a changed path glides (CSS transitions d)
+  // edges: keyed by their ends; a changed path glides (CSS transitions d). One curve an edge, out of a card's port
+  // and into the next one's: a flow, not a board's wiring (layout.ts `curve`)
   const edges = $("edges") as unknown as SVGGElement;
   const seenEdges = new Set<string>();
   const taskOf = new Map(s.tasks.map((t) => [t.id, t]));
-  const line = (key: string, d: string, kind: string) => {
-    seenEdges.add(key);
-    let path = edgeEls.get(key);
-    if (!path) { path = el("path", { class: "edge" }); edgeEls.set(key, path); edges.appendChild(path); }
-    path.setAttribute("d", d);
-    path.setAttribute("class", `edge ${kind}`);
-  };
-  // what a line across keeps clear of: every box, each sub-goal's header row (a line along it reads as the header's
-  // underline), and its band's foot, which a line going round a card is never drawn along
-  const blocks = [...Object.values(lay.boxes), ...headed.flatMap(({ band: b, x0, end }) =>
-    [{ x: x0, y: b.y0, w: end - x0, h: D.label }, { x: x0, y: b.y1 - 1, w: end - x0, h: 2 }])];
-  const routed: { key: string; kind: string; pts: Point[] }[] = [];
+  wired = { out: new Set(), in: new Set() };
   for (const [a, b] of g.edges) {
     const p = lay.boxes[a], q = lay.boxes[b];
-    if (!p || !q || (b === GOAL && gAt && p.band)) continue; // a sub-goal's last steps end in its band, and the band runs into the goal
-    // the edge carries the work: moving where an agent is working, green where it landed, a hairline until then; a
-    // step in no sub-goal joins the goal on the bands' trunk
+    if (!p || !q) continue;
+    // the edge carries the work: moving where an agent is working, green where it landed, a hairline until then
     const key = `${a}>${b}`, kind = `${edgeKind(taskOf.get(a), taskOf.get(b))}${selected && (a === selected || b === selected) ? " hot" : ""}${isDraft(a) || isDraft(b) ? " draft" : ""}`;
-    // into the goal along its trunk, in the gaps round any card beside it (loose tasks side by side)
-    if (b === GOAL && gAt) line(key, rounded([...route(p.x + D.w, p.y + D.h / 2, trunk + D.gapX / 2, gAt.y + gAt.h / 2, D.gapX, D.gapY, blocks), [gAt.x, gAt.y + gAt.h / 2]]), kind);
-    else routed.push({ key, kind, pts: edgeD(p, q, down, blocks) });
-  }
-  // the trunks set apart in their gaps, clear of a band's side by 4 px at least (layout.ts `spread`); downward, in
-  // the gaps between the rows
-  const apart = down ? spread(routed.map((r) => flip(r.pts)), DOWN.rankGap - 16).map(flip) : spread(routed.map((r) => r.pts), D.gapX - 2 * D.inset - 8);
-  apart.forEach((pts, i) => line(routed[i]!.key, rounded(pts), routed[i]!.kind));
-  // a line down through a sub-goal's header: the header ends before it (the cards under it wear each task's mark),
-  // and stays where it is, as sliding along would bring its words onto the line
-  for (const h of headed) {
-    const y = h.band.y0 + D.label / 2, from = h.x0 + D.inset, to = from + h.said;
-    const cross = apart.flatMap((pts) => pts.slice(1).flatMap(([x, b], i) => (x === pts[i]![0] && (b - y) * (pts[i]![1] - y) < 0 && x > from && x < to ? [x] : [])));
-    if (!cross.length) continue;
-    sticky[h.at]!.g.remove();
-    bandHead(heads, h.name, h.ts, from, y + 1, h.end - h.x0 - 2 * D.inset, cross);
-    sticky[h.at] = { g: heads.lastElementChild as SVGGElement, x: h.x0, room: 0 };
-  }
-  if (gAt) for (const band of lay.bands) { // a sub-goal into the goal: a bracket out of its band, along a trunk half way, into the goal
-    const mine = band.id ? s.tasks.filter((t) => t.parent === band.id) : [], span = spans.get(band.id);
-    if (!mine.length || !span) continue;
-    const y2 = gAt.y + gAt.h / 2, y1 = Math.min(Math.max(y2, band.y0 + 16), band.y1 - 16);
-    // lit for the chosen card only when this line stands for its own line into the goal
-    const its = g.edges.some(([a, b]) => b === GOAL && a === selected && lay!.boxes[a]?.band === band.id);
-    line(`band ${band.id}>${GOAL}`, bracket(span.x1, y1), `band-link ${mine.every((x) => x.state === "done") ? "done" : "wait"}${its ? " hot" : ""}`);
+    seenEdges.add(key);
+    wired.out.add(a); wired.in.add(b);
+    let path = edgeEls.get(key);
+    if (!path) { path = el("path", { class: "edge" }); edgeEls.set(key, path); edges.appendChild(path); }
+    path.setAttribute("d", edgeD(p, q, down));
+    path.setAttribute("class", `edge ${kind}`);
   }
   svg.classList.toggle("has-sel", Boolean(selected)); // the chosen card's lines lit, the rest faded
   for (const [key, path] of edgeEls) if (!seenEdges.has(key)) { path.remove(); edgeEls.delete(key); }
@@ -721,7 +692,7 @@ function graph(s: StateX, dir: "across" | "down") {
     const p = lay!.boxes[id];
     if (!p) return;
     shown.add(id);
-    key = JSON.stringify([key, p.x, p.y, id === selected, down, level, chipStep]);
+    key = JSON.stringify([key, p.x, p.y, id === selected, down, level, chipStep, wired.in.has(id), wired.out.has(id)]);
     let have = taskEls.get(id);
     if (have && have.key === key) return;
     if (have?.g.matches(":active")) { held = true; return; } // under a press, on it or on its button: drawn again at the release, which is then still its click
@@ -840,15 +811,18 @@ function takeOff(root: SVGGElement, session: string, title: string, x: number, y
 }
 
 type Spot = Layout["boxes"][string];
-/** An edge, port to port: across, out of a card's right side and into the next's left, square and in the gaps
- *  between the cards (layout.ts `route`), never along a card's border or behind one: its corners, which `graph`
- *  sets apart from the other lines' before drawing them. Laid downward the same, turned a quarter: out of a card's
- *  foot, along the gap over its target's row, into its top (layout.ts `routeDown`). A card's ports are at its own
- *  size's middle, however tall its attempts make it; the goal's at its own. */
-function edgeD(p: Spot, q: Spot, down: boolean, blocks: readonly { x: number; y: number; w: number; h: number }[]): Point[] {
-  const w = (b: Spot) => (b.id === GOAL ? b.w : D.w), h = (b: Spot) => (b.id === GOAL ? b.h : D.h);
-  if (!down) return route(p.x + w(p), p.y + h(p) / 2, q.x, q.y + h(q) / 2, D.gapX, D.gapY, blocks);
-  return routeDown(lay!, p, p.x + w(p) / 2, q, q.x + w(q) / 2, blocks);
+/** The cards an edge leaves and the ones one enters, as last drawn: each shows its port there, where its line joins. */
+let wired: { out: Set<string>; in: Set<string> } = { out: new Set(), in: new Set() };
+/** The middle of a card's own frame, where its ports are: of its row from afar, of its frame at full size (its
+ *  cell holds its status line under it, and its attempts make it taller: neither moves its ports). */
+const portY = () => (level === "compact" ? ROW_H : FRAME_H) / 2;
+/** An edge, port to port: across, out of a card's right side and into the next one's left; laid downward, out of
+ *  its foot and into the next one's top. One curve (layout.ts `curve`). The goal's ports are at its own middle. */
+function edgeD(p: Spot, q: Spot, down: boolean): string {
+  const w = (b: Spot) => (b.id === GOAL ? b.w : D.w), mid = (b: Spot) => (b.id === GOAL ? b.h / 2 : portY());
+  if (!down) return curve(p.x + w(p), p.y + mid(p), q.x, q.y + mid(q));
+  const foot = (b: Spot) => (b.id === GOAL || level === "compact" ? b.h : b.h - SUB_H); // a card's frame ends over its status line
+  return curve(p.x + w(p) / 2, p.y + foot(p), q.x + w(q) / 2, q.y, true);
 }
 
 /** The region for what leaves this machine (a push, a pull request), right of the plan, once a step does (laid
@@ -885,7 +859,7 @@ function gates(s: StateX, here: number, awayW: number) {
   for (const t of s.tasks.filter((x) => x.leaves && x.state !== "done")) {
     const p = lay!.boxes[t.id];
     if (!p) continue;
-    const at = lay!.down ? `${p.x + p.w / 2} ${r.y}` : `${r.x} ${p.y + D.h / 2}`; // on its line, where it crosses the region's edge
+    const at = lay!.down ? `${p.x + p.w / 2} ${r.y}` : `${r.x} ${p.y + portY()}`; // on its line, where it crosses the region's edge
     const g = el("g", { class: `gate${asksYou(t) ? " now" : ""}`, transform: `translate(${at})`, "aria-hidden": "true" });
     g.appendChild(el("rect", { x: -34, y: -10, width: 68, height: 20, rx: 10 }));
     g.appendChild(el("text", { y: 4, "text-anchor": "middle" }, "asks you"));
@@ -945,6 +919,7 @@ const MARKS: Record<Mark | CheckMark["box"] | "ended" | "warn" | "portion", [str
   waiting: [["line dots", RING]], ready: [["line", RING]], working: [["line faint", RING], ["line spin", "M0,-8a8,8 0 0 1 8,8"]],
   you: [["solid", DIAMOND]], yours: [["line", DIAMOND]], back: [["solid", TRIANGLE], ["ink", BANG]],
   landed: [["solid", RING], ["ink", TICK]], suggested: [["line dashes", RING]],
+  over: [["solid", "M0,-4.5a4.5,4.5 0 1 1 0,9a4.5,4.5 0 1 1 0,-9"]], // a session's card that is over: a dot, and no tick (its foot ticks a test seen to pass)
   // an attempt that ended without passing (`forkMark`); a row whose check proves nothing yet
   ended: [["line", RING], ["line", CROSS]], warn: [["line", TRIANGLE], ["line", BANG]],
   // how much of a sub-goal, or of the goal, landed (`ring`): its arc is cut to the portion
@@ -988,13 +963,17 @@ function bandName(title: string): { name: string; whole: string } {
  *  fitted plan. It keeps to ``max`` px: where all of it has no room the words go, and the title is cut to what is
  *  left. ``cross``: where lines go down through it: the words after the title end before the first, so the header
  *  reads as one phrase and no line runs through its words. Its width, as drawn. */
-function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: number, y: number, max: number, cross: readonly number[] = []): number {
+function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: number, y: number, max: number, cross: readonly number[] = [],
+                  session?: NonNullable<StateX["sessions"]>[number]): number {
   const t = tally(ts), rows = level === "compact", r = rows ? 8 : 6, gap = rows ? 10 : 8;
   const g = root.appendChild(el("g", { class: "band-head" }));
-  ring(g, t.portion, x + r, y, r);
+  // a session's band: its mark is what the session is doing, and after its title who it is and that in words
+  if (session) mark(g, session.status === "working" ? "working" : session.status === "needs you" ? "you" : "over", x + r, y, r);
+  else ring(g, t.portion, x + r, y, r);
   const text = (kind: string, words: string) => g.appendChild(el("text", { class: kind, y: y + (rows ? 5 : 4) }, words));
   const wide = (n: SVGTextElement) => n.getComputedTextLength() || (n.textContent ?? "").length * (rows ? 8.5 : 6.5); // not drawn yet: by its characters
-  const name = text("band-label", title), count = t.total ? text("band-count", `${t.landed} of ${t.total}`) : null;
+  const name = text("band-label", title);
+  const count = session ? text("band-count", `${session.agent === "codex" ? "Codex" : "Claude Code"} · ${session.status}`) : t.total ? text("band-count", `${t.landed} of ${t.total}`) : null;
   const wants = t.wants.map((w) => { const n = text("band-want", w.text); n.dataset.mark = w.mark; return n; });
   const cw = count ? wide(count) + gap : 0, ww = wants.reduce((sum, n) => sum + wide(n) + gap, 0);
   const room = max - 2 * r - gap, words = Math.min(wide(name), 90) + cw + ww <= room;
@@ -1018,7 +997,7 @@ function bandHead(root: SVGGElement, title: string, ts: readonly TaskX[], x: num
  *  room for), tinted where the verdict is news. Its hover says `done when` the check whole, and the verdict. A step
  *  with no check is done when you approve; a draft that has said neither wears no box (a dotted one is a check not
  *  run yet) and says ``blank``. */
-function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h = BOX_H, w = BOX_W, blank = "no check yet", happened = false) {
+function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h = FRAME_H, w = BOX_W, blank = "no check yet", happened = false) {
   const y = h - FOOT_H;
   const g = grp.appendChild(el("g", { class: `foot ${c.tone}` }));
   g.appendChild(el("path", { class: "tint", d: `M0.5,${y}H${w - 0.5}V${h - 12}a11.5,11.5 0 0 1 -11.5,11.5H12a11.5,11.5 0 0 1 -11.5,-11.5Z` }));
@@ -1040,11 +1019,11 @@ function cardFoot(grp: SVGGElement, c: CheckMark, says: (n: number) => string, h
 /** The card's one act, a real button at the status line's right end: Tab stops on it after the card, Enter and
  *  Space press it, and a click on it is the pane's button's click (`press`, unless ``go`` says otherwise) and not
  *  the card's. Its left edge, where the status line's room ends. */
-function actButton(grp: SVGGElement, act: Button, id: string, title: string, go = () => press(act, id), gate = false): number {
+function actButton(grp: SVGGElement, act: Button, id: string, title: string, go = () => press(act, id), gate = false, y = STATUS_Y): number {
   const b = grp.appendChild(el("g", { class: gate ? "act waits" : "act", role: "button", tabindex: 0, "aria-label": `${act.label}: ${title}` }));
-  const label = b.appendChild(el("text", { y: STATUS_Y }, act.label));
-  const w = Math.ceil(label.getComputedTextLength() || act.label.length * 7) + 16, x = BOX_W - PAD - w;
-  b.prepend(el("rect", { x, y: STATUS_Y - 14, width: w, height: 20, rx: 5 }));
+  const label = b.appendChild(el("text", { y }, act.label));
+  const w = Math.ceil(label.getComputedTextLength() || act.label.length * 7) + 16, x = BOX_W - w;
+  b.prepend(el("rect", { x, y: y - 13.5, width: w, height: 19, rx: 5 }));
   label.setAttribute("x", String(x + 8));
   b.appendChild(el("title", {}, act.title));
   b.addEventListener("click", (e) => { e.stopPropagation(); if (e.detail < 2) go(); }); // a double click presses it once
@@ -1057,7 +1036,7 @@ function actButton(grp: SVGGElement, act: Button, id: string, title: string, go 
  *  already (``named``: `check ___`). */
 const draftFoot = (grp: SVGGElement, check: string, approve = false, named = false) =>
   cardFoot(grp, check || approve ? checkMark({ check: check || null, checked: { before: null, after: null }, state: "proposed", hollow: false }) : { box: "unrun", tone: "dim", words: "" },
-       (n) => checkCut(check, n), BOX_H, BOX_W, named ? "" : undefined);
+       (n) => checkCut(check, n), FRAME_H, BOX_W, named ? "" : undefined);
 
 /** A title on up to ``most`` lines of ``max`` px from (``x``, ``y``), ``lh`` apart: whole words on each line, the
  *  last cut to the room (marks.ts `wrap`). Its text reads as the title does, whichever way it is broken. */
@@ -1109,24 +1088,35 @@ function frame(grp: SVGGElement, h: number, chosen: boolean) {
   grp.appendChild(el("rect", { class: "box", x: 0.5, y: 0.5, width: BOX_W - 1, height: h - 1, rx: 11.5 }));
 }
 
-/** A card's status line, in its room (``right``: where its act or its tail starts). ``words`` says it in as many
+const SUB_X = 2; // the status line starts at the card's left edge, a hair in: it is the card's, under it
+
+/** A card's status line, under the card, in its room (``right``: where its act or its tail starts). ``words`` says it in as many
  *  characters as it is given, a part dropped at a time (words.ts `sub`), so no word is cut while a shorter line
  *  says it whole. */
-function status(grp: SVGGElement, words: (n: number) => string, right: number, bad = false) {
-  const room = right - PAD - 8, n = Math.floor(room / 6.6);
+function status(grp: SVGGElement, words: (n: number) => string, right: number, bad = false, y = STATUS_Y) {
+  const room = right - SUB_X - 8, n = Math.floor(room / 6.6);
   let line = words(n);
   if (line.endsWith("…")) { // cut: back to the last whole part when a word or two of the next is all that shows (`asks yo…`); the pane says it whole
     const whole = words(1000), at = Math.max(0, ...[...whole.matchAll(/ · |: /g)].map((m) => m.index).filter((i) => i <= n));
     if (at && line.length - at < 10) line = whole.slice(0, at);
   }
-  fitText(grp.appendChild(el("text", { class: `sub${bad ? " bad" : ""}`, x: PAD, y: STATUS_Y }, line)), room);
+  fitText(grp.appendChild(el("text", { class: `sub${bad ? " bad" : ""}`, x: SUB_X, y }, line)), room);
 }
 
 /** A card's title on up to two lines, set close so the second clears the files chip. One line starts where two
  *  do, so the titles in a row share a top. Its state's mark has its room at its right whether it is drawn or not
  *  (ready and waiting have none): a title wraps the same in every state, and does not jump as its task runs. */
 function cardTitle(grp: SVGGElement, title: string) {
-  titleLines(grp, "title", title, PAD, 21, 16, BOX_W - 2 * PAD - 20, 2);
+  titleLines(grp, "title", title, TEXT_X, 21, 16, BOX_W - TEXT_X - PAD - 18, 2);
+}
+
+/** The tile at a card's top left: who is working on it, by a letter (C Claude Code, X Codex, S a subagent, W a
+ *  workflow's agents, ◆ you, a command's own word). Tinted for the agent; its hover says who in words. */
+function tile(grp: SVGGElement, by: { kind: string; mark: string; label: string }) {
+  const t = grp.appendChild(el("g", { class: `tile ${by.kind}`, "aria-hidden": "true" }));
+  t.appendChild(el("rect", { x: PAD - 2, y: 9, width: TILE, height: TILE, rx: 6 }));
+  t.appendChild(el("text", { x: PAD - 2 + TILE / 2, y: 9 + TILE / 2 + 4.5, "text-anchor": "middle" }, by.mark.slice(0, 2)));
+  t.appendChild(el("title", {}, by.label));
 }
 
 /** A task's card, drawn at the group's origin, everything inside it: its title on up to two lines, its files;
@@ -1140,6 +1130,7 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   grp.replaceChildren();
   grp.setAttribute("class", `task ${cls(t.state)}${t.id === selected ? " selected" : ""}${t.needs_you ? " needs-you" : ""}`);
   grp.setAttribute("data-mark", stateMark(t));
+  if (t.card?.receipt) grp.dataset.tests = t.card.receipt.tests; else delete grp.dataset.tests; // a session's card: its border says its tests once it is over (graph.css)
   const asked = state ? questionOn(state, t.id)?.text ?? "" : "";
   const line = cardLine(t, 60, asked), times = attemptsMark(t, limit), what = covers(t);
   const check: CheckMark = t.card ? receiptMark(t.card.receipt) : checkMark(t); // a session's card: its receipt's tests, not a plan's check
@@ -1152,14 +1143,16 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
     return drawCompact(grp, { title: t.title, hover, mark: stateMark(t), selected: t.id === selected,
                               port: replaying() || t.leaves ? undefined : t.id, hollow: check.box === "hollow", forks: t.forks });
   }
-  frame(grp, h, t.id === selected);
+  const fh = h - SUB_H, subY = h - 7; // its frame, taller by its attempts, and under it its status line
+  frame(grp, fh, t.id === selected);
+  tile(grp, who(t, state?.executor ?? ""));
   const corner = cornerMark(t); // its state's mark, inside the card at its title's right, as a row has it at its left
   cardTitle(grp, t.title);
   if (corner) mark(grp, corner, BOX_W - PAD - 7, 16, 7);
   // a title on one line leaves its second to what the task covers past it (`Librarian service: collections, …`), dim:
   // no card in a row has an empty band where another has words, and the status row says the state
   if (what && grp.querySelector(".title")?.childElementCount === 1) {
-    const c = grp.appendChild(el("text", { class: "covers", x: PAD, y: 37 })), room = BOX_W - 2 * PAD;
+    const c = grp.appendChild(el("text", { class: "covers", x: TEXT_X, y: 37 })), room = BOX_W - TEXT_X - PAD;
     let n = Math.floor(room / 6.2);
     do c.textContent = coversIn(what, n); while (c.getComputedTextLength() > room && --n > 4);
     if (!c.getComputedTextLength()) c.textContent = coversIn(what, Math.floor(room / 7)); // not drawn yet: by a count that never runs past
@@ -1172,24 +1165,24 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
   // the agents it is set to, whose hover says what that costs. Chosen, it has none: its pane holds that act, once
   const chosen = t.id === selected;
   const act = chosen ? null : cardAct(t, replaying(), seen.has(t.id)); // its changes opened here: Approve, as its pane says
-  let right = BOX_W - PAD;
+  let right = BOX_W;
   // a gate the run waits on is filled (graph.css `.act.waits`): a step past the line or of your own, a write stopped
-  if (act) right = actButton(grp, act, t.id, t.title, undefined, act.act === "markDone" || (act.act === "handBack" && t.state === "running"));
+  if (act) right = actButton(grp, act, t.id, t.title, undefined, act.act === "markDone" || (act.act === "handBack" && t.state === "running"), subY);
   else if (!chosen && asked && stateMark(t) === "you" && !replaying()) { // it wants you for its question: its answers are in its pane, the first one focused
     right = actButton(grp, { label: "Answer…", act: "answer", icon: "", main: true, title: `its answers, in its pane: ${asked}` }, t.id, t.title,
-                      () => { select(t.id); document.querySelector<HTMLElement>("#details .ask-opts button")?.focus(); });
+                      () => { select(t.id); document.querySelector<HTMLElement>("#details .ask-opts button")?.focus(); }, false, subY);
   } else {
     const tail = t.card ? "" : t.state === "running" && t.model && t.forks.length < 2 ? cut(t.model, 14) : times; // a session's card: its line is what it is doing, its model is in its pane
-    const end = tail ? grp.appendChild(el("text", { class: tail === times ? "times" : "model", x: right, y: STATUS_Y, "text-anchor": "end" }, tail)) : null;
+    const end = tail ? grp.appendChild(el("text", { class: tail === times ? "times" : "model", x: right, y: subY, "text-anchor": "end" }, tail)) : null;
     if (end) right -= (end.getComputedTextLength() || tail.length * 7) + 8;
     if (end && tail === times) end.appendChild(el("title", {}, attemptsWhy(parseInt(times))));
   }
-  status(grp, (n) => cardLine(t, n, asked), right);
+  status(grp, (n) => cardLine(t, n, asked), right, false, subY);
   if (acting) (grp.querySelector<SVGGElement>(".act") ?? grp).focus({ preventScroll: true }); // pressed, and gone: the card has it
   // its attempts: a row each, over its foot, its mark and its words as a status reads (no box: they are not
   // fields); the kept one on a quiet fill, its why in its hover. Once it is done they are history (the pane's Activity)
   (t.state === "done" ? [] : t.forks).forEach((f, i) => {
-    const y = BOX_H - FOOT_H + 2 + i * FORK_H;
+    const y = FRAME_H - FOOT_H + 2 + i * FORK_H;
     const kept = t.kept?.letter === f.letter, room = BOX_W - 2 * PAD - 26;
     const chip = el("g", { class: `fork ${cls(f.state || "waiting")}${kept ? " kept" : ""}` });
     chip.appendChild(el("rect", { class: "chip", x: PAD, y, width: BOX_W - 2 * PAD, height: FORK_H - 4, rx: 5 })); // its hover's
@@ -1200,18 +1193,19 @@ function drawTask(grp: SVGGElement, t: TaskX, h: number, down: boolean, limit: n
     chip.appendChild(el("title", {}, forkRow(f, t.kept)));
     grp.appendChild(chip);
   });
-  cardFoot(grp, check, (n) => (t.card ? receiptFoot(t.card.receipt, n) : doneWhen(t, n)), h, BOX_W, t.card ? "" : undefined, Boolean(t.card));
+  cardFoot(grp, check, (n) => (t.card ? receiptFoot(t.card.receipt, n) : doneWhen(t, n)), fh, BOX_W, t.card ? "" : undefined, Boolean(t.card));
   grp.appendChild(el("title", {}, hover));
   // its ports, where its lines join: in at the left, out at the right (the top and the foot when laid downward)
-  grp.appendChild(el("circle", { class: "port in", cx: down ? BOX_W / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
-  const port = grp.appendChild(el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? h : BOX_H / 2, r: 5 }));
+  // shown where a line joins it (`wired`): a line leaves a card at its port, and enters the next at its port
+  grp.appendChild(el("circle", { class: `port in${wired.in.has(t.id) ? " wired" : ""}`, cx: down ? BOX_W / 2 : 0, cy: down ? 0 : FRAME_H / 2, r: 4 }));
+  const port = grp.appendChild(el("circle", { class: `port${wired.out.has(t.id) ? " wired" : ""}`, cx: down ? BOX_W / 2 : BOX_W, cy: down ? fh : FRAME_H / 2, r: 4 }));
   if (replaying() || t.leaves) return; // a replay is watched, not linked; a task drawn after a step past the line would land in the first column
   // drag its out port onto another task and that task waits on this one
   port.setAttribute("data-port", t.id);
   port.appendChild(el("title", {}, "drag onto another task: it then waits on this one"));
   // its +, past the out port: a new task drawn after this one
   const plus = el("g", { class: "plus", "data-plus": t.id });
-  const px = BOX_W + 17, py = BOX_H / 2;
+  const px = BOX_W + 17, py = FRAME_H / 2;
   plus.appendChild(el("rect", { class: "reach", x: BOX_W + 5, y: py - 10, width: 22, height: 20 })); // the pointer crosses to it without leaving the task
   plus.appendChild(el("circle", { cx: px, cy: py, r: 8 }));
   plus.appendChild(el("path", { d: `M${px - 4},${py} h8 M${px},${py - 4} v8` }));
@@ -1230,10 +1224,10 @@ function drawDraft(grp: SVGGElement, d: Draft) {
   if (level === "compact") {
     return drawCompact(grp, { title: d.title, hover: `a draft: ${d.title} · ${blanks(d)}`, mark: "suggested", selected: d.key === selected, naming: naming === d.key ? d : undefined });
   }
-  frame(grp, BOX_H, d.key === selected);
+  frame(grp, FRAME_H, d.key === selected);
   mark(grp, "suggested", BOX_W - PAD - 7, 16, 7); // the ring it will wear as a suggestion
   if (naming === d.key) {
-    const fo = el("foreignObject", { x: PAD - 5, y: 10, width: BOX_W - 2 * PAD - 16, height: 24 }); // clear of its ring
+    const fo = el("foreignObject", { x: PAD - 5, y: 10, width: BOX_W - 2 * PAD - 16, height: 24 }); // clear of its ring (a draft has no tile yet: nobody is on it)
     fo.appendChild(nameInput(d));
     grp.appendChild(fo);
   } else cardTitle(grp, d.title);
@@ -1253,7 +1247,7 @@ function drawPlanned(grp: SVGGElement, d: DraftStep, down: boolean) {
   grp.setAttribute("data-mark", "suggested");
   grp.setAttribute("aria-label", `the planner is drafting: ${d.title}`);
   if (level === "compact") return drawCompact(grp, { title: d.title, hover: `the planner is drafting: ${d.title}`, mark: "suggested", selected: false });
-  frame(grp, BOX_H, false);
+  frame(grp, FRAME_H, false);
   cardTitle(grp, d.title);
   mark(grp, "suggested", BOX_W - PAD - 7, 16, 7);
   const files = filesChip(d.scope);
@@ -1261,8 +1255,8 @@ function drawPlanned(grp: SVGGElement, d: DraftStep, down: boolean) {
   status(grp, () => "drafted", BOX_W - PAD);
   draftFoot(grp, d.check ?? "");
   grp.appendChild(el("title", {}, `the planner is drafting: ${d.title}`));
-  grp.appendChild(el("circle", { class: "port in", cx: down ? BOX_W / 2 : 0, cy: down ? 0 : BOX_H / 2, r: 5 }));
-  grp.appendChild(el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? BOX_H : BOX_H / 2, r: 5 }));
+  grp.appendChild(el("circle", { class: "port in", cx: down ? BOX_W / 2 : 0, cy: down ? 0 : FRAME_H / 2, r: 4 }));
+  grp.appendChild(el("circle", { class: "port", cx: down ? BOX_W / 2 : BOX_W, cy: down ? FRAME_H : FRAME_H / 2, r: 4 }));
 }
 
 // ---- the lanes: one row a task, grouped by sub-goal ----
@@ -1408,7 +1402,7 @@ function wireD(): string {
     const x1 = p.x + D.w / 2, y1 = p.y + p.h, dy = Math.max(16, Math.abs(wiring.y - y1) / 2);
     return `M${x1},${y1} C${x1},${y1 + dy} ${wiring.x},${wiring.y - dy} ${wiring.x},${wiring.y}`;
   }
-  const x1 = p.x + D.w, y1 = p.y + D.h / 2, dx = Math.max(24, Math.abs(wiring.x - x1) / 2);
+  const x1 = p.x + D.w, y1 = p.y + portY(), dx = Math.max(24, Math.abs(wiring.x - x1) / 2);
   return `M${x1},${y1} C${x1 + dx},${y1} ${wiring.x - dx},${wiring.y} ${wiring.x},${wiring.y}`;
 }
 

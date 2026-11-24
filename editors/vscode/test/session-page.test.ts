@@ -2,8 +2,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { cardAct, cardLine, filesLine, receiptFoot, receiptMark, stateMark } from "../src/graph/marks.ts";
-import { actsFor, headerFor, receiptLine, sessionsLine, sub, testsWords } from "../src/graph/words.ts";
+import { cardAct, cardLine, cornerMark, filesLine, legend, receiptFoot, receiptMark, stateMark } from "../src/graph/marks.ts";
+import { actsFor, headerFor, receiptLine, sessionsLine, sub, testsWords, who } from "../src/graph/words.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -53,6 +53,20 @@ test("a card's foot is its receipt: a tick only for a pass that was seen, and th
   const unseen = { ...passed, tests: "unseen" as const, checks: [{ ...passed.checks[0]!, verdict: "unseen" as const }] };
   assert.deepEqual([receiptMark(unseen).box, receiptMark(unseen).tone, receiptFoot(unseen, 60)], ["hollow", "warn", "unittest ran, result not seen"]);
   assert.deepEqual([receiptMark(null).box, receiptFoot(null, 60)], ["unrun", ""]); // a plan's step: no receipt, no foot
+});
+
+test("a session's card that is over wears no tick of its own, and its tile says who worked on it", () => {
+  const s = fixture("session"), by = (title: string) => s.tasks.find((t) => t.title.startsWith(title))!;
+  // over is over: a dot in the legend, nothing on the card's corner. The tick is its foot's, for a test seen to pass
+  assert.deepEqual([stateMark(by("Review the parser and")), cornerMark(by("Review the parser and"))], ["over", ""]);
+  assert.deepEqual([stateMark(by("Review the printer")), cornerMark(by("Review the printer"))], ["working", "working"]);
+  assert.deepEqual(legend(s.tasks), [["working", "working", 2], ["over", "done", 3]]);
+  assert.deepEqual(stateMark(fixture("running").tasks.find((t) => t.state === "done")!), "landed"); // a plan's task that landed still wears its tick
+  // who: the session's agent on a request, S on a subagent, W on a workflow
+  assert.deepEqual(who(by("Review the parser and"), ""), { kind: "claude", mark: "C", label: "Claude Code" });
+  assert.deepEqual(who(by("Review the printer"), ""), { kind: "sub", mark: "S", label: "a subagent (Explore)" });
+  assert.deepEqual(who(by("release-check"), ""), { kind: "sub", mark: "W", label: "a workflow's agents" });
+  assert.equal(who({ ...by("Review the parser and"), agent: "Codex" }, "").mark, "X");
 });
 
 test("a plan's snapshot says nothing of sessions, and reads as it did", () => {
