@@ -28,7 +28,7 @@ type Incoming = { type: "state"; state: StateX; exact?: boolean; seen?: string[]
   | { type: "start"; ok: boolean }; // Start is over: a run was started (ok), or none was
 type View = "auto" | "graph" | "lanes";
 type Tab = "scope" | "edit" | "activity";
-type Saved = { view?: View; drafts?: Draft[]; drew?: number; tab?: Tab };
+type Saved = { view?: View; drafts?: Draft[]; drew?: number; tab?: Tab; page?: string[] }; // page: the session files this page draws, for a reload to bring back
 
 const GOAL = " goal";
 const PLAN = " p"; // before a step the planner is writing: a space first, so its box is never a task's
@@ -357,7 +357,10 @@ function render() {
     $("notice").className = "";
     $("notice").replaceChildren();
     div("notice-head", sessions() ? "No session here yet." : "Nothing is planned yet.", $("notice")); // what is so, then what to do about it
-    if (sessions()) $("notice").append(START_AGENT);
+    if (sessions()) {
+      $("notice").append(START_AGENT);
+      button({ label: "Replay a recorded session", act: "replay", title: "a real Claude Code session, recorded in a scratch repository: watch it draw", icon: "play", main: false }, "", $("notice"));
+    }
     if (!replaying()) $("notice").append(ASK_AGENT);
     if (!replaying() && document.body.dataset.editor === "cursor") div("notice-aside", CURSOR_AGENT, $("notice")); // the host says which editor (graph.ts)
     if (!replaying()) button({ label: "Add task", act: "add-under", title: "draw a task: its title, then its files and its check", icon: "add", main: true }, "", $("notice"));
@@ -460,6 +463,7 @@ function header(s: StateX, blank: boolean) {
   // a narrow tab cuts the stage's note to its room: a note cut (`6…`) says nothing, so it goes, and the names stay
   for (const note of Array.from($("stages").querySelectorAll("small"))) if (note.scrollWidth > note.clientWidth) note.hidden = true;
   for (const [id] of HEADER_ACTS) $(id).hidden = replaying(); // a replay is watched: nothing acts on a plan, or outside it
+  $("b-session").hidden = !s.sessions; // a page of sessions takes another, as a band of its own
   if (blank) $("b-add").hidden = true; // the notice's own Add task is the act then
   if (!s.tasks.length) $("b-save").hidden = $("b-view").hidden = true; // no plan: nothing to save, or to see as lanes
   else $("b-view").hidden = false;
@@ -650,12 +654,14 @@ function graph(s: StateX, dir: "across" | "down") {
     // its header has the band's room on to the trunk, wherever the plan is panned or zoomed, and a redraw never
     // cuts it to the part that was on it; a band whose start is panned off the canvas keeps it at the canvas's
     // edge while the band is there (`applyZoom`), not cut to its last words
-    const ts = s.tasks.filter((t) => t.parent === band.id), said = bandHead(heads, name, ts, x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset);
-    const end = Math.min(most, Math.max(x1, x0 + said + 2 * D.inset));
+    const off = band.id.startsWith(SESSION) ? 22 : 0; // a session's band: the room at its header's end for its ×
+    const ts = s.tasks.filter((t) => t.parent === band.id), said = bandHead(heads, name, ts, x0 + D.inset, band.y0 + D.label / 2 + 1, most - x0 - 2 * D.inset - off);
+    const end = Math.min(most, Math.max(x1, x0 + said + off + 2 * D.inset));
     rect.setAttribute("width", String(end - x0));
     spans.set(band.id, { x0, x1: end });
     headed.push({ band, name, ts, x0, end, said, at: sticky.length });
-    sticky.push({ g: heads.lastElementChild as SVGGElement, x: x0, room: end - x0 - said - 2 * D.inset });
+    sticky.push({ g: heads.lastElementChild as SVGGElement, x: x0, room: end - x0 - said - off - 2 * D.inset });
+    if (off) takeOff(bands, band.id.slice(SESSION.length), name, end - 15, band.y0 + D.label / 2 + 1);
   }
   // edges: keyed by their ends; a changed path glides (CSS transitions d)
   const edges = $("edges") as unknown as SVGGElement;
@@ -813,6 +819,21 @@ function graph(s: StateX, dir: "across" | "down") {
   legendRow(s);
   applyZoom();
   if (level !== was) { void svg.getBoundingClientRect(); svg.classList.remove("cut"); } // the cut is made: what moves next glides again
+}
+
+/** A session's band is named `session <its id>` (sessions/snapshot.ts). */
+const SESSION = "session ";
+
+/** The × at the end of a session's band header: takes that session off the page. A button: Tab reaches it, Enter
+ *  and Space press it. In the bands' own group, under the cards, so it never covers one. */
+function takeOff(root: SVGGElement, session: string, title: string, x: number, y: number) {
+  const b = root.appendChild(el("g", { class: "band-off", role: "button", tabindex: 0, "aria-label": `take “${title}” off this page` }));
+  b.appendChild(el("circle", { cx: x, cy: y, r: 9 }));
+  b.appendChild(el("path", { d: `M${x - 3.5},${y - 3.5}l7,7M${x + 3.5},${y - 3.5}l-7,7` }));
+  b.appendChild(el("title", {}, "take this session off the page (its file is not touched)"));
+  const go = () => api.postMessage({ type: "act", act: "takeOff", id: session });
+  b.addEventListener("click", (e) => { e.stopPropagation(); go(); });
+  b.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); go(); } });
 }
 
 type Spot = Layout["boxes"][string];
@@ -1258,7 +1279,9 @@ function lanes(s: StateX) {
   for (const t of s.tasks) groups.get(t.leaves ? AWAY : groups.has(t.parent ?? "") ? t.parent ?? "" : "")!.push(t);
   const box = (t: TaskX) => order.boxes[t.id];
   for (const ts of groups.values()) ts.sort((p, q) => (box(p)?.rank ?? 0) - (box(q)?.rank ?? 0) || (box(p)?.y ?? 0) - (box(q)?.y ?? 0));
-  const heads = [...groups].filter(([, ts]) => ts.length).map(([id, ts]) => [id, ts, id === AWAY ? `leaves your machine${ts.some(asksYou) ? " · asks you first" : ""}` : id ? done(ts) : ""] as const);
+  const heads = [...groups].filter(([, ts]) => ts.length).map(([id, ts]) => [id, ts, id === AWAY ? `leaves your machine${ts.some(asksYou) ? " · asks you first" : ""}`
+    : id.startsWith(SESSION) ? s.sessions?.find((x) => x.id === id.slice(SESSION.length))?.status ?? "" // a session's group says what the session is doing, not a count of a plan's tasks
+    : id ? done(ts) : ""] as const);
   const steps = draftedSteps(s);
   const key = JSON.stringify([heads.map(([id, ts, n]) => [id, n, goalTitle(s, id), ts.map((t) => t.id)]), selected, s.goal, done(s.tasks), drawn(), naming, steps, planningLine(s)]);
   const rows: HTMLElement[] = [];
@@ -1270,6 +1293,14 @@ function lanes(s: StateX) {
       const { name, whole } = bandName(goalTitle(s, id)), head = div("wave");
       div("w-name", name, head).title = whole;
       head.append(n);
+      if (id.startsWith(SESSION)) { // a session's group: taken off the page here too
+        const off = head.appendChild(document.createElement("button"));
+        off.className = "quiet icon w-off";
+        off.append(icon("close"));
+        off.title = "take this session off the page (its file is not touched)";
+        off.setAttribute("aria-label", `take “${name}” off this page`);
+        off.addEventListener("click", () => api.postMessage({ type: "act", act: "takeOff", id: id.slice(SESSION.length) }));
+      }
       rows.push(head);
     }
     for (const t of ts) {
@@ -2247,6 +2278,9 @@ window.addEventListener("message", (e: MessageEvent<Incoming>) => {
     if (json === lastJson) return; // nothing changed: nothing moves
     lastJson = json;
     state = m.state;
+    // a page of sessions keeps which ones it draws: the host brings them back after a reload (not a replay's)
+    const files = state.sessions && !state.replay ? state.sessions.map((x) => x.file) : undefined;
+    if (JSON.stringify(files) !== JSON.stringify(saved.page)) remember({ page: files });
     exact = m.exact === true;
     seen = new Set(m.seen ?? []);
     const has = (id: string | null) => state!.tasks.some((t) => t.id === id);
@@ -2546,6 +2580,7 @@ function wire() {
   top("b-help", "", "question", "Keys and mouse (?)", () => help($("help").hidden));
   top("b-save", "Save as workflow", "bookmark", "Save as workflow: this graph to workflows/, to run again on new inputs", () => api.postMessage({ type: "act", act: "saveWorkflow", id: "" }));
   top("b-add", "Add task", "add", "draw a task: its title, then its files and its check (or the planner fills them in)", () => draw({ after: null, parent: null }));
+  top("b-session", "Add to page…", "add", "Add to page…: another of this folder's sessions, drawn here as a band of its own", () => api.postMessage({ type: "act", act: "addSession", id: "" }));
   top("b-run", "Run", "play", "", () => {
     const a = state && mainAct(state, exact);
     if (!a || startedAt) return; // Starting…: one run a click

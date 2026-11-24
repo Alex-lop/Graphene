@@ -2,6 +2,7 @@
 // task offers, and the keys. No DOM here, so `node --test` reads them.
 import { ASK, NOT_CURSOR } from "../home/who.ts"; // Home's words for the agents, said the same on the graph
 import type { Layout } from "../layout.ts";
+import type { PageAct } from "../sessions/acts.ts";
 import { inScope } from "../owners.ts";
 import { autoLine, free, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
 
@@ -13,7 +14,8 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
 export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "start" | "run" | "stop" | "cockpit"
-  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "sendBack" | "answer" | "handBack" | "set" | "draw" | "saveWorkflow" | "markDone" | "demo";
+  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "sendBack" | "answer" | "handBack" | "set" | "draw" | "saveWorkflow" | "markDone" | "demo"
+  | PageAct; // and what a page of sessions asks of its own host (sessions/acts.ts)
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
@@ -367,6 +369,7 @@ const tries = (n: number | undefined) => (n !== undefined && n > 1 ? `${n} tries
 /** The small line under a box's title: the state first, in plain words, then what matters for it. A task that
  *  needs help says why on the box. */
 export function sub(t: TaskX, max = 25): string {
+  if (t.card) return sessionLine(t, max); // a session's card, on the canvas or as a lane: its own words
   if (asksYou(t)) return cut("asks you: it leaves your machine", max);
   if (t.command && t.checked.after === "failed" && t.state !== "done") return cut("its command failed: a run tries it again", max);
   const parts: string[] = [];

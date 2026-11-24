@@ -398,6 +398,13 @@ button:disabled { opacity: 0.45; cursor: default; }
 .region-label.away { fill: var(--review); font-size: 12px; font-weight: 600; font-family: var(--font); }
 /* a sub-goal: a quiet section, a little over the ground, with a hairline edge */
 .band { fill: color-mix(in srgb, var(--fg) 5.5%, transparent); stroke: var(--line-1); }
+/* a session's band: the × at its header's end takes the session off the page */
+.band-off { cursor: pointer; outline: none; }
+.band-off circle { fill: transparent; }
+.band-off path { stroke: var(--dim); stroke-width: 1.4; stroke-linecap: round; fill: none; }
+.band-off:hover circle, .band-off:focus-visible circle { fill: var(--fill-3); }
+.band-off:hover path, .band-off:focus-visible path { stroke: var(--fg); }
+.band-off:focus-visible circle { stroke: var(--focus); stroke-width: 1.5; }
 /* a sub-goal's header: its ring, its title, its count, and in its mark's colour what wants you there */
 .band-head { pointer-events: none; }
 .band-head text { font-size: 12px; font-family: var(--font); fill: var(--dim); }
@@ -591,6 +598,7 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 /* a group's head, as its band's on the canvas: the sub-goal's name, then how many of its tasks are done */
 .wave { color: var(--dim); font-size: 12px; padding: 12px 4px 4px; display: flex; gap: 8px; align-items: baseline; }
 .w-name { color: var(--fg); font-weight: 600; font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wave .w-off { margin-left: auto; align-self: center; padding: 2px; } /* a session's group: its × at the row's end */
 .lane {
   display: flex; gap: 8px; padding: 6px 8px 6px 6px; margin: 3px 0; border: 1px solid var(--line-1); border-radius: var(--r);
   background: var(--fill-1); cursor: pointer; outline: none; transition: border-color var(--ease);

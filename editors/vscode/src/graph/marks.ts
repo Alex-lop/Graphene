@@ -3,7 +3,7 @@
 // chip's latest fact, and the one act a card wears. A mark is drawn only for what a field of the snapshot
 // says (state.ts); the words are words.ts's and `SAY`'s. No DOM here, so `node --test` reads them.
 import { SAY, type Goal } from "../state.ts";
-import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, fitWords, provesNothing, sessionLine, sub, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
+import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, fitWords, provesNothing, sub, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
 
 /** The one mark a step's state wears, the same shape at every size: a circle is the run's own business
  *  (waiting, ready, working, landed, suggested), a diamond is the person (you, yours), a triangle is trouble (back). */
@@ -309,7 +309,7 @@ export function coversIn(c: string, n: number): string {
  *  second line, `coversIn`); a working one `working` and its agent (each of its attempts is a row naming its model); a ``question`` on a step that wears the
  *  filled diamond for it, or on a suggestion, says it asks you, and what. */
 export function cardLine(t: TaskX, n: number, question = ""): string {
-  if (t.card) return sessionLine(t, n);
+  if (t.card) return sub(t, n);
   if (question && (t.state === "proposed" || stateMark(t) === "you") && !["review", "yours"].includes(t.state)) return cutWhole(`${ASKS}: ${question}`, n);
   if (t.state === "proposed") return cutWhole(SAY.proposed, n);
   // sent back with a note (the snapshot's `note`): it is not a task no agent has touched, so it does not say ready

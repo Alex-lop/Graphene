@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { cardAct, cardLine, filesLine, stateMark } from "../src/graph/marks.ts";
-import { actsFor, headerFor, sessionsLine } from "../src/graph/words.ts";
+import { actsFor, headerFor, sessionsLine, sub } from "../src/graph/words.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => parseState(readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -30,6 +30,7 @@ test("a session's card says its state in a session's words, then what it is doin
   assert.equal(cardLine(by("/review"), 60), "interrupted · $ git diff --stat");
   assert.equal(cardLine(by("Now make it count"), 60), "working · 29 s quiet · $ python3 -m unittest");
   assert.equal(cardLine(by("Say it in the README"), 60), "not started");
+  assert.equal(sub(by("Now make it count"), 60), "working · 29 s quiet · $ python3 -m unittest"); // and as a lane, in a narrow tab
   assert.deepEqual(filesLine(by("Fix the word counter")), { tone: "plain", mark: "edit", text: "wordcount.py +1", refused: "" });
   assert.deepEqual(filesLine(by("/review")), { tone: "plain", mark: "", text: "", refused: "" }); // it wrote nothing: no chip
   assert.equal(stateMark(by("Now make it count")), "working");
