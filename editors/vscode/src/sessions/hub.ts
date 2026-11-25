@@ -16,7 +16,7 @@ import { note, show, since, unexplained, type Note } from "./git.ts";
 import { receipt } from "./receipt.ts";
 import { empty, fold, type Model } from "./model.ts";
 import { Replay } from "./replay.ts";
-import { info, snapshot, status } from "./snapshot.ts";
+import { info, QUIET, snapshot, status } from "./snapshot.ts";
 import { runs } from "./term.ts";
 import { codexMayHave, processes, Terminals, terminalOf } from "./terminals.ts";
 
@@ -101,6 +101,9 @@ function ownInFront(): boolean {
   const input = front();
   return input instanceof vscode.TabInputWebview && input.viewType.includes(PAGE);
 }
+
+/** The sessions a list shows, the newest: Home's, and the ones the status bar counts. */
+const LISTED = 12;
 
 export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   /** The folder's sessions, the last written first. */
@@ -189,7 +192,9 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
       void this.show(file, true);
     }
     if (this.watching) this.sizes = new Map(this.found.map((f) => [f.file, f.size]));
-    const key = JSON.stringify([this.found.map((f) => [f.file, f.size]), [...this.live.values()].map((p) => [p.session, p.status])]);
+    // what a listener would say differently: a file that grew, a process's record, a session gone quiet with no line to say so
+    const fresh = this.found.filter((f) => Date.now() - f.mtime <= QUIET).length;
+    const key = JSON.stringify([this.found.map((f) => [f.file, f.size]), [...this.live.values()].map((p) => [p.session, p.status]), fresh]);
     if (key === this.key) return;
     this.key = key;
     this.changed.fire();
@@ -197,6 +202,21 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
 
   private async read() {
     await Promise.all(this.pages.filter((p) => p.panel.visible && !p.replay).map((p) => p.refresh(this.live, false, this.git(p))));
+  }
+
+  /** How many of the folder's sessions are at work, by the rule their pages go by (snapshot.ts `status`: a turn
+   *  that ended is over, whatever its process's record says). Only a session with a process, or a line written
+   *  not long ago, is read for it: as a page in front has it, else at a glance. */
+  async working(): Promise<number> {
+    const now = Date.now(), shown = this.pages.filter((p) => p.panel.visible).flatMap((p) => p.follows);
+    let n = 0;
+    for (const f of this.found.slice(0, LISTED)) {
+      if (!this.live.has(f.id) && now - f.mtime > QUIET) continue;
+      const drawn = shown.find((x) => x.found.file === f.file)?.model; // a page that has just opened has read nothing yet
+      const m = drawn?.last ? drawn : await this.glance(f);
+      if (status(m, now, this.live.get(m.id)) === "working") n++;
+    }
+    return n;
   }
 
   private readonly notes = new Map<string, Note | null>(); // a session's file -> its folder's git when the session was first seen
@@ -235,27 +255,28 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
 
   /** What a list says of each session, the newest few: as its page has it where one draws it, else at a glance
    *  (its file's start and its end, read again only when it has grown). */
-  async list(most = 12): Promise<SessionInfo[]> {
+  async list(most = LISTED): Promise<SessionInfo[]> {
     const out: SessionInfo[] = [], newest = this.found.slice(0, most), now = Date.now();
     for (const f of newest) {
-      let m: Model | undefined = this.pages.flatMap((p) => p.follows).find((x) => x.found.file === f.file)?.model;
-      if (!m) {
-        let g = this.glanced.get(f.file);
-        if (!g || g.size !== f.size) {
-          g = { size: f.size, model: empty(f.agent, f.file, f.id) };
-          g.model.cwd = f.cwd;
-          const line = readerOf(f.agent).line;
-          for (const l of await glance(f)) { try { for (const ev of line(l)) fold(g.model, ev); } catch { /* a line it does not understand */ } }
-          this.glanced.set(f.file, g);
-        }
-        m = g.model;
-      }
+      const m = this.pages.flatMap((p) => p.follows).find((x) => x.found.file === f.file)?.model ?? await this.glance(f);
       out.push(info(m, status(m, now, this.live.get(m.id)), this.live.has(m.id)));
     }
     for (const file of [...this.glanced.keys()]) if (!newest.some((f) => f.file === file)) this.glanced.delete(file);
     return out;
   }
   private glanced = new Map<string, { size: number; model: Model }>(); // the listed sessions no page follows
+  /** A session at a glance: its file's start and its end, read again only when it has grown. */
+  private async glance(f: Found): Promise<Model> {
+    let g = this.glanced.get(f.file);
+    if (!g || g.size !== f.size) {
+      g = { size: f.size, model: empty(f.agent, f.file, f.id) };
+      g.model.cwd = f.cwd;
+      const line = readerOf(f.agent).line;
+      for (const l of await glance(f)) { try { for (const ev of line(l)) fold(g.model, ev); } catch { /* a line it does not understand */ } }
+      this.glanced.set(f.file, g);
+    }
+    return g.model;
+  }
 
   /** The page that draws a session, made if there is none; with no session named, the folder's newest, or an
    *  empty page. `quiet`: nobody asked for it (it opens by itself), so it leaves the keyboard where it is, and

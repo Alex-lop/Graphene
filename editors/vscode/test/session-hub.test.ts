@@ -1,7 +1,7 @@
 // The sessions' host (src/sessions/hub.ts) against a stand-in for the vscode module and session files in a scratch
 // home: which sessions get a page by themselves, where it opens, what a reload brings back.
 import assert from "node:assert/strict";
-import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { register } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -156,4 +156,23 @@ test("in a folder with a plan a page a reload brought back is still read, and no
   await h.scan(); await settle();
   assert.equal(vscode.panels.length, 0);
   panel.dispose();
+});
+
+test("the status bar's count of sessions at work goes by what their files say: a turn that ended is over, whatever is still running", async () => {
+  for (const f of readdirSync(dir)) rmSync(path.join(dir, f), { recursive: true }); // the sessions the tests above left asked and unanswered
+  const h = hub();
+  h.start();
+  await h.scan(); await settle();
+  assert.equal(await h.working(), 0);
+  const said = (id: string, more: Record<string, unknown>) => `${JSON.stringify({ cwd: folder, sessionId: id, timestamp: new Date().toISOString(), ...more })}\n`;
+  // one session asked and at work, one whose turn ended a moment ago: both written just now
+  writeFileSync(file("at-work"), said("at-work", { type: "user", message: { content: "fix it" } }));
+  writeFileSync(file("ended"), said("ended", { type: "user", message: { content: "say hello" } })
+    + said("ended", { type: "assistant", message: { stop_reason: "end_turn", content: [{ type: "text", text: "hello" }] } }));
+  await h.scan(); await settle();
+  assert.equal(await h.working(), 1);
+  // with its page behind another, or closed, the count is the same: read at a glance
+  for (const p of [...vscode.panels]) close(p);
+  assert.equal(await h.working(), 1);
+  h.stop();
 });
