@@ -70,6 +70,9 @@ function bare(text: string): { text: string; loose: boolean } {
       .replace(/^(uv|poetry|pipenv|pdm|hatch|rye)\s+run\s+(-\S+\s+)*/, "")
       .replace(/^(npx|bunx|pnpx)\s+(-\S+\s+)*/, "")
       .replace(/^(pnpm|yarn)\s+(exec|dlx)\s+/, "")
+      .replace(/^bundle\s+exec\s+/, "")
+      // `docker compose run app pytest`: what runs in the container, whose exit code docker hands on
+      .replace(/^docker(-compose|\s+compose)?\s+(run|exec)\s+.*?\s(?=(pytest|py\.test|python[0-9.]*|npm|pnpm|yarn|bun|jest|vitest|go|cargo|make|rspec|mvn|gradle)(\s|$))/, "")
       .replace(/^python[0-9.]*\s+-m\s+(?=pytest|mypy|ruff|unittest)/, "")
       .replace(/^(\/[^\s/]+)+\/(?=[^\s/]+(\s|$))/, ""); // /bin/rm is rm
   }
@@ -78,7 +81,7 @@ function bare(text: string): { text: string; loose: boolean } {
 
 /** What a tool's output says of a run, read from the shape of its own summary and never from a word that happens
  *  to be there: that tests passed, that some failed, or that none ran. */
-interface Said { passed?: string; failed?: string; none?: string }
+interface Said { passed?: string; failed?: string; none?: string; n?: number }
 interface Tool {
   tool: string; kind: "test" | "check"; is: RegExp;
   /** A run of it that runs no test, by its arguments: it lists, compiles or prints help. */
@@ -93,10 +96,12 @@ const plain = (s: string): string => s.replace(/^=+\s*|\s*=+$/g, "");
 
 /** pytest's summary is its last line of counts, ending in the time it took: `1 failed, 2 passed in 0.31s`. */
 function pytest(out: string): Said {
-  const sum = plain(last(out, /^[= ]*(?:\d+ [a-z]+(?:, )?)+ in [\d.]+s(?: \([\d:]+\))?[= ]*$/gm));
-  if (!sum) return /^(=+ )?no tests ran\b|\bcollected 0 items\b/m.test(out) ? { none: "its output says no tests ran" } : {};
-  if (/\b[1-9]\d* (failed|errors?)\b/.test(sum)) return { failed: sum };
-  return /\b[1-9]\d* passed\b/.test(sum) ? { passed: sum } : { none: `its output says ${sum}: no test passed or failed` };
+  // every summary in the output is read: a line that ran pytest twice, or a loop, is failed by any of them
+  const sums = [...out.matchAll(/^[= ]*(?:\d+ [a-z]+(?:, )?)+ in [\d.]+s(?: \([\d:]+\))?[= ]*$/gm)].map((m) => plain(m[0].trim()));
+  if (!sums.length) return /^(=+ )?no tests ran\b|\bcollected 0 items\b/m.test(out) ? { none: "its output says no tests ran" } : {};
+  const bad = sums.find((s) => /\b[1-9]\d* (failed|errors?)\b/.test(s)), good = sums.filter((s) => /\b[1-9]\d* passed\b/.test(s)).at(-1);
+  if (bad) return { failed: bad };
+  return good ? { passed: good, n: sums.length } : { none: `its output says ${sums.at(-1)}: no test passed or failed` };
 }
 /** unittest ends in `OK` or `FAILED (…)` under `Ran N tests in …`. */
 function unittest(out: string): Said {
@@ -107,18 +112,28 @@ function unittest(out: string): Said {
 }
 /** Node's test runner counts: `ℹ pass 4`, `ℹ fail 0` (as TAP, `# pass 4`). */
 function nodeTest(out: string): Said {
-  const fail = /^(?:ℹ|#) fail (\d+)$/m.exec(out), pass = /^(?:ℹ|#) pass (\d+)$/m.exec(out);
-  if (fail && fail[1] !== "0") return { failed: fail[0] };
-  if (!pass || !fail) return {};
-  return pass[1] === "0" ? { none: "its output says 0 tests passed" } : { passed: `${pass[0]}, ${fail[0]}` };
+  const fails = [...out.matchAll(/^(?:ℹ|#) fail (\d+)$/gm)], passes = [...out.matchAll(/^(?:ℹ|#) pass (\d+)$/gm)];
+  const bad = fails.find((m) => m[1] !== "0"), good = passes.filter((m) => m[1] !== "0").at(-1);
+  if (bad) return { failed: bad[0] };
+  if (!passes.length || !fails.length) return {};
+  return good ? { passed: `${good[0]}, ${fails.at(-1)![0]}`, n: fails.length } : { none: "its output says 0 tests passed" };
+}
+/** Bun's ` 3 pass` and ` 0 fail`. */
+function bunTest(out: string): Said {
+  const fail = /^\s*(\d+) fail$/m.exec(out), pass = /^\s*(\d+) pass$/m.exec(out);
+  if (fail && fail[1] !== "0") return { failed: fail[0].trim() };
+  return pass && fail ? (pass[1] === "0" ? { none: "its output says 0 pass" } : { passed: `${pass[0].trim()}, ${fail[0].trim()}` }) : {};
 }
 /** Jest's `Tests: 1 failed, 2 passed, 3 total`, Vitest's `Tests  2 failed | 3 passed (5)`, mocha's `3 passing`;
  *  a script that runs Node's own runner says it as Node does. */
 function jsTests(out: string): Said {
-  const sum = last(out, /^\s*Tests:?\s+.*\b\d+ (?:passed|failed|total)\b.*$/gm) || last(out, /^\s*\d+ (?:passing|failing)\b.*$/gm);
-  if (!sum) return nodeTest(out);
-  if (/\b[1-9]\d* (failed|failing)\b/.test(sum)) return { failed: sum };
-  return /\b[1-9]\d* (passed|passing)\b/.test(sum) ? { passed: sum } : { none: `its output says ${sum}` };
+  // a suite or a file that failed to run fails the run, whatever its Tests line counts
+  const lines = [...out.matchAll(/^\s*(?:Tests|Test Suites|Test Files):?\s+.*\b\d+ (?:passed|failed|total)\b.*$/gm), ...out.matchAll(/^\s*\d+ (?:passing|failing)\b.*$/gm)].map((m) => m[0].trim());
+  if (!lines.length) return nodeTest(out);
+  const bad = lines.find((l) => /\b[1-9]\d* (failed|failing)\b/.test(l)), tests = lines.filter((l) => !/^Test (Suites|Files)/.test(l));
+  if (bad) return { failed: bad };
+  const good = tests.filter((l) => /\b[1-9]\d* (passed|passing)\b/.test(l)).at(-1);
+  return good ? { passed: good, n: tests.length } : tests.length ? { none: `its output says ${tests.at(-1)}` } : {};
 }
 /** go test says a line a package (`ok  pkg 0.01s`, `FAIL pkg`, `? pkg [no test files]`), and no line sums them up. */
 function goTest(out: string): Said {
@@ -138,19 +153,27 @@ const says = (passed: RegExp | null, failed: RegExp | null) => (out: string): Sa
   return f ? { failed: f } : p ? { passed: p } : {};
 };
 
+const JS_DRY = /\s(--help|--version|--listTests|--showConfig|--clearCache)(\s|$)/;
 /** The tests and checks a receipt knows, by how a command names them and how their output sums up. */
 const TOOLS: readonly Tool[] = [
   { tool: "pytest", kind: "test", is: /^(pytest|py\.test)\b/, dry: /\s(--collect-only|--co|--help|-h|--version|-V|--setup-plan|--fixtures|--markers)(\s|$)/, says: pytest },
   { tool: "unittest", kind: "test", is: /^unittest\b/, dry: /\s(--help|-h)(\s|$)/, says: unittest },
   { tool: "vitest", kind: "test", is: /^vitest\b/, dry: /\s(--help|--version|list)(\s|$)/, says: jsTests },
-  { tool: "jest", kind: "test", is: /^jest\b/, dry: /\s(--help|--version|--listTests|--showConfig)(\s|$)/, says: jsTests },
-  { tool: "npm test", kind: "test", is: /^npm\s+(run\s+)?(test|t)\b(?![:-])/, says: jsTests },
-  { tool: "pnpm test", kind: "test", is: /^pnpm\s+(run\s+)?test\b(?![:-])/, says: jsTests },
-  { tool: "yarn test", kind: "test", is: /^yarn\s+(run\s+)?test\b(?![:-])/, says: jsTests },
-  { tool: "node --test", kind: "test", is: /^node\b.*\s--test\b/, says: nodeTest },
+  { tool: "jest", kind: "test", is: /^jest\b/, dry: JS_DRY, says: jsTests },
+  // a script named for the tests it runs (`npm run test:unit`) is a test run too
+  { tool: "npm test", kind: "test", is: /^npm\s+((test|t)(\s|$)|run\s+test[\w:-]*(\s|$))/, dry: JS_DRY, says: jsTests },
+  { tool: "pnpm test", kind: "test", is: /^pnpm\s+(run\s+)?test[\w:-]*(\s|$)/, dry: JS_DRY, says: jsTests },
+  { tool: "yarn test", kind: "test", is: /^yarn\s+(run\s+)?test[\w:-]*(\s|$)/, dry: JS_DRY, says: jsTests },
+  { tool: "bun test", kind: "test", is: /^bun\s+(run\s+)?test[\w:-]*(\s|$)/, dry: JS_DRY, says: bunTest },
+  { tool: "node --test", kind: "test", is: /^node\b.*\s--test(\s|=|$)/, says: nodeTest },
   { tool: "go test", kind: "test", is: /^go\s+test\b/, dry: /\s(-c|-list(=\S+)?|-h|-help)(\s|$)/, says: goTest, whole: true },
-  { tool: "cargo test", kind: "test", is: /^cargo\s+(test|nextest)\b/, dry: /\s(--no-run|--help|-h|--list)(\s|$)/, says: cargo },
-  { tool: "make test", kind: "test", is: /^make\s+(-\S+\s+)*test\b/, dry: /\s(-n|--dry-run|--just-print)(\s|$)/, says: () => ({}) },
+  { tool: "cargo test", kind: "test", is: /^cargo\s+(test|nextest)\b/, dry: /\s(--no-run|--help|-h|--list|list)(\s|$)/, says: cargo },
+  { tool: "make test", kind: "test", is: /^make\s+(-\S+\s+)*test(\s|$)/, dry: /\s(-n|--dry-run|--just-print)(\s|$)/, says: () => ({}) },
+  // runners known by name alone: their own exit code decides, and where it is not theirs the result was not seen
+  ...([["mvn", /^(\.\/)?mvnw?\s+(.*\s)?(test|verify)(\s|$)/], ["gradle", /^(\.\/)?gradlew?\s+(.*\s)?(test|check)(\s|$)/], ["rspec", /^rspec(\s|$)/],
+        ["dotnet test", /^dotnet\s+test(\s|$)/], ["deno test", /^deno\s+test(\s|$)/], ["phpunit", /^(\.\/)?(vendor\/bin\/)?phpunit(\s|$)/], ["tox", /^tox(\s|$)/],
+        ["nox", /^nox(\s|$)/], ["ctest", /^ctest(\s|$)/], ["swift test", /^swift\s+test(\s|$)/], ["mix test", /^mix\s+test(\s|$)/], ["rake test", /^rake\s+(test|spec)(\s|$)/]] as const)
+    .map(([tool, is]): Tool => ({ tool, kind: "test", is, dry: /\s(--help|-h|--version|--list-tests)(\s|$)/, says: () => ({}) })),
   { tool: "ruff", kind: "check", is: /^ruff\s+(check\b|format\s+--check\b|\.|$)/, says: says(/All checks passed!/, /Found \d+ errors?/) },
   { tool: "eslint", kind: "check", is: /^eslint\b/, says: says(null, /✖ \d+ problems? \([1-9]\d* errors?/) },
   { tool: "tsc", kind: "check", is: /^tsc\b/, dry: /\s(--help|-h|--version|-v|--showConfig)(\s|$)/, says: says(null, /error TS\d+/) },
@@ -170,8 +193,12 @@ function verdict(t: Tool, c: Call, parts: readonly Part[], at: number, loose: bo
   if (c.input.run_in_background === true || /^Command running in background\b/.test(c.out) || parts[at]!.then === "&") {
     return { verdict: "unseen", why: "it ran in the background: its result is not in this call" };
   }
-  const said = t.says(`${c.out}\n${c.err}`), own = at === parts.length - 1 && !loose && c.exit !== null;
-  if (said.failed) return { verdict: "failed", why: `its output says ${said.failed}` };
+  // after an `||` it ran only if what was before it failed: the line's exit code does not say that it ran
+  const said = t.says(`${c.out}\n${c.err}`), own = at === parts.length - 1 && !loose && c.exit !== null && parts[at - 1]?.then !== "||";
+  // how many times the line runs this tool: a failure in the output is one of theirs, and not the last one's
+  // where that one's own exit code says it passed
+  const times = parts.filter((p) => t.is.test(bare(p.text).text)).length;
+  if (said.failed && !(own && c.exit === 0 && times > 1)) return { verdict: "failed", why: `its output says ${said.failed}` };
   if (own && c.exit !== 0) {
     // pytest and unittest exit 5 when they found nothing to run: no test ran, and none failed
     if (c.exit === 5 && (t.tool === "pytest" || t.tool === "unittest") && !said.passed) return { verdict: "none", why: "it exited 5: it found no test to run" };
@@ -181,10 +208,12 @@ function verdict(t: Tool, c: Call, parts: readonly Part[], at: number, loose: bo
     return { verdict: "unseen", why: `the line exited ${c.exit}, and its output does not say this ran` };
   }
   if (said.none) return { verdict: "none", why: said.none };
-  if (said.passed) {
-    if (!own && t.whole && clipped(c)) return { verdict: "unseen", why: "its output was too long to keep whole, and no last line sums it up" };
-    return { verdict: "passed", why: `its output says ${said.passed}` };
+  if (said.passed && !own) {
+    // a pass read from the output alone needs the output to be all of it, and to be this run's
+    if (t.whole && (clipped(c) || parts[at]!.then === "|")) return { verdict: "unseen", why: "its output was cut (a pipe, or its length), and no last line sums it up" };
+    if (times > 1 && (said.n ?? 1) < times) return { verdict: "unseen", why: `the line ran it ${times} times, and its output sums up fewer` };
   }
+  if (said.passed && !said.failed) return { verdict: "passed", why: `its output says ${said.passed}` };
   if (own) return { verdict: "passed", why: "it exited 0" };
   return { verdict: "unseen", why: c.exit === null ? "its exit code was not recorded" : "its output has no summary, and the exit code is another command's" };
 }
@@ -224,6 +253,7 @@ export function receipt(calls: readonly Call[], cwd: string): Receipt {
   const changed = new Map<string, Changed>(), runs = new Map<string, Check>(), flags: Flag[] = [];
   const flag = (f: Flag) => { if (!flags.some((x) => x.kind === f.kind && x.line === f.line)) flags.push(f); };
   const failing = new Map<string, string>(); // a test tool whose last run failed -> that run's output, until that tool passes
+  let dir = ""; // where its commands run, as far as its own `cd`s say: the same command in another folder is another run
   const ordered = calls.map((c, i) => ({ c, i })).sort((a, b) => (a.c.at && b.c.at && a.c.at !== b.c.at ? (a.c.at < b.c.at ? -1 : 1) : a.i - b.i)).map((x) => x.c);
   for (const c of ordered) {
     if (WRITES.includes(c.name) && c.done && !c.error) {
@@ -250,6 +280,8 @@ export function receipt(calls: readonly Call[], cwd: string): Receipt {
     const ran = c.done && !(c.error && c.exit === null);
     parts.forEach((p, i) => {
       const b = bare(p.text), loose = Boolean(p.loose) || b.loose;
+      const to = /^cd\s+("[^"]*"|'[^']*'|\S+)\s*$/.exec(b.text)?.[1]?.replace(/^["']|["']$/g, "");
+      if (to !== undefined && ran) dir = to === "-" ? `${dir}/-` : path.isAbsolute(to) || to.startsWith("~") ? to : path.posix.join(dir || ".", to);
       if (ran) {
         // the line exited 0 and this command had to succeed for it to: it is not after an `||`, and from it to the
         // line's end every command is joined by `&&`. Then it ran, and worked. Alone on a line that failed, it ran
@@ -265,7 +297,7 @@ export function receipt(calls: readonly Call[], cwd: string): Receipt {
       const tool = TOOLS.find((x) => x.is.test(b.text));
       if (!tool || !ran || tool.dry?.test(unquoted(b.text))) return; // a run that lists, compiles or prints help runs no test
       const v = verdict(tool, c, parts, i, loose);
-      runs.set(`${tool.tool}\n${same(p.text)}`, { tool: tool.tool, kind: tool.kind, command: p.text, ...v, at: c.endAt || c.at });
+      runs.set(`${tool.tool}\n${same(p.text)}\n${dir}`, { tool: tool.tool, kind: tool.kind, command: p.text, ...v, at: c.endAt || c.at });
       if (tool.kind !== "test") return;
       if (v.verdict === "failed") failing.set(tool.tool, `${c.out}\n${c.err}`);
       else if (v.verdict === "passed") failing.delete(tool.tool);

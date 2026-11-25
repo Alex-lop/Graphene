@@ -66,7 +66,8 @@ test("every tool the receipt knows is found in the lines people type", () => {
     ["node --experimental-strip-types --test test/a.test.ts", "node --test"], ["FOO=1 time uv run ruff check", "ruff"], ["npx eslint .", "eslint"], ["npx tsc --noEmit -p .", "tsc"], ["uv run mypy src", "mypy"],
   ];
   for (const [line, tool] of lines) assert.deepEqual(receipt([sh(line, 0)], CWD).checks.map((c) => c.tool), [tool], line);
-  for (const line of ["cat pytest.ini", "echo 'run npm test'", "git commit -m 'make test pass'", "npm run test:watch", "pip install pytest", "grep -r eslint ."]) {
+  for (const line of ["cat pytest.ini", "echo 'run npm test'", "git commit -m 'make test pass'", "pip install pytest", "grep -r eslint .",
+                      "make test-fixtures", "node seed.js --test-db", "npx jest --clearCache", "npm test -- --listTests", "cargo nextest list"]) {
     assert.deepEqual(receipt([sh(line, 0)], CWD).checks, [], line); // a tool named, not run
   }
   // checks are listed, and are not the tests' verdict
@@ -218,4 +219,45 @@ test("a test file edited after a failure is the failing test's own only where th
   assert.deepEqual(flags(sh("pytest", 1, out), edit("pkg2/tests/test_data.py")), [["pkg2/tests/test_data.py", true]]); // the same name in another folder
   assert.deepEqual(flags(sh("pytest", 1, out), sh("npm test", 0, "Tests  3 passed (3)"), edit("tests/test_data.py")), [["tests/test_data.py", false]]); // another tool's pass clears nothing
   assert.ok(isTest("app/tests.py") && isTest("src/FooTest.java") && isTest("pkg/a_tests.py") && !isTest("src/contests.py") && !isTest("src/Latest.java"));
+});
+
+// What a skeptic, told to disprove "a tick only for a pass that was seen", ran against the receipt.
+test("a summary is credited only to the run it sums up: any failure on the line fails it, and a pass needs its own summary", () => {
+  const res = (...cs: Call[]) => { const r = receipt(cs, CWD); return [r.tests, r.checks.map((c) => c.verdict)]; };
+  // two runs on one line, the first failing: the last summary is not both runs'
+  assert.deepEqual(res(sh("pytest a.py -q; pytest b.py -q", 0, "1 failed, 1 passed in 0.12s\n2 passed in 0.05s")), ["failed", ["failed", "passed"]]);
+  // (the second is the line's last command and exited 0: that much was seen)
+  assert.deepEqual(res(sh("for f in a b; do pytest $f.py -q; done", 0, "1 failed, 1 passed in 0.12s\n2 passed in 0.05s")), ["failed", ["failed"]]);
+  assert.deepEqual(res(sh("node --test a.test.js; node --test b.test.js; echo done", 0, "ℹ pass 2\nℹ fail 0\nℹ pass 1\nℹ fail 1")), ["failed", ["failed", "failed"]]);
+  // the first crashed with no summary, the second passed: one summary for two runs sums up neither for sure
+  assert.deepEqual(res(sh("pytest a.py -q; pytest b.py -q | tail -1", 0, "Traceback (most recent call last)\n2 passed in 0.05s")), ["unseen", ["unseen", "unseen"]]);
+  // a suite that failed to run fails the run, whatever its Tests line counts, and a pipe's exit code hides nothing
+  assert.deepEqual(res(sh("npx jest 2>&1 | tail -20", 0, "Test Suites: 1 failed, 1 passed, 2 total\nTests:       5 passed, 5 total")), ["failed", ["failed"]]);
+  assert.deepEqual(res(sh("npx vitest run | tail -5", 0, " Test Files  1 failed | 2 passed (3)\n      Tests  9 passed (9)")), ["failed", ["failed"]]);
+  // go says a line a package and none for the run: cut by a pipe, a pass was not seen
+  assert.deepEqual(res(sh("go test ./... | head -3", 0, "ok  \tpkg/a\t0.01s\nok  \tpkg/b\t0.01s")), ["unseen", ["unseen"]]);
+  // after an `||` it ran only if the first command failed: exit 0 does not say it ran
+  assert.deepEqual(res(sh("test -d .venv || pytest -q", 0)), ["unseen", ["unseen"]]);
+  assert.deepEqual(res(sh("test -d .venv || pytest -q", 0, "3 passed in 0.1s")), ["passed", ["passed"]]);
+});
+
+test("the same command in another folder is another run: one's pass does not clear the other's failure", () => {
+  let r = receipt([sh("cd packages/a && npm test", 1, "Tests:       1 failed, 2 passed, 3 total"), sh("cd ../b && npm test", 0, "Tests:       4 passed, 4 total")], CWD);
+  assert.deepEqual([r.tests, r.checks.map((c) => c.verdict)], ["failed", ["failed", "passed"]]);
+  // and in the same folder again, its last run decides
+  r = receipt([sh("cd packages/a && npm test", 1, "Tests:       1 failed, 2 passed, 3 total"), sh("npm test", 0, "Tests:       3 passed, 3 total")], CWD);
+  assert.deepEqual([r.tests, r.checks.length], ["passed", 1]);
+});
+
+test("a runner known only by its name is a test run, decided by its own exit code and by nothing else", () => {
+  const found = (line: string, exit: number | null = 0) => receipt([sh(line, exit)], CWD).checks.map((c) => [c.tool, c.verdict]);
+  assert.deepEqual(found("npm run test:unit", 1), [["npm test", "failed"]]);
+  assert.deepEqual(found("bun test", 1), [["bun test", "failed"]]);
+  assert.deepEqual(found("mvn -q test", 1), [["mvn", "failed"]]);
+  assert.deepEqual(found("./gradlew test"), [["gradle", "passed"]]);
+  assert.deepEqual(found("bundle exec rspec spec/models", 1), [["rspec", "failed"]]);
+  assert.deepEqual(found("dotnet test", 1), [["dotnet test", "failed"]]);
+  assert.deepEqual(found("docker compose run --rm app pytest -q", 1), [["pytest", "failed"]]);
+  assert.deepEqual(found("mvn test | tail -5"), [["mvn", "unseen"]]); // the exit code is tail's, and it has no summary the receipt reads
+  assert.equal(receipt([sh("bun test", 0, " 3 pass\n 0 fail")], CWD).checks[0]!.why, "its output says 3 pass, 0 fail");
 });
