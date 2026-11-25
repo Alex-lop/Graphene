@@ -10,13 +10,13 @@ import { graphHtml } from "../graph.ts";
 import { column, pages, wrote } from "../open.ts";
 import type { GitFacts, SessionInfo, State } from "../state.ts";
 import { checkPage, type FromPage } from "./acts.ts";
-import { glance, procs, readerOf, Scan, type Found, type Proc } from "./find.ts";
+import { GAP, glance, isAlive, procs, readerOf, Scan, type Found, type Proc } from "./find.ts";
 import { Follow } from "./follow.ts";
 import { note, show, since, unexplained, type Note } from "./git.ts";
 import { receipt } from "./receipt.ts";
 import { empty, fold, type Model } from "./model.ts";
 import { Replay } from "./replay.ts";
-import { info, QUIET, snapshot, status } from "./snapshot.ts";
+import { info, QUIET, snapshot, status, type Live } from "./snapshot.ts";
 import { runs } from "./term.ts";
 import { codexMayHave, processes, Terminals, terminalOf } from "./terminals.ts";
 
@@ -65,7 +65,7 @@ export class Page {
 
   /** Read what is new in the page's files and draw it; `force`: draw it again though nothing was. `git`: what git
    *  says of each session's folder since it was first seen, by the session's id. */
-  async refresh(live: ReadonlyMap<string, Proc>, force = false, git: ReadonlyMap<string, GitFacts> = new Map()) {
+  async refresh(live: ReadonlyMap<string, Live>, force = false, git: ReadonlyMap<string, GitFacts> = new Map()) {
     const read = this.replay ? [] : await Promise.all(this.follows.map((f) => f.read()));
     if (this.gone) return;
     const state = this.replay
@@ -171,12 +171,17 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   private async look() {
     const folder = this.folder;
     if (folder !== this.scanned) { this.scanned = folder ?? ""; this.scanner = folder ? new Scan(folder) : null; }
+    const was = [...this.live];
     [this.found, this.live] = await Promise.all([this.scanner?.look() ?? Promise.resolve([]), procs()]);
     // a record of a process is believed only while that process is the agent's: a pid is given to another program in time
     if (this.live.size) {
       const { command } = await processes();
       for (const [id, p] of this.live) if (command.size && !runs(command.get(p.pid) ?? "", "claude")) this.live.delete(id);
     }
+    // a process that was there at the last look and has ended: its session is not at work, whatever it left open.
+    // (Its record missing for a moment while it is rewritten is not that: the process itself is asked)
+    for (const [id, p] of was) if (!this.live.has(id) && !isAlive(p.pid)) this.gone.add(id);
+    for (const id of this.live.keys()) this.gone.delete(id);
     // a session that began or wrote since the last look gets a page, beside what is in front, once
     const on = this.watching && vscode.workspace.getConfiguration("graphene").get<boolean>("graph.openOnStart", true);
     const dormant = this.dormant();
@@ -194,14 +199,20 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     if (this.watching) this.sizes = new Map(this.found.map((f) => [f.file, f.size]));
     // what a listener would say differently: a file that grew, a process's record, a session gone quiet with no line to say so
     const fresh = this.found.filter((f) => Date.now() - f.mtime <= QUIET).length;
-    const key = JSON.stringify([this.found.map((f) => [f.file, f.size]), [...this.live.values()].map((p) => [p.session, p.status]), fresh]);
+    const key = JSON.stringify([this.found.map((f) => [f.file, f.size]), [...this.live.values()].map((p) => [p.session, p.status]), fresh, this.gone.size]);
     if (key === this.key) return;
     this.key = key;
     this.changed.fire();
   }
 
   private async read() {
-    await Promise.all(this.pages.filter((p) => p.panel.visible && !p.replay).map((p) => p.refresh(this.live, false, this.git(p))));
+    await Promise.all(this.pages.filter((p) => p.panel.visible && !p.replay).map((p) => p.refresh(this.lives, false, this.git(p))));
+  }
+
+  private readonly gone = new Set<string>(); // sessions whose process was seen running, and then was not
+  /** What is known of each session's process: its own record while it runs, and that it is gone once it has ended. */
+  private get lives(): Map<string, Live> {
+    return new Map<string, Live>([...[...this.gone].map((id) => [id, { status: "gone" }] as const), ...this.live]);
   }
 
   /** How many of the folder's sessions are at work, by the rule their pages go by (snapshot.ts `status`: a turn
@@ -214,7 +225,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
       if (!this.live.has(f.id) && now - f.mtime > QUIET) continue;
       const drawn = shown.find((x) => x.found.file === f.file)?.model; // a page that has just opened has read nothing yet
       const m = drawn?.last ? drawn : await this.glance(f);
-      if (status(m, now, this.live.get(m.id)) === "working") n++;
+      if (status(m, now, this.lives.get(m.id)) === "working") n++;
     }
     return n;
   }
@@ -242,7 +253,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
         if (!now) return;
         const written = receipt([...m.calls.values()], m.cwd).changed.map((c) => c.file);
         this.facts.set(file, { key, at: Date.now(), facts: { noted: true, compared: true, commits: now.commits, dropped: now.dropped, unexplained: unexplained(now.changed, written, was.top, m.cwd) } });
-        void page.refresh(this.live, true, this.git(page));
+        void page.refresh(this.lives, true, this.git(page));
       });
     }
     return out;
@@ -259,7 +270,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     const out: SessionInfo[] = [], newest = this.found.slice(0, most), now = Date.now();
     for (const f of newest) {
       const m = this.pages.flatMap((p) => p.follows).find((x) => x.found.file === f.file)?.model ?? await this.glance(f);
-      out.push(info(m, status(m, now, this.live.get(m.id)), this.live.has(m.id)));
+      out.push(info(m, status(m, now, this.lives.get(m.id)), this.live.has(m.id)));
     }
     for (const file of [...this.glanced.keys()]) if (!newest.some((f) => f.file === file)) this.glanced.delete(file);
     return out;
@@ -272,7 +283,11 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
       g = { size: f.size, model: empty(f.agent, f.file, f.id) };
       g.model.cwd = f.cwd;
       const line = readerOf(f.agent).line;
-      for (const l of await glance(f)) { try { for (const ev of line(l)) fold(g.model, ev); } catch { /* a line it does not understand */ } }
+      for (const l of await glance(f)) {
+        // past what was left out: a call the start left open was answered there, or never: it is no proof now
+        if (l === GAP) { for (const c of g.model.calls.values()) c.done = true; continue; }
+        try { for (const ev of line(l)) fold(g.model, ev); } catch { /* a line it does not understand */ }
+      }
       this.glanced.set(f.file, g);
     }
     return g.model;
@@ -319,10 +334,10 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
   }
 
   private async act(page: Page, m: FromPage) {
-    if (m.type === "ready") return page.refresh(this.live, true, this.git(page));
+    if (m.type === "ready") return page.refresh(this.lives, true, this.git(page));
     switch (m.act) {
       case "addSession": return this.add(page);
-      case "takeOff": page.remove(m.id); this.tick(); return page.refresh(this.live, true, this.git(page));
+      case "takeOff": page.remove(m.id); this.tick(); return page.refresh(this.lives, true, this.git(page));
       case "replay": return this.playRecorded(page);
       case "terminal": return this.terminal(page, m.id);
       case "resume": return this.resume(page, m.id);
@@ -412,7 +427,7 @@ export class Hub implements vscode.Disposable, vscode.WebviewPanelSerializer {
     page.replay = null;
     page.add(found);
     this.tick();
-    await page.refresh(this.live, true, this.git(page));
+    await page.refresh(this.lives, true, this.git(page));
   }
 
   /** The recorded session the extension carries, played on a page that has none. */

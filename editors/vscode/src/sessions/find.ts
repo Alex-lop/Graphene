@@ -178,7 +178,10 @@ async function mtime(dir: string): Promise<number> {
 }
 
 /** A session at a glance, for a list: its first request from the file's start and what it is doing from its end,
- *  a few hundred kilobytes of however many, and nothing kept of the rest. */
+ *  a few hundred kilobytes of however many, and nothing kept of the rest. Where the middle was left out, an
+ *  line no file holds stands for it (`GAP`): what the start left open may have been answered there, and proves
+ *  nothing. */
+export const GAP = "\u0000 left out";
 export const GLANCE = { head: 1 << 16, tail: 1 << 18 };
 export async function glance(f: Found): Promise<string[]> {
   try {
@@ -189,7 +192,7 @@ export async function glance(f: Found): Promise<string[]> {
       await fh.read(a, 0, a.length, 0);
       await fh.read(b, 0, b.length, f.size - b.length);
       // the line a part ends in, and the one the other begins in, are cut: neither is read
-      return [...a.toString("utf8").split("\n").slice(0, -1), ...b.toString("utf8").split("\n").slice(1)];
+      return [...a.toString("utf8").split("\n").slice(0, -1).filter(Boolean), GAP, ...b.toString("utf8").split("\n").slice(1)];
     } finally { await fh.close(); }
   } catch { return []; }
 }
@@ -214,6 +217,6 @@ export async function procs(home = claudeHome(), alive: (pid: number) => boolean
   return out;
 }
 
-function isAlive(pid: number): boolean {
+export function isAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM"; }
 }

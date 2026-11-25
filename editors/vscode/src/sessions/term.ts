@@ -88,7 +88,9 @@ export function commandsOf(ps: string): Map<number, string> {
 /** Whether a command line is that agent's own program: its first word, or the script a `node` runs, is named so.
  *  What a record of a process is held to before it is believed: a pid is given to another program in time. */
 export function runs(command: string, agent: "claude" | "codex"): boolean {
-  const words = command.trim().split(/\s+/), name = (w: string | undefined) => (w ?? "").split("/").pop()!.replace(/\.(js|mjs|cjs|exe)$/, "");
+  const line = command.trim(), words = line.split(/\s+/), name = (w: string | undefined) => (w ?? "").split("/").pop()!.replace(/\.(js|mjs|cjs|exe)$/, "");
+  // started by its versioned binary (…/claude/versions/2.1.331), or from a path with a space in it: still the agent
+  if (words[0]!.includes(`/${agent}/`) || (line.startsWith("/") && line.split(/\s+-/)[0]!.endsWith(`/${agent}`))) return true;
   return name(words[0]) === agent || (/^(node|bun|deno)$/.test(name(words[0])) && words.slice(1, 4).some((w) => !w.startsWith("-") && (name(w) === agent || w.includes(`/${agent}`))));
 }
 

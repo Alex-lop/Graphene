@@ -159,10 +159,12 @@ export function activate(context: vscode.ExtensionContext) {
   }));
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => { session.folder = planFolder(); session.moved(); setMode(); if (mode === "strict") void session.refresh(); else void hub.scan(); }));
   // a folder with no plan: the status bar says its sessions, and a click opens Home, which lists them
+  let counted = 0;
   hub.onDidChange(() => {
     if (mode !== "sessions") return;
-    const n = hub.found.length;
-    void hub.working().then((live) => { if (mode === "sessions") bar.text = live ? `◆ ${live} working` : n ? `◆ ${n} session${n > 1 ? "s" : ""}` : "◆ Graphene"; });
+    const n = hub.found.length, mine = ++counted;
+    // counted by reading: an older count that ends after a newer one is not written over it
+    void hub.working().then((live) => { if (mine === counted && mode === "sessions") bar.text = live ? `◆ ${live} working` : n ? `◆ ${n} session${n > 1 ? "s" : ""}` : "◆ Graphene"; });
     bar.tooltip = "This folder's Claude Code and Codex sessions, read from their own files on this machine. Click for Graphene's Home";
   });
 

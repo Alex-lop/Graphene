@@ -176,3 +176,22 @@ test("the status bar's count of sessions at work goes by what their files say: a
   assert.equal(await h.working(), 1);
   h.stop();
 });
+
+test("Home's glance at a long session proves nothing from a question its start left open: the answer is in what was not read", async () => {
+  for (const f of readdirSync(dir)) rmSync(path.join(dir, f), { recursive: true });
+  const h = hub();
+  h.start();
+  const said = (more: Record<string, unknown>) => `${JSON.stringify({ cwd: folder, sessionId: "long", timestamp: new Date().toISOString(), ...more })}\n`;
+  const filler = said({ type: "assistant", message: { content: [{ type: "text", text: "x".repeat(2000) }] } });
+  writeFileSync(file("long"),
+    said({ type: "user", message: { content: "plan it, then do it" } })
+    + said({ type: "assistant", message: { stop_reason: "tool_use", content: [{ type: "tool_use", id: "q1", name: "ExitPlanMode", input: { plan: "1. do it" } }] } })
+    + filler.repeat(120) // 240 KB of work past the file's first 64 KB: the plan's approval is in here, unread at a glance
+    + said({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "q1", content: "approved" }] } })
+    + filler.repeat(200)); // and 400 KB more, of which the glance reads the last 256
+  await h.scan(); await settle();
+  for (const p of [...vscode.panels]) close(p); // no page follows it: Home reads it at a glance
+  const [row] = await h.list();
+  assert.equal(row!.status, "working");
+  h.stop();
+});

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { appendFileSync, copyFileSync, cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import * as path from "node:path";
 import { test } from "node:test";
-import { cwdOf, encoded, findAll, findCodex, glance, GLANCE, inside, NEWEST, procs, Scan } from "../src/sessions/find.ts";
+import { cwdOf, encoded, findAll, findCodex, GAP, glance, GLANCE, inside, NEWEST, procs, Scan } from "../src/sessions/find.ts";
 import { Follow } from "../src/sessions/follow.ts";
 import { empty, fold, sidesOf, subOver } from "../src/sessions/model.ts";
 import { FIX, read, ROLLOUT, scratch } from "./sessions.ts";
@@ -172,7 +172,10 @@ test("a session at a glance: its start and its end, and never the megabytes betw
     let text = "";
     for (let n = 0; text.length < 3 * (GLANCE.head + GLANCE.tail); n++) text += line(n);
     writeFileSync(file, text);
-    const got = (await glance({ agent: "claude", file, id: "big", cwd: "/w", mtime: 0, size: text.length })).filter(Boolean).map((l) => JSON.parse(l).n as number);
+    const lines = (await glance({ agent: "claude", file, id: "big", cwd: "/w", mtime: 0, size: text.length })).filter(Boolean);
+    assert.equal(lines.filter((l) => l === GAP).length, 1, "what was left out is marked, once, between the two ends");
+    const got = lines.filter((l) => l !== GAP).map((l) => JSON.parse(l).n as number);
+    assert.ok(got[lines.indexOf(GAP)]! - got[lines.indexOf(GAP) - 1]! > 100, "the megabytes between were not read");
     assert.equal(got[0], 0);
     assert.equal(got.at(-1), text.split("\n").length - 2); // the last whole line
     assert.ok(got.length < (GLANCE.head + GLANCE.tail) / 2000, "only the two ends are read"); // and every line read is whole: JSON.parse did not throw

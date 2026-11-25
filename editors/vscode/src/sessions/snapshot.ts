@@ -12,7 +12,8 @@ import { sidesOf, subOver, type Call, type Model, type Sub, type Turn } from "./
 import { receipt, shared } from "./receipt.ts";
 
 export type Status = SessionInfo["status"];
-/** What the agent's own record of its process says while it runs (find.ts `procs`): `busy` or `idle`. */
+/** What the agent's own record of its process says while it runs (find.ts `procs`): `busy` or `idle`; `gone` once
+ *  a process that was seen has ended (the hub says so). */
 export interface Live { status: string }
 
 /** A request under way that wrote nothing for this long is no longer called working, unless a tool call is
@@ -35,6 +36,8 @@ export function status(m: Model, now: number, live?: Live | null): Status {
   // a subagent or a workflow the request left running behind it: the request is over, the work is not
   const behind = m.agent === "claude" && m.subs.some((s) => s.turn === t.n && !subOver(m, s));
   if (t.ended) return behind && quiet < OUT ? "working" : "idle";
+  // its process was seen running and is gone (killed, its terminal closed): whatever it left open, nobody is there
+  if (live?.status === "gone") return "idle";
   // it asked, and something says it is still there to be answered: its process, or a line written not long ago
   if (t.calls.some((c) => !c.done && ASKS.includes(c.name))) return live || quiet < OUT ? "needs you" : "idle";
   if (live) return live.status === "idle" ? "idle" : "working";
@@ -202,7 +205,7 @@ export function snapshot(models: readonly Model[], now: number, live: ReadonlyMa
   const many = models.length > 1;
   const sessions: SessionInfo[] = [], tasks: RawTask[] = [], edges: Drawn["edges"] = [], goals: Raw[] = [];
   for (const m of models) {
-    const st = status(m, now, live.get(m.id)), s = info(m, st, live.has(m.id), git.get(m.id) ?? null), band = many ? `session ${m.id}` : null;
+    const st = status(m, now, live.get(m.id)), s = info(m, st, live.has(m.id) && live.get(m.id)!.status !== "gone", git.get(m.id) ?? null), band = many ? `session ${m.id}` : null;
     sessions.push(s);
     if (band) goals.push({ id: band, title: s.title, parent: null, state: "open", check: null });
     const d = cards(m, st, now, band);

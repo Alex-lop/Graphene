@@ -41,6 +41,7 @@ test("working is said while something says it still runs, needs you only on proo
   assert.equal(status(m, last + 31 * 60_000), "idle"); // nothing for half an hour: nothing says it runs
   assert.equal(status(m, last + 1000, { status: "idle" }), "idle"); // its own process says so
   assert.equal(status(m, last + 31 * 60_000, { status: "busy" }), "working");
+  assert.equal(status(m, last + 1000, { status: "gone" }), "idle"); // its process was seen, and has ended with the command still out: killed
   // a question put to the person and not answered is the proof, while something says it is still there to be answered
   fold(m, { k: "tool", at: "2026-11-24T10:00:50.000Z", id: "q1", name: "AskUserQuestion", input: { questions: [] }, side: "" });
   const asked = at("2026-11-24T10:00:50.000Z");

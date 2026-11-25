@@ -74,4 +74,8 @@ test("a record of a process is believed only while that process is the agent's o
   assert.deepEqual([611, 700, 701, 702, 703].map((p) => runs(command.get(p) ?? "", "claude")), [true, true, false, false, false]); // a pid given to another program is not the agent
   assert.deepEqual([702, 611].map((p) => runs(command.get(p) ?? "", "codex")), [true, false]);
   assert.equal(runs("", "claude"), false);
+  // started by its versioned binary, or from a path with a space in it: still the agent's, or a live session reads as one nobody has
+  assert.equal(runs("/home/you/.local/share/claude/versions/2.1.331 -p hello", "claude"), true);
+  assert.equal(runs("/Users/Ann Lee/.local/bin/claude --resume abc", "claude"), true);
+  assert.equal(runs("vim /work/claude/notes.md", "claude"), false);
 });
