@@ -125,7 +125,7 @@ try {
     await shot(session.page, "replay-over");
   } else if (look) {
     session = await L.launch(app, profile, path.resolve(look), { width: Number(arg("--width", 1280)), height: Number(arg("--height", 800)) });
-    await L.openPanel(session.page);
+    await L.palette(session.page, "Graphene: Open the Graph"); // the page of the folder's newest session: its tab is named for the session
     const { frame, tasks } = await L.waitForGraph(session.page, { timeout: 30000 });
     say(`the graph drew ${tasks} card(s): ${JSON.stringify((await L.readGraph(frame)).tasks.map((t) => [t.title, t.sub, t.mark]))}`);
     await shot(session.page, "graph");
