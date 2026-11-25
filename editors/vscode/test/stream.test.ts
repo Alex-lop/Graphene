@@ -114,3 +114,25 @@ test("a restart's old child, closing late, leaves the new child the stream: no t
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a folder with no plan: a setting that changes ends the stream and starts no graphene in its place", async () => {
+  // session.ts `moved` restarts the stream when a setting or the folder changes; with no plan there it must start
+  // nothing, or graphene runs (and fails, and runs again) in a folder that never asked for it
+  const dir = mkdtempSync(path.join(tmpdir(), "graphene-stream-"));
+  const pids = path.join(dir, "pids");
+  const started = () => (existsSync(pids) ? readFileSync(pids, "utf8").trim().split("\n") : []);
+  const s = new Stream({ path: fake(dir, "none", `
+    require("node:fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");
+    process.stderr.write("no plan here\\n");
+    process.exit(1);
+  `), cwd: dir, onLine: () => {} });
+  try {
+    s.restart(false);
+    s.restart(false);
+    await new Promise((r) => setTimeout(r, 1500)); // longer than a first backoff
+    assert.deepEqual(started(), [], "graphene was never run");
+  } finally {
+    s.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
