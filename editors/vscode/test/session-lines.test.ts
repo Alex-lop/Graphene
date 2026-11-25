@@ -72,3 +72,12 @@ test("an older Claude Code's subagent lines, in the session's own file with no i
   const side = JSON.stringify({ type: "user", isSidechain: true, timestamp: "t", sessionId: "s", message: { content: "Read parser.py" } });
   assert.deepEqual(claudeLine(side).filter((e) => e.k === "ask"), [{ k: "ask", at: "t", text: "Read parser.py", side: "sidechain" }]); // never a request of the person's
 });
+
+test("Claude Code: a reply's thinking and its words are two lines with one reason to stop, and the turn ends once, with the words", () => {
+  const reply = (block: Record<string, unknown>, stop = "end_turn") =>
+    JSON.stringify({ type: "assistant", sessionId: "s", timestamp: "2026-11-24T10:00:00.000Z", message: { id: "m1", stop_reason: stop, content: [block] } });
+  const kinds = (line: string) => claudeLine(line).map((e) => e.k).filter((k) => k !== "meta");
+  assert.deepEqual(kinds(reply({ type: "thinking", thinking: "" })), []); // or its terminal view says the turn ended before its last words
+  assert.deepEqual(kinds(reply({ type: "text", text: "Fixed." })), ["say", "end"]);
+  assert.deepEqual(kinds(reply({ type: "tool_use", id: "t1", name: "Read", input: {} }, "tool_use")), ["tool"]);
+});

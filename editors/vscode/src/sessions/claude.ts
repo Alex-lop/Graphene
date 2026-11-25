@@ -52,9 +52,11 @@ export function claudeLine(line: string): Ev[] {
       if (b.type === "text" && str(b.text).trim()) out.push({ k: "say", at, text: str(b.text), side, model: str(message.model) });
       if (b.type === "tool_use" && str(b.id)) out.push({ k: "tool", at, id: str(b.id), name: str(b.name), input: slim(obj(b.input)), side });
     }
-    // the last line of a reply says why it stopped: by itself, or to wait for a tool
-    const why = str(message.stop_reason);
-    if (why && why !== "tool_use" && why !== "pause_turn") out.push({ k: "end", at, side });
+    // the last line of a reply says why it stopped: by itself, or to wait for a tool. A reply's thinking is a line
+    // of its own before its words, and carries the same reason: the turn ends once, with the words
+    const why = str(message.stop_reason), blocks = list(content).map(obj);
+    const last = !blocks.length || blocks.some((b) => b.type !== "thinking" && b.type !== "redacted_thinking");
+    if (why && why !== "tool_use" && why !== "pause_turn" && last) out.push({ k: "end", at, side });
     return out;
   }
   const results = list(content).map(obj).filter((b) => b.type === "tool_result" && str(b.tool_use_id));
