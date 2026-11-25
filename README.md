@@ -27,7 +27,7 @@ Every mark on the page answers one of four questions:
 - **What did it change?** The files each card wrote. Click one for its diff.
 - **Did it work?** The tests it ran and what they said: passed, failed, or ran none. A tick only for a pass that
   was seen, and a short list of what is worth a second look (a push, a delete, a test edited after it failed).
-  **Ran no tests** means the agent ran none, or was not allowed to: it is what the session shows, not a fault.
+  **Ran no tests** means no run of a test runner it knows is in the session: what the session shows, not a fault.
 
 ## Try it
 
@@ -84,12 +84,15 @@ Graphene is early, and nobody outside has used it yet.
   are untested.
 - **What a receipt cannot see.** It reads the session's file and git, nothing else. A file a shell command changed
   is listed only as changed with no tool call, and only for a session Graphene saw begin; git does not say who
-  changed it. A test whose output never reached the session (sent to a file, run in the background) is **ran,
+  changed it. It knows the common test runners (pytest, unittest, Jest, Vitest, `node --test`, npm, pnpm, yarn
+  and bun test scripts, go, cargo, `make test`, and by name mvn, gradle, rspec, dotnet); another reads as ran
+  no tests. A test whose output never reached the session (sent to a file, run in the background) is **ran,
   result not seen**. A flag says what was run (`git push`), not what it did. A session waiting on a permission
   prompt does not say **needs you**: the prompt is not in its file. A check is only as strong as your tests.
 - **Private by construction.** The extension reads the session files Claude Code and Codex write on your machine
-  (`~/.claude/projects`, `~/.codex/sessions`) and runs read-only `git` in your folder. It sends nothing anywhere:
-  no request, no telemetry.
+  (`~/.claude/projects`, `~/.codex/sessions`) and Claude Code's records of its running processes, lists running
+  processes to find a session's terminal, and runs read-only `git` for the session's folder, taking no lock. It
+  runs no `graphene` command and sends nothing anywhere: no request, no telemetry.
 - **Strict mode** is file coordination, not a security sandbox. Its live auto mode is not yet validated, and its
   graph and workflows were checked against a scripted stand-in, not a real run.
   [Enforcement limits](https://github.com/Alex-lop/Graphene/blob/main/docs/HOW_IT_WORKS.md#where-each-mechanism-ends)

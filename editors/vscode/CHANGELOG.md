@@ -9,8 +9,9 @@ Code and Cursor on macOS (`e2e/sessions.mjs`); Codex is read from its files and 
 - **No setup.** The extension wakes in any folder and reads the session files Claude Code and Codex write
   (`~/.claude/projects`, `~/.codex/sessions`). No `graphene` command, no hooks, nothing written to your folder,
   nothing sent anywhere. Nothing refuses, delays or holds an agent.
-- **A page for each session.** It opens by itself beside your file, once, without the keyboard, and never for a
-  session that was there before the window opened (`graphene.graph.openOnStart` turns it off). Cards: each request,
+- **A page for each session.** It opens by itself beside your file, once in a window, without the keyboard, and
+  not for a session that was there before the window opened until it writes again (`graphene.graph.openOnStart`
+  turns it off). Cards: each request,
   under it the tasks on the agent's own list or the subagents and workflows it started. **Needs you** only when
   the session's file shows it waiting for your answer.
 - **Home lists the folder's sessions**, live ones first. **Add to page…** puts a session on a page as a band, and

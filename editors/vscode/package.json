@@ -719,7 +719,7 @@
         "graphene.graph.openOnStart": {
           "type": "boolean",
           "default": true,
-          "description": "Open a graph as a tab by itself when work starts. In a folder with no plan: when a Claude Code or Codex session begins or writes while the window is open, once for each session, never for the sessions that were there before. In strict mode: when you open Graphene's side bar, the window opens on a plan with work left, a plan appears, or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over it. A tab you close stays closed in that window until you ask for it with Open the graph, on Home or in the palette. Off, only that opens it."
+          "description": "Open a graph as a tab by itself when work starts. In a folder with no plan: when a Claude Code or Codex session begins or writes while the window is open, once for each session in a window, and for a session that was there before only when it writes again. In strict mode: when you open Graphene's side bar, the window opens on a plan with work left, a plan appears, or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over it. A tab you close stays closed in that window until you ask for it with Open the graph, on Home or in the palette. Off, only that opens it."
         }
       }
     }

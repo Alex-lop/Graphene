@@ -21,14 +21,17 @@ curl -LO https://github.com/Alex-lop/Graphene/releases/download/v0.11.0/graphene
 code --install-extension graphene-0.11.0.vsix
 ```
 
-In Cursor: `cursor --install-extension graphene-0.11.0.vsix`. From a clone instead: `npm ci && npm run package` in
-`editors/vscode` (Node 22+). Nothing else to install.
+In Cursor: `cursor --install-extension graphene-0.11.0.vsix`. No `code` or `cursor` on your PATH? Extensions → ⋯ →
+**Install from VSIX…**. From a clone instead: `npm ci && npm run package` in `editors/vscode` (Node 22+). Nothing
+else to install.
 
 ## The first minute
 
-1. **Start Claude Code or Codex in the folder**, in a terminal or in its own panel. A page opens beside your file,
-   once for each session, and the file keeps the keyboard. Sessions that were there before the window opened get no
-   page; **Home**, in the side bar, lists them, live ones first.
+1. **Start Claude Code or Codex in the folder**, in a terminal or in its own panel (`claude`, or `claude -p "…"`
+   for one ask; any folder, git or not). A few seconds after the session's first line a page opens in the editor
+   area, beside your file if one is open, once for each session in a window, and the file keeps the keyboard. Until
+   then the ◆ in the status bar says how many sessions it sees. A session that was there before the window opened
+   gets no page until it writes again; **Home**, in the side bar, lists them all, live ones first.
 2. **Read the cards.** One for each request you made; under a request, the tasks on the agent's own list or the
    subagents it started. A card at work says **working** and its last move; **needs you** only when the session's
    file shows it waiting for your answer; otherwise **idle**, **done**, **interrupted** or **failed**.
@@ -122,8 +125,10 @@ graph, or in a diff's title (**Keep This Attempt**, **Approve**).
 
 - **It reads, and sends nothing.** With no plan in the folder it reads the session files Claude Code and Codex
   write on your machine (`~/.claude/projects`, `~/.codex/sessions`; `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are
-  honoured), the processes of the editor's own terminals, and read-only `git` in the folder. It runs no `graphene`
-  command, writes nothing into your folder, and types into a terminal only the resume command you clicked.
+  honoured) and Claude Code's records of its running processes (`~/.claude/sessions`), lists running processes
+  (`ps`) to find the terminal a session runs in, and runs read-only `git` for the session's folder, with git's
+  optional locks off so an agent's own `git add` is never refused for it. It runs no `graphene` command and no
+  `uv`, writes nothing into your folder, and types into a terminal only the resume command you clicked.
 - **A thin client in strict mode.** Everything it shows there is `graphene state --json`, streamed with `--watch`, and everything it
   changes is one `graphene` command, run as you in the folder: the same ones the terminal cockpit runs.
 - **Off in Restricted Mode.** In a folder you have not trusted it does nothing: it would run commands there.
@@ -142,6 +147,9 @@ graph, or in a diff's title (**Keep This Attempt**, **Approve**).
 - Sessions were walked on real Claude Code sessions started in a terminal, on macOS, in VS Code and in Cursor.
   Codex sessions are read from their files and were not walked in an editor; Cursor's own agent is not read;
   Windows and Linux are untested.
+- Only the first workspace folder's sessions are drawn. A Codex command that runs for more than two minutes reads
+  as idle until it writes again (Codex keeps no record of its process to ask); a Claude Code session whose process
+  is killed reads as idle once that is seen.
 - A receipt reads the session's file and git, nothing else: a file a shell command changed shows only as changed
   with no tool call, a test whose output never reached the session is **ran, result not seen**, and a session
   waiting on a permission prompt does not say **needs you** (the prompt is not in its file).

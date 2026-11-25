@@ -236,7 +236,7 @@ def test_the_readme_leads_with_a_session_and_strict_mode_is_one_section():
     assert "Nothing to set up" in first and "uv tool install" not in readme.split("## Strict mode")[0]
     limits = readme.split("## Know the limits")[1]
     told = ("**What ran on real sessions.**", "**What did not:**", "**What a receipt cannot see.**",
-            "It sends nothing anywhere")  # fmt: skip
+            "runs no `graphene` command and sends nothing anywhere")  # fmt: skip
     for said in told:
         assert said in limits, said
     strict = doc("editors/vscode/README.md").split("## Strict mode")[1]

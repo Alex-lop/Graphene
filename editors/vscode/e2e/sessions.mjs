@@ -36,6 +36,8 @@ process.env.PATH = `${path.join(base, "bin")}${path.delimiter}${L.noGraphene(pro
 // every terminal of the walk's editor names the folder at its prompt, not whose machine it is: the pictures go in a pull request
 mkdirSync(path.join(base, "zsh"));
 writeFileSync(path.join(base, "zsh", ".zshrc"), "PROMPT='%1~ %# '\n");
+// something for a session to wait on while it is looked at: Claude Code refuses a long `sleep` of its own
+writeFileSync(path.join(base, "wait.sh"), "sleep 40\n");
 const profile = L.makeProfile(base, { graphene: undefined, settings: { "terminal.integrated.gpuAcceleration": "off", "terminal.integrated.shellIntegration.enabled": false,
                                                                     "terminal.integrated.env.osx": { ZDOTDIR: path.join(base, "zsh") }, "terminal.integrated.env.linux": { ZDOTDIR: path.join(base, "zsh") } } });
 L.installVsix(app, profile, vsix);
@@ -264,9 +266,10 @@ try {
     await page.waitForTimeout(6000); // Claude Code starts in it
     await shot(page, "resume-in-terminal");
     // (b) a session that runs in one of the editor's own terminals: a click on its card reveals that terminal
+    const wait = path.join(base, "wait.sh");
     await L.palette(page, "Terminal: Create New Terminal");
     await page.waitForTimeout(1500);
-    await page.keyboard.type('claude -p "Add a line to notes.md that says what test_wordcount.py tests. Then wait: run sleep 45." --model haiku --permission-mode acceptEdits --allowedTools "Bash(sleep 45)" Edit Read 2>/dev/null'); // its own notices about the account stay out of the pictures
+    await page.keyboard.type(`claude -p "Add a line to notes.md that says what test_wordcount.py tests. Then wait: run exactly sh ${wait}" --model haiku --permission-mode acceptEdits --allowedTools "Bash(sh ${wait})" Edit Read 2>/dev/null`); // its own notices about the account stay out of the pictures
     await page.keyboard.press("Enter");
     const own = await until("a page for the session in the editor's terminal", async () => (await pages(page)).find((p) => p.goal.startsWith("Add a line to notes.md")), 90000);
     await page.locator(".tabs-container .tab", { hasText: "2 sessions" }).first().click(); // another terminal is put in front first: the tail's
@@ -310,8 +313,8 @@ try {
     await clickCard(flagged, "Create CHANGES.md");
     await until("its receipt's flag", async () => { const r = await receiptOf(flagged); return r.flags.some(([k]) => k === "push") ? r : null; }, 10000);
     // git is compared with what was noted when the session began, a few seconds after its last line: its commit shows
-    const r3 = await until("git's word on its commit", async () => { const r = await receiptOf(flagged); return r.tests.some((t) => /HEAD moved on by 1 commit/.test(t)) ? r : null; }, 30000);
-    say(`the session that pushed: its card's foot ${JSON.stringify(await foot(flagged, "Create CHANGES.md"))}; flags ${JSON.stringify(r3.flags)}; git ${JSON.stringify(r3.tests.filter((t) => /HEAD|tool call/.test(t)))}`);
+    const r3 = await until("git's word on its commit", async () => { const r = await receiptOf(flagged); return r.tests.some((t) => /1 commit made here since/.test(t)) ? r : null; }, 30000);
+    say(`the session that pushed: its card's foot ${JSON.stringify(await foot(flagged, "Create CHANGES.md"))}; flags ${JSON.stringify(r3.flags)}; git ${JSON.stringify(r3.tests.filter((t) => /commit|tool call/.test(t)))}`);
     await shot(page, "pushed-flag");
     // and at rest the status bar counts no session at work: every turn ended, whatever is still open in a terminal
     const bar = () => page.evaluate(() => [...document.querySelectorAll(".statusbar-item")].map((e) => e.textContent.trim()).find((t) => t.includes("◆")) ?? "");
