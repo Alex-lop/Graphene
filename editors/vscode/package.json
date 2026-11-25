@@ -1,7 +1,7 @@
 {
   "name": "graphene-vscode",
   "displayName": "Graphene",
-  "description": "Your coding agent proposes a plan before it writes, and Graphene draws it as a graph. Each task runs in its own copy of your repository and lands only when its check passes.",
+  "description": "Start Claude Code or Codex as you always do, and Graphene draws the session as a graph: what it is doing, what it changed and whether its tests passed. Nothing to set up.",
   "version": "0.10.0",
   "publisher": "alex-lop",
   "license": "Apache-2.0",
@@ -607,11 +607,23 @@
       {
         "id": "start",
         "title": "Get started with Graphene",
-        "description": "Your coding agent proposes a plan before it writes, and Graphene draws it as a graph.",
+        "description": "Start Claude Code or Codex as you always do, and Graphene draws the session as a graph: what it is doing, what it changed and whether its tests passed.",
         "steps": [
           {
+            "id": "session",
+            "title": "Start your agent",
+            "description": "Start Claude Code or Codex in this folder, the way you always do. A page opens beside your file and draws the session: a card for each request, task and subagent, its terminal on a click, and a receipt when it finishes. Nothing to install or set up; with no session yet, the page replays a recorded one.\n[Open the Graph](command:graphene.showGraph)",
+            "media": {
+              "image": "media/session.png",
+              "altText": "Home listing the folder's session, and the session's page: four cards joined by curved lines, the request with its files and a ticked test at its foot, the two subagents it started, and a follow-up"
+            },
+            "completionEvents": [
+              "onCommand:graphene.showGraph"
+            ]
+          },
+          {
             "id": "demo",
-            "title": "Watch the demo",
+            "title": "Strict mode: watch the demo",
             "description": "A recorded run plays in the graph: three agents race one task, and its check keeps one. No key and no network; it needs the graphene command, and offers to install it first.\n[Watch the Demo](command:graphene.watchDemo)",
             "media": {
               "image": "media/walk-demo.png",
@@ -623,7 +635,7 @@
           },
           {
             "id": "install",
-            "title": "Install Graphene",
+            "title": "Strict mode: install Graphene",
             "description": "This extension drives the graphene command, 0.10 or later. Install it once with uv; the button runs uv tool install graphene-map for you, or uv tool upgrade graphene-map for an older one.\n[Install Graphene](command:graphene.install)",
             "media": {
               "image": "media/walk-install.png",
@@ -635,7 +647,7 @@
           },
           {
             "id": "setup",
-            "title": "Set up a folder",
+            "title": "Strict mode: set up a folder",
             "description": "On Graphene's Home, pick who plans and does the work: Claude Code or Codex. One click.\n[Open Home](command:graphene.home)",
             "media": {
               "image": "media/walk-setup.png",
@@ -647,7 +659,7 @@
           },
           {
             "id": "ask",
-            "title": "Ask your agent for a plan",
+            "title": "Strict mode: ask your agent for a plan",
             "description": "In Claude Code or Codex, say what you want, in its chat. It proposes a plan to Graphene: small tasks, each with the files it may change and the check that proves it. A workflow on Home, or Add task on the graph, makes one too. Read it on the graph, remove what you do not want, then Start.\n[Open the Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/walk-ask.png",
@@ -659,7 +671,7 @@
           },
           {
             "id": "review",
-            "title": "Review before it lands",
+            "title": "Strict mode: review before it lands",
             "description": "Each finished task shows what changed and the check that passed. Open its changes, then Approve it, or Send it back with what is wrong. The graph shows the whole plan.\n[Open the Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/walk-review.png",

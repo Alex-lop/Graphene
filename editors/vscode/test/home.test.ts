@@ -214,8 +214,13 @@ test("the palette shows three commands in any folder and seven in strict mode; t
   assert.equal(views[0].id, "graphene.home", "the side bar is Home: the graph is a tab of the editor, opened with it");
   for (const v of views.slice(1)) assert.equal(v.when, ADVANCED, v.id);
   assert.equal(c.configuration.properties["graphene.advanced"].default, false);
-  assert.equal(c.walkthroughs[0].description, WHAT, "one sentence for what Graphene is, as Set Up says it");
-  assert.equal(pkg.description, `${WHAT} ${HOW}`, "the Extensions view says it as Set Up does");
+  // the Extensions view and the walkthrough lead with what needs no setup; strict mode's sentence is Set Up's, and its steps come after
+  assert.match(pkg.description, /^Start Claude Code or Codex as you always do, and Graphene draws the session as a graph: .* Nothing to set up\.$/);
+  assert.equal(`${c.walkthroughs[0].description} Nothing to set up.`, pkg.description, "the walkthrough's header is the same sentence");
+  const steps: { id: string; title: string }[] = c.walkthroughs[0].steps;
+  assert.equal(steps[0]!.id, "session", "the first step needs nothing installed");
+  for (const s of steps.slice(1)) assert.match(s.title, /^Strict mode: /, s.id);
+  assert.ok(WHAT && HOW);
 });
 
 test("Home shows the pipeline's three stages and the one switch, on until `auto` is on", () => {

@@ -80,7 +80,8 @@ def test_the_walkthrough_buttons_are_the_extensions_own_commands_and_its_picture
     linked = {m for s in walk["steps"] for m in re.findall(r"\(command:(graphene\.\w+)\)", s["description"])}
     asked = {"graphene.watchDemo", "graphene.install", "graphene.home", "graphene.showGraph"}
     assert linked == ours & asked
-    assert walk["steps"][0]["id"] == "demo"  # a judge with no key sees the race first
+    # what needs nothing installed comes first, then strict mode's race
+    assert [s["id"] for s in walk["steps"][:2]] == ["session", "demo"]
     shipped = (EXT / ".vscodeignore").read_text().split()
     for s in walk["steps"]:
         assert (EXT / s["media"]["image"]).is_file() and f"!{s['media']['image']}" in shipped, s["id"]
