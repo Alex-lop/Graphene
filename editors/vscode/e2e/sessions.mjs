@@ -2,6 +2,7 @@
 // `graphene` on its PATH, and a new git repository with no Graphene files, in which this script starts real
 // Claude Code sessions (`claude -p`, a small model, small asks: they run on the subscription of whoever runs it).
 //   node sessions.mjs [--app code|cursor] [--vsix FILE] [--out DIR] [--width 1280] [--height 800] [--keep]
+//   node sessions.mjs --short        the first three steps only: a page by itself, the card at work and its terminal view, its receipt
 //   node sessions.mjs --look DIR     only open a folder that has sessions already, and say what was drawn
 //   node sessions.mjs --empty        a folder with no session: the empty page, and the recorded session it replays
 // It fails when a step does not show what it should, and keeps a screenshot of each step under --out.
@@ -32,7 +33,11 @@ mkdirSync(path.join(base, "bin"));
 symlinkSync(claude, path.join(base, "bin", "claude"));
 process.env.PATH = `${path.join(base, "bin")}${path.delimiter}${L.noGraphene(process.env.PATH)}`;
 // the terminal's rows as text (no canvas), so the walk reads what a person sees in it
-const profile = L.makeProfile(base, { graphene: undefined, settings: { "terminal.integrated.gpuAcceleration": "off", "terminal.integrated.shellIntegration.enabled": false } });
+// every terminal of the walk's editor names the folder at its prompt, not whose machine it is: the pictures go in a pull request
+mkdirSync(path.join(base, "zsh"));
+writeFileSync(path.join(base, "zsh", ".zshrc"), "PROMPT='%1~ %# '\n");
+const profile = L.makeProfile(base, { graphene: undefined, settings: { "terminal.integrated.gpuAcceleration": "off", "terminal.integrated.shellIntegration.enabled": false,
+                                                                    "terminal.integrated.env.osx": { ZDOTDIR: path.join(base, "zsh") }, "terminal.integrated.env.linux": { ZDOTDIR: path.join(base, "zsh") } } });
 L.installVsix(app, profile, vsix);
 
 /** A new repository with two small files and one commit: a word counter and its test. */
@@ -134,7 +139,8 @@ try {
     await home.waitForSelector(".screen h2", { timeout: 20000 });
     say(`Home: ${JSON.stringify(await home.evaluate(() => [...document.querySelectorAll(".screen h2, .screen p, .screen .pick")].map((e) => e.textContent)))}`);
     await shot(session.page, "home");
-  } else {
+  } else walk: {
+    const short = process.argv.includes("--short");
     const dir = repository(path.join(base, "wordcount"));
     // an old session, there before the window opens: it gets no page of its own
     await ask(dir, "Say in one short sentence what wordcount.py does. Change nothing.");
@@ -153,12 +159,27 @@ try {
     const typing = setInterval(() => void page.keyboard.type("k").catch(() => {}), 400); // a person typing in the file, the whole time
     let seenWorking = "";
     const one = await until("a page for the first session", async () => (await pages(page)).find((p) => p.tasks.length), 90000);
-    say(`a page opened by itself: ${JSON.stringify(one.goal)} · ${one.line}`);
+    say(`a page opened by itself, ${await one.frame.evaluate(() => innerWidth)} px wide: ${JSON.stringify(one.goal)} · ${one.line}`);
     await shot(page, "page-opens-by-itself");
     // 2. while it works, its card says so
     await until("its card at work", async () => { const p = (await pages(page))[0]; seenWorking = p?.tasks.find((t) => t.mark === "working" || t.sub.startsWith("working"))?.sub ?? ""; return seenWorking; }, 60000); // a card, or a lane in a narrow tab
     say(`while it works its card says: ${JSON.stringify(seenWorking)}`);
     await shot(page, "card-working");
+    if (short) {
+      // the file kept the keyboard while the page opened: every key typed landed in it
+      clearInterval(typing);
+      await page.waitForTimeout(600);
+      await page.keyboard.type(" still typing"); // and what is typed once the page is there
+      await page.waitForTimeout(300);
+      const file = await typed(page), keys = (file.text.match(/k/g) ?? []).length;
+      if (!file.inEditor || !file.text.includes("typed before any session.") || !keys || !file.text.includes("still typing")) throw new Error(`the file lost the keyboard: ${JSON.stringify(file)}`);
+      say(`the file being typed in kept the keyboard: ${keys} keys landed in it while the page opened, and what was typed after`);
+      // a click on the card while it works: the view of what it writes (it runs outside the editor)
+      await clickCard((await pages(page))[0], one.goal);
+      const view = await until("its terminal view", async () => { const t = await terminal(page); return t.rows.length ? t : null; }, 20000);
+      say(`a click on its card while it works opened its terminal view: ${view.rows.length} rows, the last ${JSON.stringify(view.rows.at(-1).slice(0, 70))}`);
+      await shot(page, "terminal-view");
+    }
     await first;
     const firstEnded = Date.now();
     // 3. it finishes: the card says what it changed
@@ -168,6 +189,7 @@ try {
     if (!/unittest passed/.test(receipt) || !/2 files changed · unittest passed/.test(done.line)) throw new Error(`its receipt does not say the two files and the pass: ${JSON.stringify([receipt, done.line])}`);
     say(`its card carries its receipt: ${JSON.stringify(receipt)}; the page's line: ${JSON.stringify(done.line)}`);
     await shot(page, "card-done");
+    if (short) break walk;
 
     // 4. a second session: a second page; then added to the first page, two bands
     const second = ask(dir, "Add a one-line docstring to the CountWords class in test_wordcount.py. Do not run anything.");
@@ -244,10 +266,7 @@ try {
     // (b) a session that runs in one of the editor's own terminals: a click on its card reveals that terminal
     await L.palette(page, "Terminal: Create New Terminal");
     await page.waitForTimeout(1500);
-    await page.keyboard.type("PROMPT='%1~ %# '; clear"); // the pictures name the folder, not whose machine it is
-    await page.keyboard.press("Enter");
-    await page.waitForTimeout(500);
-    await page.keyboard.type('claude -p "Add a line to notes.md that says what test_wordcount.py tests. Then wait: run sleep 20." --model haiku --permission-mode acceptEdits --allowedTools "Bash(sleep 20)" Edit Read');
+    await page.keyboard.type('claude -p "Add a line to notes.md that says what test_wordcount.py tests. Then wait: run sleep 45." --model haiku --permission-mode acceptEdits --allowedTools "Bash(sleep 45)" Edit Read 2>/dev/null'); // its own notices about the account stay out of the pictures
     await page.keyboard.press("Enter");
     const own = await until("a page for the session in the editor's terminal", async () => (await pages(page)).find((p) => p.goal.startsWith("Add a line to notes.md")), 90000);
     await page.locator(".tabs-container .tab", { hasText: "2 sessions" }).first().click(); // another terminal is put in front first: the tail's
@@ -289,9 +308,15 @@ try {
     await page.locator(".tabs-container .tab", { hasText: "Create CHANGES.md" }).first().click();
     const flagged = await until("its card flagged", async () => { const p = (await pages(page)).find((x) => x.goal.startsWith("Create CHANGES.md")); return p && /to look at/.test(await foot(p, "Create CHANGES.md")) ? p : null; }, 60000);
     await clickCard(flagged, "Create CHANGES.md");
-    const r3 = await until("its receipt's flag", async () => { const r = await receiptOf(flagged); return r.flags.some(([k]) => k === "push") ? r : null; }, 10000);
+    await until("its receipt's flag", async () => { const r = await receiptOf(flagged); return r.flags.some(([k]) => k === "push") ? r : null; }, 10000);
+    // git is compared with what was noted when the session began, a few seconds after its last line: its commit shows
+    const r3 = await until("git's word on its commit", async () => { const r = await receiptOf(flagged); return r.tests.some((t) => /HEAD moved on by 1 commit/.test(t)) ? r : null; }, 30000);
     say(`the session that pushed: its card's foot ${JSON.stringify(await foot(flagged, "Create CHANGES.md"))}; flags ${JSON.stringify(r3.flags)}; git ${JSON.stringify(r3.tests.filter((t) => /HEAD|tool call/.test(t)))}`);
     await shot(page, "pushed-flag");
+    // and at rest the status bar counts no session at work: every turn ended, whatever is still open in a terminal
+    const bar = () => page.evaluate(() => [...document.querySelectorAll(".statusbar-item")].map((e) => e.textContent.trim()).find((t) => t.includes("◆")) ?? "");
+    await until("the status bar at rest", async () => /^◆ \d+ sessions?$/.test(await bar()), 90000);
+    say(`at rest the status bar says ${JSON.stringify(await bar())}`);
     void pushed;
     writeFileSync(path.join(out, `${appName}-walk.json`), JSON.stringify({ folder: dir, typedKeys: keys, pages: back.map((p) => ({ goal: p.goal, line: p.line, bands: p.bands, tasks: p.tasks })) }, null, 1));
   }
