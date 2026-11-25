@@ -116,7 +116,9 @@ function remember(patch: Partial<Saved>) {
   }
   saved = { ...saved, ...patch };
   clearTimeout(saving);
-  saving = setTimeout(() => { try { api.setState(saved); } catch { /* the preview has no state */ } }, 150);
+  const keep = () => { try { api.setState(saved); } catch { /* the preview has no state */ } };
+  // which sessions a page draws is kept at once: a window reloaded a moment after one was added brings it back with it
+  if ("page" in patch) keep(); else saving = setTimeout(keep, 150);
 }
 
 function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}, text?: string) {

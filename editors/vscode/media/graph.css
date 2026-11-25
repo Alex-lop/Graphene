@@ -42,6 +42,7 @@ header::after { content: ""; order: 4; flex-basis: 100%; } /* where the second r
 header:has(#pipe[hidden])::after { display: none; }
 /* a page of sessions has no stages: what its sessions are doing and their receipt have the second row to themselves */
 body[data-source="sessions"] header:has(#pipe[hidden])::after { display: block; }
+body[data-source="sessions"] #auto { white-space: normal; } /* beside a file the page is narrow: its receipt takes a second line before it is cut */
 /* a basis of 10em (or its own width, if less): a long goal is cut to the room its buttons leave; a tab that leaves
    it less than that (narrow, beside an agent's chat) gives the goal its own row and the buttons the next */
 #goal { order: 1; flex: 1000 1 10em; max-width: max-content; min-width: 0; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -486,6 +487,7 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 .port { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; opacity: 0; transition: opacity 0.15s; }
 .task:hover .port, .goal:hover .port, #canvas.wiring .port { opacity: 1; } /* where a hand is: unseen, it still takes a drag. Not on the chosen or focused card: a drag is a hand's, and there they were two rivets on its ring */
 .port.wired { opacity: 1; } /* where a line joins the card: it leaves from a port, and arrives at one */
+body[data-source="sessions"] .task:hover .port:not(.wired) { opacity: 0; } /* a session's cards are watched: no line is drawn from one by hand */
 .port[data-port] { cursor: crosshair; }
 .port[data-port]:hover, #canvas.wiring .port[data-port] { fill: var(--edge-hot); stroke: var(--edge-hot); }
 .wire { fill: none; stroke: var(--edge-hot); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
