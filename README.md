@@ -27,6 +27,7 @@ Every mark on the page answers one of four questions:
 - **What did it change?** The files each card wrote. Click one for its diff.
 - **Did it work?** The tests it ran and what they said: passed, failed, or ran none. A tick only for a pass that
   was seen, and a short list of what is worth a second look (a push, a delete, a test edited after it failed).
+  **Ran no tests** means the agent ran none, or was not allowed to: it is what the session shows, not a fault.
 
 ## Try it
 
@@ -38,17 +39,21 @@ curl -LO https://github.com/Alex-lop/Graphene/releases/download/v0.11.0/graphene
 code --install-extension graphene-0.11.0.vsix
 ```
 
-In Cursor: `cursor --install-extension graphene-0.11.0.vsix`. From a clone instead: `npm ci && npm run package` in
-`editors/vscode` (Node 22+). Then:
+In Cursor: `cursor --install-extension graphene-0.11.0.vsix`. No `code` or `cursor` on your PATH? In the editor,
+Extensions → ⋯ → **Install from VSIX…**. From a clone instead: `npm ci && npm run package` in `editors/vscode`
+(Node 22+). Then:
 
-1. Open a folder and start Claude Code or Codex in it, in a terminal or in its own panel. A page opens beside your
-   file, and the file keeps the keyboard. (`graphene.graph.openOnStart` turns that off.)
+1. Open any folder (git or not) and start Claude Code or Codex in it, in a terminal or in its own panel: `claude`,
+   or `claude -p "…"` for one ask. A few seconds after the session's first line a page opens in the editor area,
+   beside your file if one is open, and the file keeps the keyboard. Until then the ◆ in the status bar says how
+   many sessions Graphene sees here. (`graphene.graph.openOnStart` turns the page off.)
 2. Click a card: the terminal it runs in, or a view of what it writes when it runs outside the editor.
 3. When it finishes, read each card's receipt, and click a file for its diff.
 4. A second session gets a page of its own; **Add to page…** puts it on this one, as a band. **Home**, in the side
    bar, lists the folder's sessions, live ones first, and **Resume in terminal** picks an idle one up again.
 
-No session yet? The empty page replays a recorded one.
+No session yet? The empty page replays a recorded one. In a folder the editor has not been told to trust
+(Restricted Mode), the extension is off.
 
 ## Strict mode
 
