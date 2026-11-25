@@ -292,12 +292,30 @@ export function route(x1: number, y1: number, x2: number, y2: number, gap: numbe
  *  foot and into the next one's top. A card behind its source (a line that goes back) gets the same curve, drawn
  *  wide enough to be seen to turn. */
 export function curve(x1: number, y1: number, x2: number, y2: number, down = false): string {
+  const [, a, b] = handles(x1, y1, x2, y2, down);
+  return `M${x1},${y1} C${a![0]},${a![1]} ${b![0]},${b![1]} ${x2},${y2}`;
+}
+/** That curve's four points: its two ends, and between them the handle each end pulls along. */
+function handles(x1: number, y1: number, x2: number, y2: number, down: boolean): Point[] {
   if (down) {
     const d = Math.max(16, Math.abs(y2 - y1) / 2);
-    return `M${x1},${y1} C${x1},${y1 + d} ${x2},${y2 - d} ${x2},${y2}`;
+    return [[x1, y1], [x1, y1 + d], [x2, y2 - d], [x2, y2]];
   }
   const d = Math.max(24, Math.abs(x2 - x1) / 2);
-  return `M${x1},${y1} C${x1 + d},${y1} ${x2 - d},${y2} ${x2},${y2}`;
+  return [[x1, y1], [x1 + d, y1], [x2 - d, y2], [x2, y2]];
+}
+
+/** Whether that curve would pass through one of ``blocks`` (the cards that are neither of its ends), found along
+ *  it. A curve that would is not drawn: behind a card it reads as a line into that card and another out of it, a
+ *  chain that is not there. Its line goes round instead, in the gaps (`route`). */
+export function curveHits(x1: number, y1: number, x2: number, y2: number, down: boolean, blocks: readonly Rect[], inside = 2): boolean {
+  const c = handles(x1, y1, x2, y2, down);
+  for (let i = 1; i < 32; i++) {
+    const t = i / 32, u = 1 - t, k = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+    const x = k.reduce((sum, w, j) => sum + w * c[j]![0], 0), y = k.reduce((sum, w, j) => sum + w * c[j]![1], 0);
+    if (blocks.some((r) => x > r.x + inside && x < r.x + r.w - inside && y > r.y + inside && y < r.y + r.h - inside)) return true;
+  }
+  return false;
 }
 
 /** A route's corners turned a quarter, x for y: what `route` and `spread` say across, said downward. */
