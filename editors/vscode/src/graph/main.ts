@@ -2103,8 +2103,9 @@ function receiptParts(body: HTMLElement, t: TaskX, r: Receipt | null) {
   if (!git.noted) return void div("dim", "not noted: Graphene did not see this session begin (it began before this window watched it, or was resumed), so git has no before to compare with", since);
   if (!git.compared) return void div("dim", "noted when the session was first seen; not compared with the folder yet", since);
   const n = (k: number) => `${k} commit${k > 1 ? "s" : ""}`;
-  div("checkrow", git.dropped ? `HEAD moved off ${n(git.dropped)} it was on (a reset, or another branch)${git.commits ? `, and onto ${n(git.commits)} it was not` : ""}`
-    : git.commits ? `HEAD moved on by ${n(git.commits)}` : "HEAD is where it was", since);
+  // commits that touch the session's folder: one made elsewhere in a larger repository is not this folder's
+  div("checkrow", git.dropped ? `HEAD moved off ${n(git.dropped)} made here (a reset, or another branch)${git.commits ? `, and onto ${n(git.commits)} it did not have` : ""}`
+    : git.commits ? `${n(git.commits)} made here since` : "no commit made here since", since);
   if (!git.unexplained.length) return void div("checkrow dim", "every file that changed was written by a tool call of the session", since);
   div("checkrow", `${git.unexplained.length} file${git.unexplained.length > 1 ? "s" : ""} changed with no tool call of the session that wrote ${git.unexplained.length > 1 ? "them" : "it"} (a command it ran, or someone else: git does not say)`, since);
   for (const f of git.unexplained.slice(0, 20)) code(f, div("rc-loose", undefined, since));

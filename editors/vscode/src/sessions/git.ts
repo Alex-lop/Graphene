@@ -4,7 +4,9 @@
 // noted; later the folder is compared with that note, and what changed with no tool call of the session to
 // explain it is said (a command the agent ran, a formatter, the person's own edit: git cannot tell which, and
 // the receipt does not guess). Read-only: `git rev-parse`, `git status`, `git diff --name-only`,
-// `git rev-list --count`, `git hash-object`. Nothing is written, staged or fetched.
+// `git rev-list --count`, `git hash-object`. Nothing is written, staged or fetched, and no lock is taken: git's
+// optional locks are off, or `status` would refresh the index and hold `index.lock` while it did, and an agent's
+// own `git add` in that moment would be refused.
 import { execFile } from "node:child_process";
 import { realpathSync, statSync } from "node:fs";
 import * as path from "node:path";
@@ -13,13 +15,13 @@ import * as path from "node:path";
  *  its HEAD, and each dirty file under the folder (as a path from the top) with a hash of what it holds, "" where
  *  none was taken. */
 export interface Note { top: string; dir: string; head: string; dirty: Map<string, string>; at: number }
-/** What moved since a note: HEAD (how many commits it has now that the noted one did not, and how many the noted
- *  one had that it has not: a reset, or another branch), and the files that differ. */
+/** What moved since a note, under the note's folder: how many commits that touch it HEAD has now that the noted one
+ *  did not, how many the noted one had that it has not (a reset, or another branch), and the files that differ. */
 export interface Since { head: string; commits: number; dropped: number; changed: string[] }
 
 function git(cwd: string, args: string[]): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile("git", args, { cwd, maxBuffer: 16 << 20, timeout: 10_000 }, (err, out) => resolve(err ? null : String(out)));
+    execFile("git", args, { cwd, maxBuffer: 16 << 20, timeout: 10_000, env: { ...process.env, GIT_OPTIONAL_LOCKS: "0" } }, (err, out) => resolve(err ? null : String(out)));
   });
 }
 
@@ -68,7 +70,7 @@ export async function since(was: Note): Promise<Since | null> {
   if (!now) return null;
   const changed = new Set<string>();
   let commits = 0, dropped = 0;
-  const count = async (range: string) => Number((await git(was.top, ["rev-list", "--count", range]))?.trim() ?? 0) || 0;
+  const count = async (range: string) => Number((await git(was.top, ["rev-list", "--count", range, "--", was.dir]))?.trim() ?? 0) || 0;
   if (was.head && now.head && was.head !== now.head) {
     for (const f of (await git(was.top, ["diff", "--name-only", "-z", was.head, now.head, "--", was.dir]))?.split("\0").filter(Boolean) ?? []) changed.add(f);
     commits = await count(`${was.head}..${now.head}`);

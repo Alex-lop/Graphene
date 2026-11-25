@@ -1,7 +1,7 @@
 // What git knows that tool calls do not (src/sessions/git.ts), on a repository made for the test.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { test } from "node:test";
@@ -53,6 +53,23 @@ test("a folder is noted when a session is first seen and compared later: what ch
     assert.deepEqual(now.changed, ["a.py", "c.py", "new.txt", "pkg/d.py"]); // b.py was dirty before and was left alone: not the session's
     assert.deepEqual(unexplained(now.changed, ["a.py"], was.top, repo), ["c.py", "new.txt", "pkg/d.py"]);
     assert.deepEqual((await since(inside))!.changed, ["pkg/d.py"]); // from the folder inside: what changed under it, committed or not
+    assert.equal((await since(inside))!.commits, 1); // the commit touched pkg/d.py
+    // a commit elsewhere in the repository is not the folder's: nothing moved for it
+    const here = (await note(path.join(repo, "pkg")))!;
+    writeFileSync(path.join(repo, "elsewhere.txt"), "not under pkg\n");
+    git("add", "elsewhere.txt");
+    git("commit", "-qm", "elsewhere");
+    assert.deepEqual([(await since(here))!.commits, (await since(here))!.changed], [0, []]);
+    // and reading it took no lock and wrote nothing: the index is byte for byte what it was
+    // (a clean file whose time changed is what makes git refresh its index: a plain `git status` does rewrite it)
+    const index = () => readFileSync(path.join(repo, ".git", "index")).toString("base64");
+    const touch = (ahead: number) => utimesSync(path.join(repo, "elsewhere.txt"), new Date(), new Date(Date.now() + ahead));
+    touch(60_000);
+    const before = index();
+    await note(repo);
+    assert.equal(index(), before);
+    git("status");
+    assert.notEqual(index(), before, "the plain status this test compares with did refresh the index");
     assert.equal(now.dropped, 0);
     unlinkSync(path.join(repo, "b.py")); // a deleted file cannot be hashed: its name is still noted
     const gone = (await note(repo))!;

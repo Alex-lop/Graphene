@@ -107,8 +107,8 @@ export interface Receipt { changed: Changed[]; checks: Check[]; tests: Tests; fl
 /** What git says of a session's folder since the session was first seen. `noted`: its HEAD and dirty files were
  *  noted then (a session Graphene did not see begin has no such note, and nothing is claimed of it). `compared`:
  *  the folder has been compared with that note since; until it has, nothing is said of what moved. `commits`:
- *  how many HEAD has now that it did not have then. `dropped`: how many it had then that it does not have now (a
- *  reset, or another branch). `unexplained`: the files that changed with no tool call of the session's that wrote
+ *  how many commits that touch the folder HEAD has now and did not have then. `dropped`: how many it had then and
+ *  does not have now (a reset, or another branch). `unexplained`: the files that changed with no tool call of the session's that wrote
  *  them. */
 export interface GitFacts { noted: boolean; compared: boolean; commits: number; dropped: number; unexplained: string[] }
 
