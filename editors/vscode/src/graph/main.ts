@@ -307,10 +307,13 @@ const replaying = () => Boolean(state?.replay) || sessions();
  *  a pane opening beside it narrows: choosing a card would turn the graph to lanes, or lay it downward. */
 const tabMode = () => modeFor($("canvas").parentElement!.clientWidth);
 
-/** The view on screen: lanes when the tab is narrow, unless the person chose. */
+/** The view on screen: lanes when the tab is narrow, unless the person chose. A session's page is its graph at any
+ *  width: beside a file it is always narrow, and its handful of cards, laid downward, is what the page is for. */
 function view(): "graph" | "lanes" {
   const want = saved.view ?? "auto";
   if (want !== "auto") return want;
+  // ponytail: two sessions in a narrow tab are still the list (bands are not drawn downward); draw them when someone asks
+  if (state?.sessions?.length === 1) return "graph";
   return tabMode() === "down" ? NARROW_VIEW : "graph";
 }
 

@@ -82,9 +82,12 @@ const clickCard = (p, title) => p.frame.locator(`g.task:has(text.title), #lanes:
 
 /** A card's receipt as its page shows it without a click: its foot on the canvas, or its line in a narrow tab's lanes. */
 const foot = (p, title) => p.frame.evaluate((t) => {
-  const card = [...document.querySelectorAll("#view g.task")].find((g) => g.querySelector("text.title")?.textContent.startsWith(t));
+  // a card's title is cut to two lines, each its own run of text with no space between: compared without spaces, by how it begins
+  const bare = (s) => (s ?? "").replace(/[\s…]+/g, "");
+  const card = [...document.querySelectorAll("#view g.task")].find((g) => bare(t).startsWith(bare(g.querySelector("text.title")?.textContent).slice(0, 12)));
   const lane = [...document.querySelectorAll("#lanes:not([hidden]) .lane")].find((r) => r.querySelector(".l-title")?.textContent.startsWith(t));
-  return card?.querySelector(".foot-v")?.textContent ?? lane?.querySelector(".l-scope")?.textContent ?? "";
+  // on a card the foot's words are cut to its width, and its hover has them whole
+  return card?.querySelector(".foot title")?.textContent ?? card?.querySelector(".foot-v")?.textContent ?? lane?.querySelector(".l-scope")?.textContent ?? "";
 }, title.slice(0, 14));
 /** The pane of the chosen card: the files it changed, the tests it ran, what is worth a second look, what git says. */
 const receiptOf = (p) => p.frame.evaluate(() => ({
