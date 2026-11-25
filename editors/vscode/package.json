@@ -1,8 +1,8 @@
 {
   "name": "graphene-vscode",
   "displayName": "Graphene",
-  "description": "Your coding agent proposes a plan before it writes, and Graphene draws it as a graph. Each task runs in its own copy of your repository and lands only when its check passes.",
-  "version": "0.10.0",
+  "description": "Start Claude Code or Codex as you always do, and Graphene draws the session as a graph: what it is doing, what it changed and whether its tests passed. Nothing to set up.",
+  "version": "0.11.0",
   "publisher": "alex-lop",
   "license": "Apache-2.0",
   "repository": {
@@ -42,7 +42,8 @@
     }
   },
   "activationEvents": [
-    "workspaceContains:.graphene/graphene.db"
+    "onStartupFinished",
+    "onWebviewPanel:graphene.sessionPage"
   ],
   "contributes": {
     "viewsContainers": {
@@ -69,14 +70,14 @@
           "name": "Needs You",
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "id": "graphene.agents",
           "name": "Agents",
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "id": "graphene.plan",
@@ -84,7 +85,7 @@
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene",
           "visibility": "collapsed",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "id": "graphene.rounds",
@@ -92,7 +93,7 @@
           "icon": "media/graphene.svg",
           "contextualTitle": "Graphene",
           "visibility": "collapsed",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         }
       ]
     },
@@ -316,87 +317,103 @@
       "commandPalette": [
         {
           "command": "graphene.openCockpit",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.envelope",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.runReady",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.accept",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.acceptAll",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.addStep",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.link",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.editStep",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.dropStep",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.tell",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.refresh",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.answer",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.handBack",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.markDone",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.openDiff",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.compareForks",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.pickFork",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.signOff",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.editPlan",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.addStepByHand",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
         },
         {
           "command": "graphene.diffWithAgent",
-          "when": "config.graphene.advanced"
+          "when": "config.graphene.advanced && graphene.mode == strict"
+        },
+        {
+          "command": "graphene.watchDemo",
+          "when": "graphene.mode == strict"
+        },
+        {
+          "command": "graphene.stop",
+          "when": "graphene.mode == strict"
+        },
+        {
+          "command": "graphene.install",
+          "when": "graphene.mode == strict"
+        },
+        {
+          "command": "graphene.setKey",
+          "when": "graphene.mode == strict"
         }
       ],
       "editor/title": [
@@ -590,11 +607,23 @@
       {
         "id": "start",
         "title": "Get started with Graphene",
-        "description": "Your coding agent proposes a plan before it writes, and Graphene draws it as a graph.",
+        "description": "Start Claude Code or Codex as you always do, and Graphene draws the session as a graph: what it is doing, what it changed and whether its tests passed.",
         "steps": [
           {
+            "id": "session",
+            "title": "Start your agent",
+            "description": "Start Claude Code or Codex in this folder, the way you always do. A page opens beside your file and draws the session: a card for each request, task and subagent, its terminal on a click, and a receipt when it finishes. Nothing to install or set up; with no session yet, the page replays a recorded one.\n[Open the Graph](command:graphene.showGraph)",
+            "media": {
+              "image": "media/session.png",
+              "altText": "Home listing the folder's session, and the session's page: four cards joined by curved lines, the request with its files and a ticked test at its foot, the two subagents it started, and a follow-up"
+            },
+            "completionEvents": [
+              "onCommand:graphene.showGraph"
+            ]
+          },
+          {
             "id": "demo",
-            "title": "Watch the demo",
+            "title": "Strict mode: watch the demo",
             "description": "A recorded run plays in the graph: three agents race one task, and its check keeps one. No key and no network; it needs the graphene command, and offers to install it first.\n[Watch the Demo](command:graphene.watchDemo)",
             "media": {
               "image": "media/walk-demo.png",
@@ -606,7 +635,7 @@
           },
           {
             "id": "install",
-            "title": "Install Graphene",
+            "title": "Strict mode: install Graphene",
             "description": "This extension drives the graphene command, 0.10 or later. Install it once with uv; the button runs uv tool install graphene-map for you, or uv tool upgrade graphene-map for an older one.\n[Install Graphene](command:graphene.install)",
             "media": {
               "image": "media/walk-install.png",
@@ -618,7 +647,7 @@
           },
           {
             "id": "setup",
-            "title": "Set up a folder",
+            "title": "Strict mode: set up a folder",
             "description": "On Graphene's Home, pick who plans and does the work: Claude Code or Codex. One click.\n[Open Home](command:graphene.home)",
             "media": {
               "image": "media/walk-setup.png",
@@ -630,7 +659,7 @@
           },
           {
             "id": "ask",
-            "title": "Ask your agent for a plan",
+            "title": "Strict mode: ask your agent for a plan",
             "description": "In Claude Code or Codex, say what you want, in its chat. It proposes a plan to Graphene: small tasks, each with the files it may change and the check that proves it. A workflow on Home, or Add task on the graph, makes one too. Read it on the graph, remove what you do not want, then Start.\n[Open the Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/walk-ask.png",
@@ -642,7 +671,7 @@
           },
           {
             "id": "review",
-            "title": "Review before it lands",
+            "title": "Strict mode: review before it lands",
             "description": "Each finished task shows what changed and the check that passed. Open its changes, then Approve it, or Send it back with what is wrong. The graph shows the whole plan.\n[Open the Graph](command:graphene.showGraph)",
             "media": {
               "image": "media/walk-review.png",
@@ -685,12 +714,12 @@
         "graphene.advanced": {
           "type": "boolean",
           "default": false,
-          "description": "Show the advanced views (Needs You, Agents, Plan, Rounds) and every Graphene command in the Command Palette. Off, Home and the graph do it all."
+          "description": "In strict mode (a folder with a Graphene plan), show the advanced views (Needs You, Agents, Plan, Rounds) and every Graphene command in the Command Palette. Off, Home and the graph do it all."
         },
         "graphene.graph.openOnStart": {
           "type": "boolean",
           "default": true,
-          "description": "Open the graph as a tab by itself when you open Graphene's side bar, and when work starts: the window opens on a plan with work left, a plan appears, or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over it. A tab you close stays closed in that window until you ask for it with Open the graph, on Home or in the palette. Off, only that opens it."
+          "description": "Open a graph as a tab by itself when work starts. In a folder with no plan: when a Claude Code or Codex session begins or writes while the window is open, once for each session in a window, and for a session that was there before only when it writes again. In strict mode: when you open Graphene's side bar, the window opens on a plan with work left, a plan appears, or a run starts. It does not take the keyboard focus and opens beside the file you are working in, never over it. A tab you close stays closed in that window until you ask for it with Open the graph, on Home or in the palette. Off, only that opens it."
         }
       }
     }

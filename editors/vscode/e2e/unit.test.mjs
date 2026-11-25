@@ -21,7 +21,7 @@ test("moves.py's table is the build it measures: every command it names is in th
   assert.deepEqual([...named].filter((c) => !commands.includes(c)), [], "the table names commands this build lacks");
   // the night's moves are in its table, not left as the cockpit's alone
   for (const c of ["answer", "handBack", "pickFork", "openDiff", "signOff", "editPlan"]) assert.ok(named.has(c), `${c} is not in the table`);
-  assert.match(out.stdout, /cockpit moves: 17\. The editor \(0\.10\.\d+\) covers 9 whole and 5 in part; 3 not at all\./);
+  assert.match(out.stdout, /cockpit moves: 17\. The editor \(0\.11\.\d+\) covers 9 whole and 5 in part; 3 not at all\./);
 });
 
 test("moves.py keeps the before's table for the before's manifest (0.8.0's: 4, 6 and 7)", { skip: !existsSync(PYTHON) && "no venv python (uv sync)" }, () => {
@@ -66,4 +66,10 @@ test("an app the harness launches cannot reach the real Token Factory: no shell 
   assert.equal(L.safeEnv("http://127.0.0.1:5000/v1").GRAPHENE_TOKENFACTORY_URL, "http://127.0.0.1:5000/v1");
   // launch() puts it in the app's environment after the person's own variables, so it wins over them
   assert.match(L.launch.toString(), /\.\.\.cleanEnv\(\), \.\.\.safeEnv\(standin\)/);
+});
+
+test("a PATH with no graphene on it: every directory that has one is left out, the rest keep their order", () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "no-graphene-"));
+  writeFileSync(path.join(dir, "graphene"), "");
+  assert.equal(L.noGraphene(["/usr/bin", dir, "/bin", ""].join(path.delimiter)), ["/usr/bin", "/bin"].join(path.delimiter));
 });

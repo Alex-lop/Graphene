@@ -1,0 +1,410 @@
+{
+ "schema": 1,
+ "graphene": "",
+ "repo": "/work/app",
+ "cursor": 0,
+ "replay": null,
+ "stand_in": false,
+ "goal": "",
+ "asked": "Review the parser and the printer, each on its own, then run the…",
+ "first": "",
+ "planner": "",
+ "executor": "",
+ "envelope": {
+  "auto": "off",
+  "budget": null,
+  "tasks": null,
+  "rounds": null,
+  "forks": null,
+  "review": "off",
+  "protected": [],
+  "readonly": [],
+  "checks": []
+ },
+ "auto": null,
+ "run": {
+  "going": true,
+  "pid": null
+ },
+ "tree": [],
+ "allows": null,
+ "drafting": null,
+ "spent": null,
+ "scoreboard": {
+  "need_you": 0,
+  "running": 2,
+  "proven": 3,
+  "total": 5
+ },
+ "width": null,
+ "questions": [],
+ "goals": [],
+ "tasks": [
+  {
+   "id": "subagents/r1",
+   "title": "Review the parser and the printer, each on its own, then run the…",
+   "full": "Review the parser and the printer, each on its own, then run the release workflow.",
+   "state": "done",
+   "parent": null,
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Claude Code",
+   "model": "claude-haiku-5-5",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [
+    "subagent: Review the parser",
+    "subagent: Review the printer",
+    "workflow"
+   ],
+   "note": "Both reviews are out, and the workflow runs.",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "subagents",
+    "kind": "request",
+    "says": "done",
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "subagents/r1s1",
+   "title": "Review the parser",
+   "full": "Read parser.py and list what is wrong.",
+   "state": "done",
+   "parent": null,
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "general-purpose",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [
+    "read parser.py"
+   ],
+   "note": "The parser drops the last token.",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "subagents",
+    "kind": "subagent",
+    "says": "done",
+    "side": "aaa111",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "subagents/r1s2",
+   "title": "Review the printer",
+   "full": "Read printer.py and list what is wrong.",
+   "state": "running",
+   "parent": null,
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Explore",
+   "model": "",
+   "usd": null,
+   "idle": 19,
+   "needs_you": false,
+   "tail": [
+    "$ grep -n print printer.py"
+   ],
+   "note": "$ grep -n print printer.py",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "subagents",
+    "kind": "subagent",
+    "says": "working",
+    "side": "bbb222",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "subagents/r1s3",
+   "title": "release-check",
+   "full": "release-check",
+   "state": "done",
+   "parent": null,
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "workflow",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [
+    "edit setup.cfg"
+   ],
+   "note": "Lint is clean.",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [
+    "setup.cfg"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "subagents",
+    "kind": "workflow",
+    "says": "done",
+    "side": "",
+    "receipt": {
+     "changed": [
+      {
+       "file": "setup.cfg",
+       "how": "edited",
+       "outside": false
+      }
+     ],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "subagents/r2",
+   "title": "Thanks. Fix what the parser review found.",
+   "full": "Thanks. Fix what the parser review found.",
+   "state": "running",
+   "parent": null,
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Claude Code",
+   "model": "claude-haiku-5-5",
+   "usd": null,
+   "idle": 19,
+   "needs_you": false,
+   "tail": [
+    "edit parser.py"
+   ],
+   "note": "edit parser.py",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "subagents",
+    "kind": "request",
+    "says": "working",
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  }
+ ],
+ "edges": [
+  [
+   "subagents/r1",
+   "subagents/r1s1",
+   "needs"
+  ],
+  [
+   "subagents/r1",
+   "subagents/r1s2",
+   "needs"
+  ],
+  [
+   "subagents/r1",
+   "subagents/r1s3",
+   "needs"
+  ],
+  [
+   "subagents/r1s1",
+   "subagents/r2",
+   "needs"
+  ],
+  [
+   "subagents/r1s3",
+   "subagents/r2",
+   "needs"
+  ]
+ ],
+ "news": [],
+ "sessions": [
+  {
+   "id": "subagents",
+   "agent": "claude",
+   "title": "Review the parser and the printer, each on its own, then run the…",
+   "status": "working",
+   "cwd": "/work/app",
+   "branch": "main",
+   "file": "subagents.jsonl",
+   "last": "2026-11-24T10:00:41.000Z",
+   "requests": 2,
+   "error": "",
+   "open": false,
+   "receipt": {
+    "changed": [
+     {
+      "file": "setup.cfg",
+      "how": "edited",
+      "outside": false
+     }
+    ],
+    "checks": [],
+    "tests": "none",
+    "flags": []
+   },
+   "git": null
+  }
+ ]
+}

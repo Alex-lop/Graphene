@@ -2,8 +2,9 @@
 // task offers, and the keys. No DOM here, so `node --test` reads them.
 import { ASK, NOT_CURSOR } from "../home/who.ts"; // Home's words for the agents, said the same on the graph
 import type { Layout } from "../layout.ts";
+import type { PageAct } from "../sessions/acts.ts";
 import { inScope } from "../owners.ts";
-import { autoLine, free, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type State, type Task } from "../state.ts";
+import { autoLine, free, headline, SAY, screenWords, usd, type DraftStep, type Fork, type Kept, type Question, type Receipt, type State, type Task } from "../state.ts";
 
 /** What the snapshot gains tonight (dev/process/editor/CONTRACT.md): read when present, nothing when not. */
 export type ForkX = Fork & { attempts?: number; idle?: number | null };
@@ -13,7 +14,8 @@ export type Replay = { shown: string; day: string; repository: string } | null;
 export type StateX = Omit<State, "tasks"> & { replay?: Replay; stand_in?: boolean; tasks: TaskX[] };
 
 export type Act = "add-after" | "add-under" | "link" | "unlink" | "drop" | "accept" | "tell" | "start" | "run" | "stop" | "cockpit"
-  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "sendBack" | "answer" | "handBack" | "set" | "draw" | "saveWorkflow" | "markDone" | "demo";
+  | "openDiff" | "compareForks" | "pickFork" | "signOff" | "sendBack" | "answer" | "handBack" | "set" | "draw" | "saveWorkflow" | "markDone" | "demo"
+  | PageAct; // and what a page of sessions asks of its own host (sessions/acts.ts)
 
 /** The acts a replay offers none of: they change a plan, or they act outside the replay (the cockpit opens
  *  `graphene watch` in the person's own folder; openDiff and compareForks look the id up in the person's
@@ -71,9 +73,15 @@ export function cornerWord(t: TaskX): string {
 
 /** Who does a step, for the tile on its card: you, or the executor by a letter (Claude Code `C`, Codex `X`, any
  *  other named one by its first), or a command of your own by its first two letters, as a terminal names it. */
-export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | null }, executor: string):
-  { kind: "you" | "claude" | "codex" | "agent" | "cmd"; mark: string; label: string } {
+export function who(t: Pick<TaskX, "state" | "owner"> & { command?: string | null; card?: TaskX["card"]; agent?: string }, executor: string):
+  { kind: "you" | "claude" | "codex" | "agent" | "cmd" | "sub"; mark: string; label: string } {
   if (t.command) return { kind: "cmd", mark: commandWord(t.command).slice(0, 3), label: "a command, with no agent" }; // a workflow's `run:` step
+  if (t.card) { // a session's card: the agent whose session it is; a subagent or a workflow it launched, by what it is
+    const a = t.agent ?? "";
+    if (t.card.kind === "subagent") return { kind: "sub", mark: "S", label: `a subagent (${a || "its type is not said"})` };
+    if (t.card.kind === "workflow") return { kind: "sub", mark: "W", label: "a workflow's agents" };
+    return a === "Codex" ? { kind: "codex", mark: "X", label: "Codex" } : { kind: "claude", mark: "C", label: "Claude Code" };
+  }
   if (t.state === "yours" || (t.owner && t.owner !== "agent")) return { kind: "you", mark: "◆", label: "you" };
   const words = executor.trim().split(/\s+/).filter(Boolean);
   const name = family((words[0] ?? "").split("/").pop() ?? ""); // `claude` of the setting's `claude:opus`
@@ -367,6 +375,7 @@ const tries = (n: number | undefined) => (n !== undefined && n > 1 ? `${n} tries
 /** The small line under a box's title: the state first, in plain words, then what matters for it. A task that
  *  needs help says why on the box. */
 export function sub(t: TaskX, max = 25): string {
+  if (t.card) return sessionLine(t, max); // a session's card, on the canvas or as a lane: its own words
   if (asksYou(t)) return cut("asks you: it leaves your machine", max);
   if (t.command && t.checked.after === "failed" && t.state !== "done") return cut("its command failed: a run tries it again", max);
   const parts: string[] = [];
@@ -377,6 +386,47 @@ export function sub(t: TaskX, max = 25): string {
   if (provesNothing(t)) parts.push("check already passes"); // it proves nothing yet: said before the cost and the tries
   parts.push(tries(t.attempts), usd(t.usd), t.state === "running" ? quiet(t.idle) : "");
   return fitWords(parts, max);
+}
+
+/** A session card's status line: its state in a session's words, how long a working one has been quiet, then what
+ *  it is doing now, or said last. */
+export function sessionLine(t: Pick<TaskX, "card" | "state" | "idle" | "note">, max: number): string {
+  const head = [t.card?.says ?? "", t.state === "running" ? quiet(t.idle) : ""].filter(Boolean).join(" · ");
+  return cut([head, t.note].filter(Boolean).join(" · "), max);
+}
+
+/** A receipt's tests in a few words, for a card's foot and a page's header: `unittest passed`, `pytest failed`,
+ *  `ran no tests`, `pytest ran, result not seen`. Each tool that ran is named with its own last verdict's word. */
+export function testsWords(r: Receipt): string {
+  const of = (v: string) => [...new Set(r.checks.filter((c) => c.kind === "test" && c.verdict === v).map((c) => c.tool))].join(", ");
+  if (r.tests === "none") return "ran no tests";
+  if (r.tests === "failed") return `${of("failed")} failed`;
+  if (r.tests === "passed") return `${of("passed")} passed`;
+  return `${of("unseen")} ran, result not seen`;
+}
+
+/** How many things a receipt has that are worth a second look, in words: `1 to look at`; nothing for none. */
+export const flagsWords = (r: Receipt): string => (r.flags.length ? `${r.flags.length} to look at` : "");
+
+/** A receipt in a line: how many files, the tests, what to look at. With no file written by a tool call it says
+ *  that, and not that nothing changed: a command may have changed a file, and the receipt does not see that. */
+export function receiptLine(r: Receipt): string {
+  const n = r.changed.length;
+  return [n ? `${n} file${n > 1 ? "s" : ""} changed` : "wrote no file", testsWords(r), flagsWords(r)].filter(Boolean).join(" · ");
+}
+
+/** Under a page's title: what its sessions are doing, each agent named (`Claude Code · working`), and for a page
+ *  of one its receipt as a whole; the one line a file that could not be read is said in. */
+export function sessionsLine(sessions: NonNullable<StateX["sessions"]>): string {
+  const bad = sessions.find((x) => x.error);
+  if (bad) return bad.error;
+  const who = (x: { agent: string }) => (x.agent === "codex" ? "Codex" : "Claude Code");
+  if (sessions.length === 1) {
+    const s = sessions[0]!;
+    return [who(s), s.status, s.branch, s.receipt && s.requests ? receiptLine(s.receipt) : ""].filter(Boolean).join(" · ");
+  }
+  const n = (st: string) => sessions.filter((x) => x.status === st).length;
+  return [n("needs you") ? `${n("needs you")} need you` : "", n("working") ? `${n("working")} working` : "", n("idle") ? `${n("idle")} idle` : ""].filter(Boolean).join(" · ");
 }
 
 /** A fork's chip: its letter and model, then that it is kept and why (`b ✓ kept: 4 lines against 12`, the
@@ -417,6 +467,8 @@ export function topLine(s: Pick<StateX, "replay" | "stand_in">): string {
  *  bar). The cost is said once: not beside an auto line that says it against its budget, and not for a race
  *  against the scripted stand-in or a replay, which spend nothing (state.ts `free`). */
 export function headerFor(s: StateX): { goal: string; auto: string; stages: Stage[] } {
+  // a page of sessions: its session's title, or how many it draws; no stages, a session is not a plan to start
+  if (s.sessions) return { goal: s.sessions.length === 1 ? s.sessions[0]!.title : s.sessions.length ? `${s.sessions.length} sessions` : "Graphene", auto: sessionsLine(s.sessions), stages: [] };
   const drawing = s.drafting?.steps.find((d) => !d.leaf && !d.parent)?.title;
   const goal = headline(s) || drawing || (s.tasks.length ? "your plan" : "Graphene"); // an ask sets no goal: what was asked
   const auto = s.auto?.stage === "done" ? "" : autoLine(s);
@@ -569,6 +621,8 @@ export function linkHint(title: string, dragging: boolean): string {
 /** The empty graph's words: who plans here, by name. Graphene's hooks reach Claude Code and Codex alone, not
  *  Cursor's own Agent: in Cursor that is said too, in the same words wherever a screen points to an agent. */
 export const ASK_AGENT = `${ASK}: its plan appears here. Or draw the first task.`;
+/** The empty page of a folder with no plan: what to do, in one line. */
+export const START_AGENT = "Start Claude Code or Codex in this folder, the way you always do: its work appears here as a graph.";
 export const CURSOR_AGENT = NOT_CURSOR;
 
 /** The question chip's words, its two halves as the tasks' chip has them: how many, then what a click on Start or Run

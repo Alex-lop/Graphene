@@ -2,17 +2,17 @@
 // and the "need you" chip count from those marks, what the check's box at a card's foot says, the files
 // chip's latest fact, and the one act a card wears. A mark is drawn only for what a field of the snapshot
 // says (state.ts); the words are words.ts's and `SAY`'s. No DOM here, so `node --test` reads them.
-import { SAY, type Goal } from "../state.ts";
-import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, fitWords, provesNothing, sub, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
+import { SAY, type Goal, type Receipt } from "../state.ts";
+import { actsFor, asksYou, attemptsOf, checkWords, cut, filesChip, fitWidth, fitWords, flagsWords, provesNothing, sub, testsWords, writtenOf, type Button, type ForkX, type TaskX } from "./words.ts";
 
 /** The one mark a step's state wears, the same shape at every size: a circle is the run's own business
  *  (waiting, ready, working, landed, suggested), a diamond is the person (you, yours), a triangle is trouble (back). */
-export type Mark = "waiting" | "ready" | "working" | "you" | "yours" | "back" | "landed" | "suggested";
+export type Mark = "waiting" | "ready" | "working" | "you" | "yours" | "back" | "landed" | "over" | "suggested";
 
-type Stated = Pick<TaskX, "state" | "needs_you" | "leaves">;
+type Stated = Pick<TaskX, "state" | "needs_you" | "leaves"> & { card?: unknown };
 
 /** Loudest first, as the legend lists them. A bar reads landed first, then the same order. */
-const LOUD: readonly Mark[] = ["you", "back", "yours", "working", "landed", "ready", "waiting", "suggested"];
+const LOUD: readonly Mark[] = ["you", "back", "yours", "working", "landed", "over", "ready", "waiting", "suggested"];
 const BAR: readonly Mark[] = ["landed", ...LOUD.filter((m) => m !== "landed")];
 /** The marks that want the person: the "need you" chip, and a band's words, count these. */
 const WANTS: readonly Mark[] = ["you", "yours", "back"];
@@ -23,7 +23,8 @@ const WANTS: readonly Mark[] = ["you", "yours", "back"];
  *  stays `yours` whatever `needs_you` says: the snapshot says it of every yours step (cockpit/model.py
  *  `needs_you`), so read first it would leave no step to wear the hollow diamond. */
 export function stateMark(t: Stated): Mark {
-  if (t.state === "done") return "landed";
+  // a session's card that is over is over, and no more: a tick is for a test that was seen to pass, on its foot
+  if (t.state === "done") return t.card ? "over" : "landed";
   if (t.state === "came back") return "back";
   if (t.state === "proposed") return "suggested";
   if (t.state === "yours") return asksYou(t) ? "you" : "yours";
@@ -35,11 +36,11 @@ export function stateMark(t: Stated): Mark {
  *  wears its dashed ring there: its border is a card's, and its status says what it covers. */
 export function cornerMark(t: Stated): Mark | "" {
   const m = stateMark(t);
-  return m === "waiting" || m === "ready" ? "" : m;
+  return m === "waiting" || m === "ready" || m === "over" ? "" : m;
 }
 
 const WORD: Record<Mark, string> = { waiting: SAY.waiting, ready: SAY.ready, working: SAY.running, you: SAY.review, yours: SAY.yours,
-                                     back: SAY["came back"], landed: SAY.done, suggested: SAY.proposed };
+                                     back: SAY["came back"], landed: SAY.done, over: SAY.done, suggested: SAY.proposed };
 const ASKS = "asks you";
 /** What the legend says of a hand-drawn draft or a planner's drafted step: no task yet, the same dashed ring, in
  *  the word its cards say. */
@@ -163,6 +164,21 @@ export function checkMark(t: Checked): CheckMark {
   return { box: "unrun", tone: "dim", words: said || (!open ? "" : t.state === "running" || t.state === "came back" ? a.line : unsaid) };
 }
 
+/** The foot of a session's card: its receipt's tests. A tick only for a pass that was seen; a cross for a failure;
+ *  a dashed box where tests ran and their result was not seen; a dotted one, dim, where none ran. Its hover says
+ *  what decided each tool's verdict. No receipt (a plan's step): no foot. */
+export function receiptMark(r: Receipt | null | undefined): CheckMark {
+  if (!r) return { box: "unrun", tone: "dim", words: "" };
+  const why = r.checks.map((c) => `${c.tool} ${c.verdict === "unseen" ? "ran, result not seen" : c.verdict === "none" ? "ran no test" : c.verdict}: ${c.why}`).join(" · ");
+  if (r.tests === "passed") return { box: "passed", tone: "ok", words: why };
+  if (r.tests === "failed") return { box: "failed", tone: "red", words: why };
+  if (r.tests === "unseen") return { box: "hollow", tone: "warn", words: why };
+  return { box: "unrun", tone: "dim", words: why };
+}
+
+/** What that foot says, in ``n`` characters: the tests, then how many things are worth a second look. */
+export const receiptFoot = (r: Receipt | null | undefined, n: number): string => (r ? cutWhole([testsWords(r), flagsWords(r)].filter(Boolean).join(" · "), n) : "");
+
 /** The box on the goal's own check: ticked once the goal itself is done, which the engine says only after that
  *  check passed (plan.py `roll_up`); until then nothing says it ran, and the box is dotted. */
 export const goalBox = (g: Pick<Goal, "state">): Box => (g.state === "done" ? "passed" : "unrun");
@@ -255,8 +271,10 @@ export interface FilesLine { tone: "plain" | "working" | "back"; mark: string; t
  *  counts its files, how many it has written (`2 of 4 files`) and how many of its writes were refused; once it
  *  came back for a write outside them, which (`wrote store/repo.py +1`). No words for a step with no files,
  *  nor for a command step, which keeps its `$ command` chip. */
-export function filesLine(t: Pick<TaskX, "state" | "scope" | "files" | "filesN" | "touched" | "changed" | "stops" | "outside"> & { command?: string | null }): FilesLine {
+export function filesLine(t: Pick<TaskX, "state" | "scope" | "files" | "filesN" | "touched" | "changed" | "stops" | "outside"> & { command?: string | null; card?: unknown }): FilesLine {
   if (t.command) return { tone: "plain", mark: "", text: "", refused: "" };
+  // a session's card: nothing it may change, only what it has written so far
+  if (t.card) return { tone: t.state === "running" ? "working" : "plain", mark: t.changed.length ? "edit" : "", text: filesChip(t.changed), refused: "" };
   if (t.state === "came back" && t.outside.length) return { tone: "back", mark: "close", text: `wrote ${filesChip(t.outside)}`, refused: "" };
   const wrote = t.state === "running" ? writtenOf(t) : "";
   const refused = t.state === "running" && t.stops.length ? `${t.stops.length} refused` : "";
@@ -307,6 +325,7 @@ export function coversIn(c: string, n: number): string {
  *  second line, `coversIn`); a working one `working` and its agent (each of its attempts is a row naming its model); a ``question`` on a step that wears the
  *  filled diamond for it, or on a suggestion, says it asks you, and what. */
 export function cardLine(t: TaskX, n: number, question = ""): string {
+  if (t.card) return sub(t, n);
   if (question && (t.state === "proposed" || stateMark(t) === "you") && !["review", "yours"].includes(t.state)) return cutWhole(`${ASKS}: ${question}`, n);
   if (t.state === "proposed") return cutWhole(SAY.proposed, n);
   // sent back with a note (the snapshot's `note`): it is not a task no agent has touched, so it does not say ready
@@ -330,6 +349,7 @@ export const forkMark = (f: Pick<ForkX, "state">): Mark | "ended" =>
  *  the plan is one act for every suggested step. None in a replay, which is watched. ``opened``: its changes were
  *  opened in this window, so to review it wears Approve, as its pane does, not Open changes again. */
 export function cardAct(t: TaskX, replay: boolean, opened = false): Button | null {
+  if (t.card) return null; // a session is watched: its card asks nothing of a plan
   const b = actsFor(t, replay, opened).find((x) => x.main && x.act !== "accept") ?? null;
   // a race's card says Compare, in a word: `Compare attempts` cut its `to review` to `to re…`. Its hover says what
   // it compares

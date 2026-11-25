@@ -25,24 +25,34 @@ COMMANDS = ["Home", "Open the Graph", "Open Cockpit", "Set Limits…", "Run Read
             "Mark Your Task Done", "Set API Key…", "Open Changes", "Compare Attempts", "Keep This Attempt",
             "Approve", "Edit Plan as Text", "Add Task by Hand…", "Watch the Demo",
             "Compare with the Agent's Copy"]
-# what the palette lists until graphene.advanced is set: the rest are buttons on Home, the graph and the diffs
-PALETTE = {"graphene.home", "graphene.showGraph", "graphene.watchDemo", "graphene.stop", "graphene.init",
-           "graphene.install", "graphene.setKey"}
-ADVANCED = "config.graphene.advanced"
+# what the palette lists in any folder: Home, the graph, and the way into strict mode
+ANYWHERE = {"graphene.home", "graphene.showGraph", "graphene.init"}
+# and in strict mode (a folder with a Graphene plan) until graphene.advanced is set: the rest are buttons on
+# Home, the graph and the diffs
+PALETTE = ANYWHERE | {"graphene.watchDemo", "graphene.stop", "graphene.install", "graphene.setKey"}
+STRICT = "graphene.mode == strict"
+ADVANCED = f"config.graphene.advanced && {STRICT}"
 
 
 def test_the_manifest_names_the_product_and_its_version():
     assert MANIFEST["name"] == "graphene-vscode"
     assert MANIFEST["displayName"] == "Graphene"
     assert MANIFEST["publisher"] == "alex-lop"
-    assert MANIFEST["version"] == "0.10.0"
+    assert MANIFEST["version"] == "0.11.0"
     assert MANIFEST["license"] == "Apache-2.0"
     assert MANIFEST["repository"]["url"] == PYPROJECT["project"]["urls"]["Repository"]
     assert MANIFEST["engines"]["vscode"] == "^1.95.0"
 
 
-def test_the_extension_wakes_for_a_folder_with_a_store():
-    assert f"workspaceContains:{STORE}" in MANIFEST["activationEvents"]
+def test_the_extension_wakes_in_any_folder():
+    """It draws a folder's sessions with nothing set up (dev/VISION.md), so it does not wait for a store: a
+    folder that has one is strict mode, which the extension tells by looking (src/extension.ts)."""
+    events = MANIFEST["activationEvents"]
+    assert "onStartupFinished" in events
+    assert "onWebviewPanel:graphene.sessionPage" in events  # a page a reload brings back wakes it too
+    assert not any(e.startswith("workspaceContains") for e in events)
+    # the store's name is still the code's
+    assert f'"{STORE.split("/")[1]}")' in (EXT / "src/session.ts").read_text()
 
 
 def test_every_command_is_titled_graphene_and_the_list_is_the_promised_one():
@@ -51,11 +61,16 @@ def test_every_command_is_titled_graphene_and_the_list_is_the_promised_one():
     assert all(c["command"].startswith("graphene.") for c in MANIFEST["contributes"]["commands"])
 
 
-def test_the_palette_lists_seven_commands_until_advanced_is_set():
-    palette = MANIFEST["contributes"]["menus"]["commandPalette"]
-    hidden = {m["command"] for m in palette if m["when"] == ADVANCED}
-    shown = {c["command"] for c in MANIFEST["contributes"]["commands"]} - hidden
-    assert shown == PALETTE
+def test_the_palette_lists_three_commands_in_any_folder_and_seven_in_strict_mode():
+    """A person who installed a graph is not shown 28 commands: where there is no plan the palette has Home,
+    Open the Graph and Set Up This Folder; strict mode adds four, and graphene.advanced the rest."""
+    when = {m["command"]: m["when"] for m in MANIFEST["contributes"]["menus"]["commandPalette"]}
+    every = {c["command"] for c in MANIFEST["contributes"]["commands"]}
+    assert set(when.values()) == {STRICT, ADVANCED}
+    assert every - set(when) == ANYWHERE
+    assert {c for c in every if when.get(c) != ADVANCED} == PALETTE
+    # the key those rules read
+    assert 'setContext", "graphene.mode"' in (EXT / "src/extension.ts").read_text()
     assert MANIFEST["contributes"]["configuration"]["properties"]["graphene.advanced"]["default"] is False
 
 
@@ -65,7 +80,8 @@ def test_the_walkthrough_buttons_are_the_extensions_own_commands_and_its_picture
     linked = {m for s in walk["steps"] for m in re.findall(r"\(command:(graphene\.\w+)\)", s["description"])}
     asked = {"graphene.watchDemo", "graphene.install", "graphene.home", "graphene.showGraph"}
     assert linked == ours & asked
-    assert walk["steps"][0]["id"] == "demo"  # a judge with no key sees the race first
+    # what needs nothing installed comes first, then strict mode's race
+    assert [s["id"] for s in walk["steps"][:2]] == ["session", "demo"]
     shipped = (EXT / ".vscodeignore").read_text().split()
     for s in walk["steps"]:
         assert (EXT / s["media"]["image"]).is_file() and f"!{s['media']['image']}" in shipped, s["id"]

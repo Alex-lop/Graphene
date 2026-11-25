@@ -1,6 +1,9 @@
-// Graphene for VS Code: a thin client over the CLI. It reads `graphene state --json` in the folder that
-// holds the plan, again when the store's files change or on a poll while a view is open, and every change
+// Graphene for VS Code. In any folder it draws the folder's Claude Code and Codex sessions as a graph, from
+// their own files, with nothing installed and nothing set up (sessions/hub.ts). In a folder that has a
+// Graphene plan (strict mode) it is a thin client over the CLI: it reads `graphene state --json` in the folder
+// that holds the plan, again when the store's files change or on a poll while a view is open, and every change
 // it makes is a graphene command run as the person (the agent marks are taken out of the environment).
+import { existsSync } from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import * as C from "./commands.ts";
@@ -14,7 +17,8 @@ import { DROPPABLE, keyTrouble } from "./needs.ts";
 import { parseLog, rounds, type LogRow } from "./rounds.ts";
 import { RoundsTree } from "./roundsView.ts";
 import { PlanTree } from "./tree.ts";
-import { planFolder, Session, type UI } from "./session.ts";
+import { planFolder, Session, STORE, type UI } from "./session.ts";
+import { BEFORE, Hub, PAGE } from "./sessions/hub.ts";
 import * as needs from "./needsView.ts";
 import * as agents from "./agentsView.ts";
 import * as find from "./setup.ts";
@@ -58,7 +62,20 @@ export function activate(context: vscode.ExtensionContext) {
   };
   context.subscriptions.push(roundsView, roundsView.onDidChangeVisibility(() => void readRounds()));
   const graph = new GraphHost(context, session);
-  const home = new HomeHost(context, session, (on) => graph.sidebar(on));
+  // strict mode is a folder that has a Graphene plan; any other folder shows its sessions, and runs no graphene
+  const hub = new Hub(context);
+  const strict = () => (vscode.workspace.workspaceFolders ?? []).some((f) => existsSync(path.join(f.uri.fsPath, STORE)));
+  let mode = "";
+  const setMode = () => {
+    const now = strict() ? "strict" : "sessions";
+    if (now === mode) return;
+    mode = now;
+    void vscode.commands.executeCommand("setContext", "graphene.mode", mode);
+    if (mode === "sessions") hub.start(); else hub.stop();
+  };
+  const home = new HomeHost(context, session, (on) => graph.sidebar(on), { hub, on: () => mode === "sessions" });
+  // a session's page a reload brings back: the hub takes it up with the sessions it drew
+  context.subscriptions.push(hub, vscode.window.registerWebviewPanelSerializer(PAGE, hub), vscode.workspace.registerTextDocumentContentProvider(BEFORE, { provideTextDocumentContent: (uri) => hub.before(uri) }));
   const bar = vscode.window.createStatusBarItem("graphene", vscode.StatusBarAlignment.Left, 50);
   bar.name = "Graphene";
   bar.command = "graphene.home";
@@ -99,6 +116,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (pick === "Open the Graph") void vscode.commands.executeCommand("graphene.showGraph");
       });
     }
+    if (mode === "sessions") return; // no plan here: the status bar says the folder's sessions (below)
     if (s && (session.status.kind === "ok" || session.status.kind === "empty")) {
       bar.text = `◆ ${summary(s)}`;
       const md = new vscode.MarkdownString(undefined, true);
@@ -123,7 +141,7 @@ export function activate(context: vscode.ExtensionContext) {
   // under the worktrees) and on a poll while a view is open; a burst of changes is one read. While the stream
   // is live (`state --json --watch`) it brings every change, and both rest.
   let due: NodeJS.Timeout | undefined;
-  const soon = () => { if (session.stream.live) return; clearTimeout(due); due = setTimeout(() => void session.refresh(), 250); };
+  const soon = () => { setMode(); if (session.stream.live || mode !== "strict") return; clearTimeout(due); due = setTimeout(() => void session.refresh(), 250); };
   if (session.folder) {
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(session.folder, ".graphene/{graphene.db,graphene.db-wal,run.lock}"));
     watcher.onDidChange(soon); watcher.onDidCreate(soon); watcher.onDidDelete(soon);
@@ -132,14 +150,23 @@ export function activate(context: vscode.ExtensionContext) {
   let poll: NodeJS.Timeout | undefined;
   const arm = () => {
     clearInterval(poll);
-    poll = setInterval(() => { if ((treeView.visible || graph.open || home.open) && !session.stream.live) void session.refresh(); }, session.pollMs);
+    poll = setInterval(() => { if (mode === "strict" && (treeView.visible || graph.open || home.open) && !session.stream.live) void session.refresh(); }, session.pollMs);
   };
   arm();
   context.subscriptions.push(session, { dispose: () => { clearInterval(poll); clearTimeout(due); } });
   context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration("graphene")) { arm(); session.moved(); void session.refresh(); }
+    if (e.affectsConfiguration("graphene")) { arm(); session.moved(); if (mode === "strict") void session.refresh(); }
   }));
-  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => { session.folder = planFolder(); session.moved(); void session.refresh(); }));
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => { session.folder = planFolder(); session.moved(); setMode(); if (mode === "strict") void session.refresh(); else void hub.scan(); }));
+  // a folder with no plan: the status bar says its sessions, and a click opens Home, which lists them
+  let counted = 0;
+  hub.onDidChange(() => {
+    if (mode !== "sessions") return;
+    const n = hub.found.length, mine = ++counted;
+    // counted by reading: an older count that ends after a newer one is not written over it
+    void hub.working().then((live) => { if (mine === counted && mode === "sessions") bar.text = live ? `◆ ${live} working` : n ? `◆ ${n} session${n > 1 ? "s" : ""}` : "◆ Graphene"; });
+    bar.tooltip = "This folder's Claude Code and Codex sessions, read from their own files on this machine. Click for Graphene's Home";
+  });
 
   const taskOf = (arg: Arg): Task | undefined => {
     const id = typeof arg === "string" ? arg : arg?.task?.id ?? arg?.id;
@@ -158,7 +185,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   cmd("refresh", () => session.refresh());
   cmd("home", () => vscode.commands.executeCommand("graphene.home.focus"));
-  cmd("showGraph", (arg) => graph.show(taskOf(arg)?.id));
+  cmd("showGraph", (arg) => (mode === "sessions" ? hub.show(typeof arg === "string" ? arg : undefined) : graph.show(taskOf(arg)?.id)));
   cmd("openCockpit", () => session.terminal("graphene watch", C.watch()));
   cmd("runReady", () => session.terminal("graphene run", C.runReady()));
   cmd("stop", () => session.act(C.stop()));
@@ -238,7 +265,8 @@ export function activate(context: vscode.ExtensionContext) {
   const ui: UI = { graph, tree, treeView };
   for (const m of [needs, agents, find, diff, planDoc, step, demo, files]) m.register(context, session, ui);
 
-  void session.refresh();
+  setMode();
+  if (mode === "strict") void session.refresh(); // no plan here: no graphene is run, installed or not
 }
 
 export function deactivate() {}

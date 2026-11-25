@@ -50,6 +50,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   context.subscriptions.push({ dispose: () => running?.stop(true) });
   context.subscriptions.push(vscode.commands.registerCommand("graphene.watchDemo", async () => {
     if (running) return void vscode.window.showInformationMessage("The demo is already playing. Close its graph to stop it.");
+    await session.seek?.(); // in a folder with no plan graphene was not looked for yet
     if (session.status.kind === "missing") return offerInstall(); // with no folder open the spawn's ENOENT says it below
     const dir = demoDir();
     const child = spawn(session.path, C.demoInto(dir), { cwd: dir, env: C.scrub(process.env), stdio: ["ignore", "pipe", "pipe"] });

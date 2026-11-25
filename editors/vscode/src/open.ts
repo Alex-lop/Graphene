@@ -37,3 +37,29 @@ export function beside(front: unknown, cursor = false): boolean {
   // ponytail: Settings is covered as Welcome is (VS Code names neither); tell them apart by the tab if a box there matters
   return !cursor && front !== undefined && front !== null;
 }
+
+/** The sessions that get a page of their own now (sessions/hub.ts): the ones that began or wrote since the folder
+ *  was last looked at. `before`: each session file's size at that look, null at the first one, when everything
+ *  there is old: a window never opens on a page per old session. */
+export function wrote(before: ReadonlyMap<string, number> | null, now: readonly { file: string; size: number }[]): string[] {
+  if (!before) return [];
+  return now.filter((f) => f.size > (before.get(f.file) ?? 0)).map((f) => f.file);
+}
+
+/** Whether a session that wrote gets its page now. `on`: the setting graphene.graph.openOnStart. `paged`: a page
+ *  draws it already. `opened`: its page opened by itself once in this window, so a person who closed it is not
+ *  chased by the session's next line. */
+export const pages = (o: { on: boolean; paged: boolean; opened: boolean }): boolean => o.on && !o.paged && !o.opened;
+
+/** Where a page that opens by itself goes, so it never covers what a person has in front. `front`: what the
+ *  active group has in front (`beside`'s); `own`: it is one of the pages. `active`: the active group's column. `pages`: the columns the pages
+ *  that are open stand in. With a file in front: a group of pages that is not the file's own, so pages gather in
+ *  one group and do not halve the editor again; else beside the file. With nothing in front there is nothing to
+ *  cover: with the other pages, or in the active group. */
+export function column(o: { front: unknown; own?: boolean; active: number | undefined; pages: readonly (number | undefined)[] }): number | "beside" | "active" {
+  const elsewhere = o.pages.find((c) => c !== undefined && c !== o.active);
+  // one of the pages is what is in front: its group is the pages' own, and a third group beside it would halve them
+  if (o.own) return o.active ?? "active";
+  if (beside(o.front)) return elsewhere ?? "beside";
+  return elsewhere ?? o.pages.find((c) => c !== undefined) ?? "active";
+}

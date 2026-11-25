@@ -87,15 +87,16 @@ export class Stream {
     this.timer = setTimeout(() => this.start(), backoff(this.tries));
   }
 
-  /** Start over (the folder or the command changed): the child ends, a new one starts. */
-  restart() {
+  /** Start over (the folder or the command changed): the child ends, a new one starts. `again` false: none
+   *  starts (the folder has no plan, and graphene is not run there). */
+  restart(again = true) {
     this.unsupported = false;
     this.tries = 0;
     const child = this.child;
     this.child = null;
     child?.kill();
     clearTimeout(this.timer);
-    this.start();
+    if (again) this.start();
   }
 
   dispose() {

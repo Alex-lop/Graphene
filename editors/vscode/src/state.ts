@@ -88,6 +88,61 @@ export interface Task {
   planned: number | null;
   signoff: boolean | null;
   owner: string;
+  /** Set on a card drawn from a session; a plan's task has none. */
+  card?: Card;
+}
+
+/** A receipt: what a card, or a page's session, says about the work after it happened (sessions/receipt.ts). The
+ *  files it changed; each test or check tool's last run with what decided its verdict; `tests`, the three honest
+ *  states and the fourth it does not hide (ran, result not seen); and what is worth a second look, each a fact
+ *  with the line that shows it, a guess said to be one. */
+export interface Changed { file: string; how: "created" | "edited" | "deleted"; outside: boolean }
+export interface Check { tool: string; kind: "test" | "check"; command: string; verdict: "passed" | "failed" | "unseen" | "none"; why: string; at: string }
+export type FlagKind = "push" | "pull request" | "delete" | "force" | "hard reset" | "test edited after it failed" | "written by two sessions"
+  | "outside the folder";
+export interface Flag { kind: FlagKind; line: string; note: string; guess: boolean }
+export type Tests = "passed" | "failed" | "none" | "unseen";
+export interface Receipt { changed: Changed[]; checks: Check[]; tests: Tests; flags: Flag[] }
+
+/** What git says of a session's folder since the session was first seen. `noted`: its HEAD and dirty files were
+ *  noted then (a session Graphene did not see begin has no such note, and nothing is claimed of it). `compared`:
+ *  the folder has been compared with that note since; until it has, nothing is said of what moved. `commits`:
+ *  how many commits that touch the folder HEAD has now and did not have then. `dropped`: how many it had then and
+ *  does not have now (a reset, or another branch). `unexplained`: the files that changed with no tool call of the session's that wrote
+ *  them. */
+export interface GitFacts { noted: boolean; compared: boolean; commits: number; dropped: number; unexplained: string[] }
+
+/** A card that comes from a session's own file (sessions/), not from a plan. `says`: its state in a session's
+ *  words (working, needs you, idle, done, interrupted, failed, not started), which the plan's `state` only
+ *  approximates. `side`: a subagent's id, whose own transcript is the card's terminal view. */
+export interface Card {
+  session: string;
+  kind: "request" | "task" | "step" | "subagent" | "workflow" | "earlier";
+  says: string;
+  side: string;
+  /** What it did, after the fact; null for a card with no work of its own to read (a plan's step). */
+  receipt: Receipt | null;
+}
+
+/** A session on a page: one agent conversation, as Claude Code or Codex records it on disk. `status`: needs you
+ *  only when the file proves it, else working or idle. `error`: a file that could not be read, in one line. */
+export interface SessionInfo {
+  id: string;
+  agent: "claude" | "codex";
+  title: string;
+  status: "working" | "needs you" | "idle";
+  cwd: string;
+  branch: string;
+  file: string;
+  last: string; // when it last wrote, ISO
+  requests: number;
+  error: string;
+  /** A running agent has it open (its own record of its process says so): it is not offered to be resumed, as two
+   *  writers on one session corrupt it. */
+  open: boolean;
+  /** The receipt of the session as a whole, its subagents' work included, and what git says of its folder. */
+  receipt: Receipt | null;
+  git: GitFacts | null;
 }
 
 export interface Replay {
@@ -193,6 +248,9 @@ export interface State {
   tasks: Task[];
   edges: [string, string, string][];
   news: string[];
+  /** The sessions this page draws, when its source is their files and not a plan (sessions/): each a band of
+   *  cards. Absent for a plan. */
+  sessions?: SessionInfo[];
 }
 
 type Raw = Record<string, unknown>;
@@ -241,7 +299,40 @@ export function parseTask(r: Raw): Task {
     held: { state: held === "refused" || held === "caught" || held === "none" ? held : "", by: str(obj(r.held).by) },
     command: optStr(r.command), leaves: bool(r.leaves),
     planned: null, signoff: null, owner: "",
+    ...(r.card && typeof r.card === "object" ? { card: parseCard(obj(r.card)) } : {}),
   };
+}
+
+const KINDS: readonly Card["kind"][] = ["request", "task", "step", "subagent", "workflow", "earlier"];
+
+function parseCard(r: Raw): Card {
+  const kind = str(r.kind) as Card["kind"];
+  return { session: str(r.session), kind: KINDS.includes(kind) ? kind : "request", says: str(r.says), side: str(r.side), receipt: parseReceipt(r.receipt) };
+}
+
+const one = <T extends string>(v: unknown, all: readonly T[], d: T): T => (all.includes(v as T) ? (v as T) : d);
+const FLAGS: readonly FlagKind[] = ["push", "pull request", "delete", "force", "hard reset", "test edited after it failed", "written by two sessions", "outside the folder"];
+
+function parseReceipt(v: unknown): Receipt | null {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return null;
+  const r = v as Raw;
+  return {
+    changed: list(r.changed).filter((c) => str(c.file)).map((c) => ({ file: str(c.file), how: one(c.how, ["created", "edited", "deleted"] as const, "edited"), outside: bool(c.outside) })),
+    checks: list(r.checks).filter((c) => str(c.tool)).map((c) => ({ tool: str(c.tool), kind: one(c.kind, ["test", "check"] as const, "check"), command: str(c.command),
+                                                              verdict: one(c.verdict, ["passed", "failed", "unseen", "none"] as const, "unseen"), why: str(c.why), at: str(c.at) })),
+    tests: one(r.tests, ["passed", "failed", "none", "unseen"] as const, "none"),
+    // a kind this build does not know is not a flag it can word: left out, never guessed at
+    flags: list(r.flags).filter((f) => FLAGS.includes(f.kind as FlagKind)).map((f) => ({ kind: f.kind as FlagKind, line: str(f.line), note: str(f.note), guess: bool(f.guess) })),
+  };
+}
+
+function parseSession(r: Raw): SessionInfo {
+  const status = str(r.status);
+  return { id: str(r.id), agent: r.agent === "codex" ? "codex" : "claude", title: str(r.title),
+           status: status === "working" || status === "needs you" ? status : "idle",
+           cwd: str(r.cwd), branch: str(r.branch), file: str(r.file), last: str(r.last), requests: int(r.requests, 0), error: str(r.error), open: bool(r.open),
+           receipt: parseReceipt(r.receipt),
+           git: r.git && typeof r.git === "object" ? { noted: bool(obj(r.git).noted), compared: bool(obj(r.git).compared), commits: int(obj(r.git).commits, 0), dropped: int(obj(r.git).dropped, 0), unexplained: strs(obj(r.git).unexplained) } : null };
 }
 
 export interface Contract { planned: number | null; signoff: boolean; owner: string }
@@ -326,6 +417,7 @@ export function parseState(text: string): State {
       options: strs(q.options), about: typeof q.about === "string" ? q.about : null, kind: str(q.kind, "question"),
     })).filter((q) => q.id),
     goals, tasks, edges, news: strs(r.news),
+    ...(Array.isArray(r.sessions) ? { sessions: list(r.sessions).map(parseSession).filter((x) => x.id) } : {}),
   };
 }
 

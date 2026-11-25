@@ -9,6 +9,7 @@ import { checkHome, home, unanswered, type FromHome } from "./home/cards.ts";
 import { WHO } from "./home/who.ts";
 import { keyTrouble, needs, tryAgain, widen } from "./needs.ts";
 import type { Session } from "./session.ts";
+import type { Hub } from "./sessions/hub.ts";
 import type { Task } from "./state.ts";
 
 type Last = { n: number; lines: string[]; bad: boolean; key?: boolean };
@@ -31,16 +32,22 @@ export class HomeHost implements vscode.WebviewViewProvider {
   /** Home came into view, or went out of it: the graph's tab opens with it (graph.ts sidebar). */
   private readonly shown: (on: boolean) => void;
 
-  constructor(context: vscode.ExtensionContext, session: Session, shown: (on: boolean) => void = () => {}) {
+  /** A folder with no plan (`on`): Home lists its sessions, and runs no graphene. */
+  private readonly sessions: { hub: Hub; on: () => boolean } | undefined;
+
+  constructor(context: vscode.ExtensionContext, session: Session, shown: (on: boolean) => void = () => {}, sessions?: { hub: Hub; on: () => boolean }) {
     this.context = context;
     this.session = session;
     this.shown = shown;
+    this.sessions = sessions;
+    sessions?.hub.onDidChange(() => this.push());
     session.onDidChange(() => this.push());
     session.onDidSee(() => this.push());
     // the graph's header asks for these by name: its Save as workflow button, and its switch, which moves as Home's
     // does (Exact's settings go back with it). Home may never have opened: the board setting is read first.
     context.subscriptions.push(vscode.commands.registerCommand("graphene.saveWorkflow", () => this.saveWorkflow()),
                                vscode.commands.registerCommand("graphene.stopAfter", async (flag?: unknown) => { await this.readBoard(); return this.setStopAfter(flag === true); }),
+                               vscode.commands.registerCommand("graphene.setUpScreen", () => { this.setUpScreen(true); return vscode.commands.executeCommand("graphene.home.focus"); }), // Set Up This Folder, in a folder with no plan
                                vscode.commands.registerCommand("graphene.sendBack", (arg?: { id?: unknown }) => { // the graph pane's Send back…
                                  const t = session.tasks().find((x) => x.id === arg?.id);
                                  return t && this.sendBack(t);
@@ -59,12 +66,36 @@ export class HomeHost implements vscode.WebviewViewProvider {
     view.webview.onDidReceiveMessage((m: unknown) => {
       const msg = checkHome(m, this.session.state, this.workflows);
       if (!msg) return;
+      if (this.sessions?.on()) { // no plan here: its sessions, and nothing of graphene's is read
+        if (msg.type === "ready") return this.push();
+        if (msg.act === "strict") return this.setUpScreen(msg.flag === true);
+        if (msg.act === "showGraph") return void this.sessions.hub.show(msg.arg);
+        if (msg.act === "openFolder") return void vscode.commands.executeCommand("workbench.action.files.openFolder");
+        if (this.strict && (msg.act === "setup" || msg.act === "install" || msg.act === "demo")) void this.act(msg); // Set Up's own
+        return;
+      }
       if (msg.type === "ready") return void Promise.all([this.readBoard(), this.readWorkflows()]).then(() => this.push());
       void this.act(msg);
     });
   }
 
+  /** Home in a folder with no plan: its sessions, the last written first. */
+  private async pushSessions(hub: Hub) {
+    if (!this.views.size) return; // Home was never opened: no session is read for a list nobody sees
+    const model = { type: "sessions", folder: Boolean(hub.folder), sessions: await hub.list() };
+    for (const v of this.views) { v.badge = undefined; void v.webview.postMessage(model); }
+  }
+
+  /** Strict mode (plan first, scopes, checks, hooks) is asked for: Home shows its Set Up in place of the folder's
+   *  sessions, until it is left or the folder has a plan. */
+  private strict = false;
+  setUpScreen(on: boolean) {
+    this.strict = on;
+    this.push();
+  }
+
   private push() {
+    if (this.sessions?.on() && !this.strict) return void this.pushSessions(this.sessions.hub);
     const s = this.session.state;
     const h = s ? home(s, this.session.seen, this.exact, this.workflows) : null;
     if (h && this.busy) for (const section of h.sections) for (const button of section.buttons) {
@@ -73,6 +104,7 @@ export class HomeHost implements vscode.WebviewViewProvider {
     const { version } = this.session; // an older graphene: said above everything for as long as it runs, with Upgrade
     const older = behind(version) ? olderWords(this.session.file || this.session.path, version).replaceAll("`", "") : "";
     const model = { type: "home", status: this.session.status, home: h, review: s?.envelope.review === "every", exact: this.exact, busy: this.busy,
+                    sessions: this.sessions?.on() === true, // Set Up, asked for from the folder's sessions: it offers the way back
                     last: this.last, older, cursor: vscode.env?.appName.includes("Cursor") === true }; // no env: the tests' stand-in for vscode
     const n = s ? needs(s).length : 0;
     for (const v of this.views) {

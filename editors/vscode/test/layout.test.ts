@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { layout, modeFor, order, ranks, rounded, route, routeDown, spread, step, type Edge } from "../src/layout.ts";
+import { curve, curveHits, layout, modeFor, order, ranks, rounded, route, routeDown, spread, step, type Edge } from "../src/layout.ts";
 import { parseState } from "../src/state.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}.json`, import.meta.url), "utf8");
@@ -247,4 +247,30 @@ test("lines into two cards never share a trunk where they meet: the one going fu
   // more trunks than room: closer together, inside it
   const many = spread([0, 1, 2, 3].map((i) => route(100, 50 + i * 10, 132, 400 - i * 10, 32, 16, [])), 12).map((p) => p[1]![0]);
   assert.ok(Math.max(...many) - Math.min(...many) <= 12 && new Set(many).size === 4);
+});
+
+test("an edge is one curve, port to port: it leaves a card level and arrives level, across or downward", () => {
+  // across: out of the right side at (200, 47), into the next card's left at (234, 163); its handles pull along x only
+  assert.equal(curve(200, 47, 234, 163), "M200,47 C224,47 210,163 234,163");
+  assert.equal(curve(200, 47, 500, 47), "M200,47 C350,47 350,47 500,47"); // a card two columns on: a longer, shallower curve; level, it is a straight line
+  // downward: out of the foot and into the top, its handles along y
+  assert.equal(curve(100, 94, 300, 160, true), "M100,94 C100,127 300,127 300,160");
+  assert.equal(curve(100, 94, 100, 100, true), "M100,94 C100,110 100,84 100,100"); // close together it still leaves downward
+  // a card behind its source: the same curve, wide enough to be seen to turn
+  assert.equal(curve(500, 40, 300, 200), "M500,40 C600,40 200,200 300,200");
+});
+
+test("a curve that would pass behind a card between its two ends is found, so its line can go round instead", () => {
+  const card = (x: number, y: number) => ({ x, y, w: 200, h: 116 });
+  // three cards in a row: the line from the first to the third lies across the second
+  assert.equal(curveHits(200, 47, 464, 47, false, [card(232, 0)]), true);
+  // the card between stands a row lower: the level line clears it
+  assert.equal(curveHits(200, 47, 464, 47, false, [card(232, 160)]), false);
+  // a fan to the next column touches no card but its own two, which are not among the blocks
+  assert.equal(curveHits(200, 47, 232, 207, false, [card(232, 0), card(0, 160)]), false);
+  // laid downward: out of a foot and into a top two rows down, behind the card in the row between
+  assert.equal(curveHits(100, 94, 100, 320, true, [card(0, 160)]), true);
+  assert.equal(curveHits(100, 94, 332, 320, true, [card(464, 160)]), false);
+  // along a card's very edge is not through it
+  assert.equal(curveHits(0, 117, 500, 117, false, [card(100, 0)]), false);
 });

@@ -40,6 +40,9 @@ header {
 }
 header::after { content: ""; order: 4; flex-basis: 100%; } /* where the second row starts */
 header:has(#pipe[hidden])::after { display: none; }
+/* a page of sessions has no stages: what its sessions are doing and their receipt have the second row to themselves */
+body[data-source="sessions"] header:has(#pipe[hidden])::after { display: block; }
+body[data-source="sessions"] #auto { white-space: normal; } /* beside a file the page is narrow: its receipt takes a second line before it is cut */
 /* a basis of 10em (or its own width, if less): a long goal is cut to the room its buttons leave; a tab that leaves
    it less than that (narrow, beside an agent's chat) gives the goal its own row and the buttons the next */
 #goal { order: 1; flex: 1000 1 10em; max-width: max-content; min-width: 0; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -78,6 +81,8 @@ header:has(#pipe[hidden])::after { display: none; }
 }
 #auto::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 6px 1px 0; border-radius: 50%; background: var(--running); }
 #auto[hidden] { display: none; }
+#auto[data-status="idle"]::before { background: var(--waiting); } /* a session that is idle is not at work: its dot is not the working colour */
+#auto[data-status="needs you"]::before { background: var(--review); }
 .stage { display: flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 99px; color: var(--dim); white-space: nowrap; }
 .stage + .stage { margin-left: 22px; position: relative; }
 .stage + .stage::before { content: ""; position: absolute; left: -20px; top: 50%; width: 18px; height: 1px; background: var(--line-2); }
@@ -398,6 +403,23 @@ button:disabled { opacity: 0.45; cursor: default; }
 .region-label.away { fill: var(--review); font-size: 12px; font-weight: 600; font-family: var(--font); }
 /* a sub-goal: a quiet section, a little over the ground, with a hairline edge */
 .band { fill: color-mix(in srgb, var(--fg) 5.5%, transparent); stroke: var(--line-1); }
+/* a session's band: the × at its header's end takes the session off the page */
+/* a receipt in the pane: a changed file opens its diff; a flag is its kind, the line that shows it, and a note */
+#details .rc-file { display: flex; gap: 6px; align-items: baseline; width: 100%; text-align: left; padding: 2px 4px; margin: 1px 0; border-radius: var(--r-sm, 4px); }
+#details .rc-file code { background: none; padding: 0; word-break: break-word; }
+#details .rc-file .rc-how { flex: none; width: 12px; color: var(--dim); text-align: center; }
+#details .rc-file.gone code { text-decoration: line-through; }
+#details .rc-check { align-items: flex-start; }
+#details .rc-check small, #details .rc-flag small { display: block; color: var(--dim); margin-top: 2px; }
+#details .rc-flag { margin: 6px 0 10px; padding-left: 8px; border-left: 2px solid var(--line-2, var(--line-1)); }
+#details .rc-flag .rc-kind { font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+#details .rc-loose { margin: 2px 0 2px 14px; }
+.band-off { cursor: pointer; outline: none; }
+.band-off circle { fill: transparent; }
+.band-off path { stroke: var(--dim); stroke-width: 1.4; stroke-linecap: round; fill: none; }
+.band-off:hover circle, .band-off:focus-visible circle { fill: var(--fill-3); }
+.band-off:hover path, .band-off:focus-visible path { stroke: var(--fg); }
+.band-off:focus-visible circle { stroke: var(--focus); stroke-width: 1.5; }
 /* a sub-goal's header: its ring, its title, its count, and in its mark's colour what wants you there */
 .band-head { pointer-events: none; }
 .band-head text { font-size: 12px; font-family: var(--font); fill: var(--dim); }
@@ -430,6 +452,17 @@ button:disabled { opacity: 0.45; cursor: default; }
 .ring { fill: var(--accent-soft); stroke: var(--edge-hot); stroke-width: 2; }
 .task:not(.selected):focus-visible .box, .goal:focus-visible .goal-box { stroke: var(--focus); stroke-width: 2; stroke-dasharray: 3 2; } /* a chosen card's ring says it */
 .task:focus-visible, .goal:focus-visible { outline: none; } /* the dashed card says the focus: no square frame round its attempts too */
+/* the tile at a card's top left: who is working on it. A letter on a tint of that agent's one colour */
+.tile { --who: var(--fg); }
+.tile rect { fill: color-mix(in srgb, var(--who) 24%, transparent); }
+.tile text { fill: var(--fg); font-size: 12px; font-weight: 700; font-family: var(--font); pointer-events: none; } /* the text's own colour: the tint says whose, and the letter reads in every theme */
+.tile.by-claude { --who: var(--agent-claude); }
+.tile.by-codex { --who: var(--agent-codex); }
+.tile.by-sub { --who: var(--agent-sub); }
+.tile.you { --who: var(--review); }
+.tile.cmd text { font-family: var(--mono); font-size: 10px; font-weight: 600; }
+:is(body.vscode-high-contrast, body.vscode-high-contrast-light) .tile rect { fill: none; stroke: var(--border); }
+:is(body.vscode-high-contrast, body.vscode-high-contrast-light) .tile text { fill: var(--fg); }
 .pill rect { fill: var(--tint); }
 .pill-text, .pill-mark { fill: var(--dim); font-size: 12px; font-family: var(--font); } /* the UI's font, as the check on its foot: one face on a card, and `2 files` is words */
 .pill-mark { opacity: 0.75; }
@@ -453,6 +486,8 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 /* the ports, where a card's lines join; the out port is the dot a link is dragged from */
 .port { fill: var(--bg); stroke: var(--edge); stroke-width: 1.5; opacity: 0; transition: opacity 0.15s; }
 .task:hover .port, .goal:hover .port, #canvas.wiring .port { opacity: 1; } /* where a hand is: unseen, it still takes a drag. Not on the chosen or focused card: a drag is a hand's, and there they were two rivets on its ring */
+.port.wired { opacity: 1; } /* where a line joins the card: it leaves from a port, and arrives at one */
+body[data-source="sessions"] .task:hover .port:not(.wired) { opacity: 0; } /* a session's cards are watched: no line is drawn from one by hand */
 .port[data-port] { cursor: crosshair; }
 .port[data-port]:hover, #canvas.wiring .port[data-port] { fill: var(--edge-hot); stroke: var(--edge-hot); }
 .wire { fill: none; stroke: var(--edge-hot); stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
@@ -523,6 +558,9 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 #notice button { display: flex; margin: 10px auto 0; }
 .title, .goal-title { fill: var(--fg); font-size: 14px; font-weight: 600; font-family: var(--font); }
 .goal-title { font-size: 16px; }
+/* laid downward a card's line leaves from its foot, through where its status line is written: the words wear the
+   canvas's own colour round them, so the line passes behind them and is not struck through them */
+body[data-mode="down"] .task > text.sub, body[data-mode="down"] .task > text.times, body[data-mode="down"] .task > text.model { paint-order: stroke; stroke: var(--bg); stroke-width: 5px; stroke-linejoin: round; }
 .sub, .covers { fill: var(--dim); font-size: 12px; font-family: var(--font); } /* what a task covers, on its title's second line: words as its status, never its status's colour */
 .model { fill: var(--dim); font-size: 12px; font-family: var(--font); }
 .times { fill: var(--dim); font-size: 12px; font-family: var(--font); font-variant-numeric: tabular-nums; } /* 3 agents at once: what a task is set to and has not started */
@@ -545,6 +583,14 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 [data-mark="landed"], .mk.landed { --c: var(--done); }
 [data-mark="suggested"], .mk.suggested { --c: var(--proposed); }
 [data-mark="you"] > .box, [data-mark="back"] > .box { stroke: var(--c); stroke-width: 1.5; }
+/* colour on the card for its state: at work its border is the working colour; landed, a quiet green. A session's
+   card that is over wears what its tests said: green for a pass that was seen, red for a failure, else a card's own */
+[data-mark="working"] > .box { stroke: color-mix(in srgb, var(--running) 70%, var(--card-border)); stroke-width: 1.25; }
+[data-mark="landed"] > .box { stroke: color-mix(in srgb, var(--done) 45%, var(--card-border)); }
+[data-mark="over"], .mk.over { --c: var(--waiting); }
+[data-mark="over"][data-tests="passed"] > .box { stroke: color-mix(in srgb, var(--done) 55%, var(--card-border)); }
+[data-mark="over"][data-tests="failed"] > .box { stroke: var(--came-back); stroke-width: 1.5; }
+[data-mark="over"] .title { fill: var(--dim); font-weight: 500; } /* steps back as landed does: what is at work reads first */
 [data-mark="yours"] > .box { stroke: color-mix(in srgb, var(--c) 55%, transparent); }
 [data-mark="landed"] .title { fill: var(--dim); font-weight: 500; }
 /* a working card says so by its ring alone: on a light card the amber is darkened to read as a graphic does (3:1) */
@@ -591,6 +637,7 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 /* a group's head, as its band's on the canvas: the sub-goal's name, then how many of its tasks are done */
 .wave { color: var(--dim); font-size: 12px; padding: 12px 4px 4px; display: flex; gap: 8px; align-items: baseline; }
 .w-name { color: var(--fg); font-weight: 600; font-size: 13px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wave .w-off { margin-left: auto; align-self: center; padding: 2px; } /* a session's group: its × at the row's end */
 .lane {
   display: flex; gap: 8px; padding: 6px 8px 6px 6px; margin: 3px 0; border: 1px solid var(--line-1); border-radius: var(--r);
   background: var(--fill-1); cursor: pointer; outline: none; transition: border-color var(--ease);
@@ -606,7 +653,8 @@ body.vscode-dark :is(.pill.back text, .pill .bad, .sub.bad, .st-came-back .sub, 
 .lane.st-came-back .l-sub { color: var(--came-back); }
 .lane.st-proposed .l-stripe { background: var(--proposed); }
 .lane.st-done .l-stripe { background: var(--done); }
-.lane.st-waiting .l-stripe { background: var(--waiting); }
+.lane.st-waiting .l-stripe, .lane.over .l-stripe { background: var(--waiting); } /* a session's card that is over: green is for a test seen to pass */
+.d-title.over { border-color: var(--waiting); }
 .l-main { flex: 1; min-width: 0; }
 .l-head { display: flex; gap: 8px; align-items: baseline; }
 .l-head .l-title { flex: 1; } /* its model and its mark stand together at the row's end */

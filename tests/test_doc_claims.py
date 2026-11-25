@@ -214,24 +214,36 @@ def test_the_readme_and_the_pickers_name_no_nemotron_nebius_or_hackathon():
             assert word not in said, (path, word)
 
 
-def test_the_readme_leads_with_the_canvas_and_its_two_pillars():
-    """The first screen is the canvas (the picture `dev/process/canvas/shoot.mjs readme` takes from Watch the
-    Demo) with the two pillars of dev/VISION.md in a sentence each, above "What it solves". The canvas is
-    named as the editor names it, the graph (Show Graph, the tab). What it says of workflows is held to the
-    file the repository ships and to the two commands the machine line knows."""
+def test_the_readme_leads_with_a_session_and_strict_mode_is_one_section():
+    """The first screen is the path that needs no setup (dev/VISION.md): a picture of a real session and the
+    four questions every mark answers, above "Try it", with no CLI to install. Strict mode is one section, and
+    "Know the limits" says what ran on real sessions, what a receipt cannot see and that nothing is sent. The
+    canvas's picture (`dev/process/canvas/shoot.mjs readme`, from Watch the Demo) and what is said of
+    workflows are the extension guide's now, under its Strict mode, held to the two commands the machine
+    line knows."""
     from graphene_map import workflow
 
+    png = b"\x89PNG\r\n\x1a\n"
     readme = doc("README.md")
-    assert "## What it solves" in readme  # else the first screen below would be the whole file
-    first = readme.split("## What it solves")[0]
-    assert "editors/vscode/media/graph.png" in first and "a scripted stand-in, no model ran" in first
-    assert "**A graph you watch and shape.**" in first and "**Scope you can see.**" in first
-    assert "Plan → Run → Review" in first and "**Stop after the plan**" in first
-    assert "which files it may change" in first and "which writes were stopped" in first  # the second's
-    assert "a Codex plan appears whole" in readme  # Claude Code's stream draws live (ask.live)
-    assert (ROOT / "editors/vscode/media/graph.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
-    assert (ROOT / "workflows/fix-issue.md").exists() and "workflows/fix-issue.md" in readme
-    assert "(`git push`, `gh pr`)" in readme
+    at = [readme.index(head) for head in ("## Try it", "## Strict mode", "## Know the limits")]
+    assert at == sorted(at) and readme.count("## ") == 3  # three sections, and strict mode is one of them
+    first = readme.split("## Try it")[0]
+    assert "editors/vscode/media/session.png" in first and "A real Claude Code session" in first
+    assert (ROOT / "editors/vscode/media/session.png").read_bytes()[:8] == png
+    four = ("**What is it doing?**", "**Does it need me?**", "**What did it change?**", "**Did it work?**")
+    for asked in four:
+        assert asked in first, asked
+    assert "Nothing to set up" in first and "uv tool install" not in readme.split("## Strict mode")[0]
+    limits = readme.split("## Know the limits")[1]
+    told = ("**What ran on real sessions.**", "**What did not:**", "**What a receipt cannot see.**",
+            "runs no `graphene` command and sends nothing anywhere")  # fmt: skip
+    for said in told:
+        assert said in limits, said
+    strict = doc("editors/vscode/README.md").split("## Strict mode")[1]
+    assert "(media/graph.png)" in strict and "a scripted stand-in, no model ran" in strict
+    assert "**Stop after the plan**" in strict and "(`git push`, `gh pr`)" in strict
+    assert (ROOT / "editors/vscode/media/graph.png").read_bytes()[:8] == png
+    assert (ROOT / "workflows/fix-issue.md").exists()
     assert workflow.leaves("git push -u origin HEAD") and workflow.leaves("gh pr create --draft --fill")
     assert not workflow.leaves("uv run pytest -q")
 

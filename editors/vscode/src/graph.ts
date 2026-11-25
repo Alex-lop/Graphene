@@ -243,7 +243,14 @@ export class GraphHost {
   }
 
   private html(webview: vscode.Webview): string {
-    const uri = (...p: string[]) => webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, ...p));
+    return graphHtml(this.context, webview);
+  }
+}
+
+/** The graph page's shell: the same for a plan's tab and for a session's (sessions/hub.ts), which post the one
+ *  snapshot it draws. */
+export function graphHtml(context: vscode.ExtensionContext, webview: vscode.Webview): string {
+    const uri = (...p: string[]) => webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, ...p));
     const nonce = Array.from({ length: 24 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("");
     return `<!doctype html>
 <html lang="en">
@@ -275,7 +282,6 @@ export class GraphHost {
   <script nonce="${nonce}" src="${uri("dist", "graph.js")}"></script>
 </body>
 </html>`;
-  }
 }
 
 /** What the active editor group has in front, as VS Code's tabs name it. Asked before VS Code has sent the

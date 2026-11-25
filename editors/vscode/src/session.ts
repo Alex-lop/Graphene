@@ -39,6 +39,8 @@ export class Session {
   readonly own: string | undefined;
   /** graphene found off the PATH (find.ts), used while graphene.path is unset. */
   found: string | null = null;
+  /** Look for graphene off the PATH, the first time it is wanted in a folder with no plan (setup.ts sets it). */
+  seek: () => Promise<void> = async () => {};
   /** `graphene --version`'s line for `path`, read once per path (again after Install or a settings change). */
   version: string | null = null;
   /** The file `path` runs, for the hover and the older-CLI line: a bare word as the PATH resolves it. */
@@ -128,6 +130,8 @@ export class Session {
   private async read() {
     if (!this.own) this.folder ??= planFolder();
     if (!this.folder) return this.set(null, { kind: "nofolder", text: "Open a folder to see its plan." });
+    // a folder with no plan: graphene is not run there, installed or not (the folder's sessions are drawn without it)
+    if (!this.own && !existsSync(path.join(this.folder.uri.fsPath, STORE))) return this.set(null, { kind: "uninitialised", text: INIT });
     if (this.versioned !== this.path) { // which graphene answers: said in the hover and the older-CLI line
       const v = await this.run(["--version"]);
       this.versioned = this.path;
@@ -304,11 +308,17 @@ export class Session {
     return this.state?.tasks ?? [];
   }
 
-  /** The folder or the command changed (a setting, an install): the stream starts over there, the version is read again. */
+  /** The folder has a plan (its store): only then is graphene run in it. A demo's own folder always has. */
+  planned(): boolean {
+    return Boolean(this.own) || Boolean(this.folder && existsSync(path.join(this.folder.uri.fsPath, STORE)));
+  }
+
+  /** The folder or the command changed (a setting, an install): the stream starts over there, the version is read
+   *  again. In a folder with no plan nothing starts: its sessions are drawn without graphene, installed or not. */
   moved() {
     this.versioned = "";
     this.seen.clear(); // another folder's ids are other tasks
-    this.stream.restart();
+    this.stream.restart(this.planned());
   }
 
   dispose() {

@@ -42,7 +42,10 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   };
   let offered = false;
   let looked = false; // not before the look: the first read may run before it ends
-  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => { if (e.affectsConfiguration("graphene.path")) void look().then(() => session.refresh()); }));
+  let sought: Promise<void> | undefined;
+  const seek = () => (sought ??= look().then(() => { looked = true; })); // once a window, the first time graphene is wanted
+  session.seek = seek;
+  context.subscriptions.push(vscode.workspace.onDidChangeConfiguration((e) => { if (!e.affectsConfiguration("graphene.path")) return; sought = undefined; if (session.planned()) void seek().then(() => session.refresh()); }));
   context.subscriptions.push(session.onDidChange(() => {
     if (session.status.kind !== "missing" || offered || !looked) return;
     offered = true; // once a session
@@ -80,8 +83,9 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
   // the store appears (uninitialised -> empty), a toast says the plan comes from your agent's chat, once
   let setUp = false;
   context.subscriptions.push(vscode.commands.registerCommand("graphene.init", async () => {
+    await seek();
     // a folder with no plan is set up on Home, in one pick; the two picks here change who plans and who works
-    if (session.status.kind === "uninitialised") return void vscode.commands.executeCommand("graphene.home");
+    if (session.status.kind === "uninitialised") return void vscode.commands.executeCommand("graphene.setUpScreen");
     const planner = await who("planner");
     if (!planner) return;
     const executor = await who("executor");
@@ -97,5 +101,7 @@ export function register(context: vscode.ExtensionContext, session: Session, _ui
       .then((pick) => { if (pick) void vscode.commands.executeCommand("graphene.home"); });
   }));
 
-  void look().then(() => { looked = true; return session.refresh(); });
+  // a folder with no plan runs nothing at all, not even uv's lookup: graphene is looked for when strict mode is asked for
+  if (session.planned()) void seek().then(() => session.refresh());
+  else void session.refresh();
 }

@@ -1,0 +1,618 @@
+{
+ "schema": 1,
+ "graphene": "",
+ "repo": "/work/app",
+ "cursor": 0,
+ "replay": null,
+ "stand_in": false,
+ "goal": "",
+ "asked": "",
+ "first": "",
+ "planner": "",
+ "executor": "",
+ "envelope": {
+  "auto": "off",
+  "budget": null,
+  "tasks": null,
+  "rounds": null,
+  "forks": null,
+  "review": "off",
+  "protected": [],
+  "readonly": [],
+  "checks": []
+ },
+ "auto": null,
+ "run": {
+  "going": true,
+  "pid": null
+ },
+ "tree": [],
+ "allows": null,
+ "drafting": null,
+ "spent": null,
+ "scoreboard": {
+  "need_you": 0,
+  "running": 3,
+  "proven": 3,
+  "total": 7
+ },
+ "width": null,
+ "questions": [],
+ "goals": [
+  {
+   "id": "session requests",
+   "title": "Fix the word counter",
+   "parent": null,
+   "state": "open",
+   "check": null
+  },
+  {
+   "id": "session tasks",
+   "title": "Add CSV export, with a test, and update the README.",
+   "parent": null,
+   "state": "open",
+   "check": null
+  }
+ ],
+ "tasks": [
+  {
+   "id": "requests/r1",
+   "title": "Fix the word counter: two spaces in a row count as a word.",
+   "full": "Fix the word counter: two spaces in a row count as a word.\nAdd a test for it.",
+   "state": "done",
+   "parent": "session requests",
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Claude Code",
+   "model": "claude-haiku-5-5",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [
+    "read wordcount.py",
+    "edit wordcount.py",
+    "write tests/test_wordcount.py",
+    "$ python3 -m unittest -v"
+   ],
+   "note": "Fixed, and both tests pass.",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [
+    "wordcount.py",
+    "tests/test_wordcount.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "requests",
+    "kind": "request",
+    "says": "done",
+    "side": "",
+    "receipt": {
+     "changed": [
+      {
+       "file": "wordcount.py",
+       "how": "edited",
+       "outside": false
+      },
+      {
+       "file": "tests/test_wordcount.py",
+       "how": "created",
+       "outside": false
+      }
+     ],
+     "checks": [
+      {
+       "tool": "unittest",
+       "kind": "test",
+       "command": "python3 -m unittest -v",
+       "verdict": "passed",
+       "why": "its output says Ran 2 tests in 0.001s, OK",
+       "at": "2026-11-24T10:00:10.000Z"
+      }
+     ],
+     "tests": "passed",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "requests/r2",
+   "title": "/review the counter",
+   "full": "/review the counter",
+   "state": "done",
+   "parent": "session requests",
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Claude Code",
+   "model": "claude-haiku-5-5",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [
+    "$ git diff --stat  (failed)"
+   ],
+   "note": "$ git diff --stat",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "requests",
+    "kind": "request",
+    "says": "interrupted",
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "requests/r3",
+   "title": "Now make it count hyphenated words as one.",
+   "full": "Now make it count hyphenated words as one.",
+   "state": "running",
+   "parent": "session requests",
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Claude Code",
+   "model": "claude-haiku-5-5",
+   "usd": null,
+   "idle": 29,
+   "needs_you": false,
+   "tail": [
+    "$ python3 -m unittest"
+   ],
+   "note": "$ python3 -m unittest",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "requests",
+    "kind": "request",
+    "says": "working",
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "tasks/r1",
+   "title": "Add CSV export, with a test, and update the README.",
+   "full": "Add CSV export, with a test, and update the README.",
+   "state": "running",
+   "parent": "session tasks",
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Claude Code",
+   "model": "",
+   "usd": null,
+   "idle": 44,
+   "needs_you": false,
+   "tail": [
+    "TaskCreate",
+    "TaskCreate",
+    "TaskCreate",
+    "TaskUpdate",
+    "write export/csv.py",
+    "TaskUpdate",
+    "TaskUpdate",
+    "$ pytest -q tests/test_csv.py"
+   ],
+   "note": "$ pytest -q tests/test_csv.py",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [
+    "export/csv.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "tasks",
+    "kind": "request",
+    "says": "working",
+    "side": "",
+    "receipt": {
+     "changed": [
+      {
+       "file": "export/csv.py",
+       "how": "created",
+       "outside": false
+      }
+     ],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "tasks/r1t1",
+   "title": "Write the CSV writer",
+   "full": "Write the CSV writer",
+   "state": "done",
+   "parent": "session tasks",
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Claude Code",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [
+    "write export/csv.py",
+    "TaskUpdate"
+   ],
+   "note": "",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [
+    "export/csv.py"
+   ],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "tasks",
+    "kind": "task",
+    "says": "done",
+    "side": "",
+    "receipt": {
+     "changed": [
+      {
+       "file": "export/csv.py",
+       "how": "created",
+       "outside": false
+      }
+     ],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "tasks/r1t2",
+   "title": "Test an empty table",
+   "full": "Test an empty table",
+   "state": "running",
+   "parent": "session tasks",
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Claude Code",
+   "model": "",
+   "usd": null,
+   "idle": 44,
+   "needs_you": false,
+   "tail": [
+    "$ pytest -q tests/test_csv.py"
+   ],
+   "note": "$ pytest -q tests/test_csv.py",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "tasks",
+    "kind": "task",
+    "says": "working",
+    "side": "",
+    "receipt": {
+     "changed": [],
+     "checks": [],
+     "tests": "none",
+     "flags": []
+    }
+   }
+  },
+  {
+   "id": "tasks/r1t3",
+   "title": "Say it in the README",
+   "full": "Say it in the README",
+   "state": "waiting",
+   "parent": "session tasks",
+   "scope": [],
+   "needs": [],
+   "check": null,
+   "agent": "Claude Code",
+   "model": "",
+   "usd": null,
+   "idle": null,
+   "needs_you": false,
+   "tail": [],
+   "note": "",
+   "why": "",
+   "checkout": null,
+   "base": null,
+   "attempts": 0,
+   "offers": {},
+   "changed": [],
+   "stopped": [],
+   "outside": [],
+   "forks": [],
+   "kept": null,
+   "hollow": false,
+   "files": [],
+   "filesN": 0,
+   "touched": [],
+   "stops": [],
+   "checked": {
+    "before": null,
+    "after": null
+   },
+   "tokens": null,
+   "held": {
+    "state": "",
+    "by": ""
+   },
+   "command": null,
+   "leaves": false,
+   "planned": null,
+   "signoff": null,
+   "owner": "",
+   "card": {
+    "session": "tasks",
+    "kind": "task",
+    "says": "not started",
+    "side": "",
+    "receipt": null
+   }
+  }
+ ],
+ "edges": [
+  [
+   "requests/r1",
+   "requests/r2",
+   "needs"
+  ],
+  [
+   "requests/r2",
+   "requests/r3",
+   "needs"
+  ],
+  [
+   "tasks/r1",
+   "tasks/r1t1",
+   "needs"
+  ],
+  [
+   "tasks/r1t1",
+   "tasks/r1t2",
+   "needs"
+  ],
+  [
+   "tasks/r1t2",
+   "tasks/r1t3",
+   "needs"
+  ]
+ ],
+ "news": [],
+ "sessions": [
+  {
+   "id": "requests",
+   "agent": "claude",
+   "title": "Fix the word counter",
+   "status": "working",
+   "cwd": "/work/app",
+   "branch": "main",
+   "file": "requests.jsonl",
+   "last": "2026-11-24T10:00:31.000Z",
+   "requests": 3,
+   "error": "",
+   "open": false,
+   "receipt": {
+    "changed": [
+     {
+      "file": "wordcount.py",
+      "how": "edited",
+      "outside": false
+     },
+     {
+      "file": "tests/test_wordcount.py",
+      "how": "created",
+      "outside": false
+     }
+    ],
+    "checks": [
+     {
+      "tool": "unittest",
+      "kind": "test",
+      "command": "python3 -m unittest -v",
+      "verdict": "passed",
+      "why": "its output says Ran 2 tests in 0.001s, OK",
+      "at": "2026-11-24T10:00:10.000Z"
+     }
+    ],
+    "tests": "passed",
+    "flags": []
+   },
+   "git": null
+  },
+  {
+   "id": "tasks",
+   "agent": "claude",
+   "title": "Add CSV export, with a test, and update the README.",
+   "status": "working",
+   "cwd": "/work/app",
+   "branch": "main",
+   "file": "tasks.jsonl",
+   "last": "2026-11-24T10:00:16.000Z",
+   "requests": 1,
+   "error": "",
+   "open": false,
+   "receipt": {
+    "changed": [
+     {
+      "file": "export/csv.py",
+      "how": "created",
+      "outside": false
+     }
+    ],
+    "checks": [],
+    "tests": "none",
+    "flags": []
+   },
+   "git": null
+  }
+ ]
+}

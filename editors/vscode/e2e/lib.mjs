@@ -122,6 +122,12 @@ export function cleanEnv(more = {}) {
   return { ...env, GRAPHENE_KEYCHAIN: "off", ...more };
 }
 
+/** A PATH with no `graphene` on it: every directory that has one is left out. For a walk that shows the
+ *  extension needs none (sessions.mjs). */
+export function noGraphene(PATH = process.env.PATH ?? "") {
+  return PATH.split(path.delimiter).filter((d) => d && !existsSync(path.join(d, "graphene"))).join(path.delimiter);
+}
+
 /** Run `exe` with the arguments the shell reads from `text`, so a quoted title stays one argument. */
 export function shell(exe, text, opts) {
   return execFileSync("/bin/sh", ["-c", `exec "$0" ${text}`, exe], opts);

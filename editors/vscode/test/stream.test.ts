@@ -34,12 +34,14 @@ function fake(dir: string, name: string, code: string): string {
 
 test("an older CLI's child ends the stream for the poll; a newer one's lines each reach the session, and it is live", async () => {
   const dir = mkdtempSync(path.join(tmpdir(), "graphene-stream-"));
+  const streams: Stream[] = []; // let go whatever a failed line leaves: a stream still trying holds the test's process open
   try {
     const older = fake(dir, "older", `process.stderr.write("Error: No such option: --watch\\n"); process.exit(2);`);
     const seen: string[] = [];
     const s1 = new Stream({ path: older, cwd: dir, onLine: (l) => seen.push(l) });
+    streams.push(s1);
     s1.start();
-    await new Promise((r) => setTimeout(r, 700));
+    for (let i = 0; i < 200 && !s1.unsupported; i++) await new Promise((r) => setTimeout(r, 50)); // node starts in its own time, later beside other tests
     assert.ok(s1.unsupported, "the CLI refused --watch: the poll takes over");
     assert.ok(!s1.live);
     assert.deepEqual(seen, []);
@@ -52,8 +54,9 @@ test("an older CLI's child ends the stream for the poll; a newer one's lines eac
     `);
     const got: string[] = [];
     const s2 = new Stream({ path: newer, cwd: dir, onLine: (l) => got.push(l) });
+    streams.push(s2);
     s2.start();
-    for (let i = 0; i < 40 && got.length < 2; i++) await new Promise((r) => setTimeout(r, 50)); // node starts in its own time
+    for (let i = 0; i < 200 && got.length < 2; i++) await new Promise((r) => setTimeout(r, 50)); // node starts in its own time
     assert.ok(s2.live, "a line arrived: the stream is live");
     await new Promise((r) => setTimeout(r, 900));
     assert.deepEqual(got, ['{"schema":1,"cursor":1}', '{"schema":1,"cursor":2}']);
@@ -61,6 +64,7 @@ test("an older CLI's child ends the stream for the poll; a newer one's lines eac
     assert.ok(!s2.unsupported, "it died for another reason: it is started again, with a backoff");
     s2.dispose();
   } finally {
+    for (const s of streams) s.dispose();
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -68,18 +72,19 @@ test("an older CLI's child ends the stream for the poll; a newer one's lines eac
 test("a command that cannot be spawned is tried again with a backoff, not held as a dead child", async () => {
   // graphene uninstalled or its path broken under a live editor: spawn emits `error`, then `close`, never `exit`
   const dir = mkdtempSync(path.join(tmpdir(), "graphene-stream-"));
+  const s = new Stream({ path: path.join(dir, "no-such-graphene"), cwd: dir, onLine: () => {} });
   try {
-    const s = new Stream({ path: path.join(dir, "no-such-graphene"), cwd: dir, onLine: () => {} });
     s.start();
-    await new Promise((r) => setTimeout(r, 300));
+    const due = () => (s as unknown as { timer: NodeJS.Timeout | undefined }).timer;
+    for (let i = 0; i < 100 && !due(); i++) await new Promise((r) => setTimeout(r, 50)); // the spawn's error comes in its own time
     assert.ok(!s.live);
     assert.ok(!s.unsupported, "a missing command is not an older CLI");
     const inner = s as unknown as { child: unknown; tries: number; timer: NodeJS.Timeout | undefined };
     assert.equal(inner.child, null, "the dead child is let go");
     assert.equal(inner.tries, 1, "one try so far, the next one waits");
     assert.ok(inner.timer, "the next start is due");
-    s.dispose();
   } finally {
+    s.dispose(); // whatever failed above: a stream still trying holds the test's process open
     rmSync(dir, { recursive: true, force: true });
   }
 });
@@ -106,6 +111,28 @@ test("a restart's old child, closing late, leaves the new child the stream: no t
   } finally {
     s.dispose();
     for (const pid of started()) try { process.kill(Number(pid)); } catch { /* gone already */ }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a folder with no plan: a setting that changes ends the stream and starts no graphene in its place", async () => {
+  // session.ts `moved` restarts the stream when a setting or the folder changes; with no plan there it must start
+  // nothing, or graphene runs (and fails, and runs again) in a folder that never asked for it
+  const dir = mkdtempSync(path.join(tmpdir(), "graphene-stream-"));
+  const pids = path.join(dir, "pids");
+  const started = () => (existsSync(pids) ? readFileSync(pids, "utf8").trim().split("\n") : []);
+  const s = new Stream({ path: fake(dir, "none", `
+    require("node:fs").appendFileSync(${JSON.stringify(pids)}, process.pid + "\\n");
+    process.stderr.write("no plan here\\n");
+    process.exit(1);
+  `), cwd: dir, onLine: () => {} });
+  try {
+    s.restart(false);
+    s.restart(false);
+    await new Promise((r) => setTimeout(r, 1500)); // longer than a first backoff
+    assert.deepEqual(started(), [], "graphene was never run");
+  } finally {
+    s.dispose();
     rmSync(dir, { recursive: true, force: true });
   }
 });

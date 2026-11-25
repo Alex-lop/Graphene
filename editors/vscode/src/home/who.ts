@@ -10,9 +10,8 @@ export const WHO = [
 export const ASK = "Ask Claude Code or Codex for something, in its chat";
 export const NOT_CURSOR = "Cursor's own Agent does not plan with Graphene yet.";
 
-/** What Graphene is, in one sentence: the extension README's first, short of where the graph is drawn, so the
- *  walkthrough's header (three lines at most) shows it whole. Set Up says it and HOW, and so does the
- *  extension's description (package.json, pinned to these by home.test.ts). */
+/** What strict mode is, in one sentence, and how it lands work in another: Set Up says both. (The extension's
+ *  description and its walkthrough's header say what needs no setup: package.json, pinned by home.test.ts.) */
 export const WHAT = "Your coding agent proposes a plan before it writes, and Graphene draws it as a graph.";
 export const HOW = "Each task runs in its own copy of your repository and lands only when its check passes.";
 
