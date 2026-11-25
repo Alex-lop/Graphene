@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased: the extension, 0.11.0
+
+Sessions, with nothing to set up (24 November 2026, PR #70). The VS Code and Cursor extension draws a Claude Code
+or Codex session as a graph from the session's own file: a page beside your file, the agent's terminal on a click,
+and a receipt on each card (the files it changed, whether its tests passed, what is worth a second look). It needs
+no CLI, no hooks and no `graphene init`, and nothing refuses, delays or holds an agent. Graphene as it was through
+0.10 is strict mode: opt-in, a folder at a time, unchanged. The CLI is unchanged at 0.10.0; the engine under `src/`
+and its tests were not touched. [The extension's changelog](editors/vscode/CHANGELOG.md) has each change, and
+[dev/VISION.md](dev/VISION.md) the direction.
+
 ## 0.10.0 (23 November 2026)
 
 The graph is where you watch and shape agent work (11 to 23 November 2026). In VS Code and Cursor the plan is a

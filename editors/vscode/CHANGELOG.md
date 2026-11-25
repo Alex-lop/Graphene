@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.11.0 (not released yet)
+
+Sessions, with nothing to set up (24 November 2026). Start Claude Code or Codex as you always do and a page draws
+that session as a graph; strict mode, the Graphene of 0.10, is opt-in. Walked on real Claude Code sessions in VS
+Code and Cursor on macOS (`e2e/sessions.mjs`); Codex is read from its files and was not walked in an editor.
+
+- **No setup.** The extension wakes in any folder and reads the session files Claude Code and Codex write
+  (`~/.claude/projects`, `~/.codex/sessions`). No `graphene` command, no hooks, nothing written to your folder,
+  nothing sent anywhere. Nothing refuses, delays or holds an agent.
+- **A page for each session.** It opens by itself beside your file, once, without the keyboard, and never for a
+  session that was there before the window opened (`graphene.graph.openOnStart` turns it off). Cards: each request,
+  under it the tasks on the agent's own list or the subagents and workflows it started. **Needs you** only when
+  the session's file shows it waiting for your answer.
+- **Home lists the folder's sessions**, live ones first. **Add to page…** puts a session on a page as a band, and
+  the × takes it off; pages come back when the window reloads. An empty page replays a recorded session.
+- **The terminal on a click.** A card reveals the editor terminal its session runs in; a session outside the
+  editor, and a subagent, open as a view of what they write. **Resume in terminal** runs the agent's own resume
+  command for a session that is idle or finished, never for one still writing.
+- **Receipts.** At a card's foot, its tests: passed (ticked only for a pass that was seen), failed, ran no tests,
+  or ran, result not seen. In its pane: each file it changed with its diff, each test and what decided it, what is
+  worth a second look (push, pull request, delete, force, hard reset, a test edited after it failed, a file two
+  sessions wrote, a write outside the folder) with the line that shows it, and what git says changed with no tool
+  call of the session's.
+- **The look.** The graph flows left to right by default, each line one curve from a card's port; a tile says who
+  works on a card, its border its state, and one line under it what it is doing. Fit on open, zoom, the type sizes
+  and the check at a card's foot are as they were.
+- **Strict mode** is a folder with a Graphene plan, as on 0.10.0, reached from **Home → Strict mode…** or
+  **Graphene: Set Up This Folder**. Its commands and views show only there.
+
 ## 0.10.0 (23 November 2026)
 
 The graph is where you watch and shape agent work: whole, in a tab of its own, with a plan from your agent's chat

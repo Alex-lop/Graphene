@@ -2,7 +2,7 @@
   "name": "graphene-vscode",
   "displayName": "Graphene",
   "description": "Start Claude Code or Codex as you always do, and Graphene draws the session as a graph: what it is doing, what it changed and whether its tests passed. Nothing to set up.",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "publisher": "alex-lop",
   "license": "Apache-2.0",
   "repository": {

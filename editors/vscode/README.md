@@ -1,35 +1,72 @@
 # Graphene for VS Code
 
-**One plan for your coding agents. Clear boundaries. Tested commits.**
+**See what your coding agents are doing, and what they did. Nothing to set up.**
 
-Claude Code or Codex proposes a plan before it writes (Cursor's own Agent does not plan with Graphene yet), and
-Graphene draws it as a graph in an editor tab. Read it, change it, start it, and approve what the agents did. Each
-task runs in its own copy of your repository, held to the files it may change, and lands only when its check passes
-and, if you keep approval on, when you approve it.
+Start Claude Code or Codex as you always do. A page opens beside your file and draws that session as a graph: a
+card for each request, each task on the agent's own list and each subagent. Click a card to see that agent's
+terminal. When it finishes, each card carries a receipt: the files it changed and whether its tests passed. Nothing
+refuses, delays or holds your agent.
+
+![Graphene in VS Code. In the side bar, Home lists the folder's session. In the editor, the session's page: four cards joined by curved lines, left to right. The request, done, with the files it changed and a ticked "unittest passed" at its foot; the two subagents it started, each "ran no tests"; and a follow-up request, done, with its own ticked test. Under each card, one line of what it said last](media/session.png)
+
+*A real Claude Code session in a scratch repository, as its page drew it.*
+
+## Install
+
+From [the release](https://github.com/Alex-lop/Graphene/releases/latest), 0.11.0 (it is not on the Marketplace or
+Open VSX yet):
+
+```sh
+curl -LO https://github.com/Alex-lop/Graphene/releases/download/v0.11.0/graphene-0.11.0.vsix
+code --install-extension graphene-0.11.0.vsix
+```
+
+In Cursor: `cursor --install-extension graphene-0.11.0.vsix`. From a clone instead: `npm ci && npm run package` in
+`editors/vscode` (Node 22+). Nothing else to install.
+
+## The first minute
+
+1. **Start Claude Code or Codex in the folder**, in a terminal or in its own panel. A page opens beside your file,
+   once for each session, and the file keeps the keyboard. Sessions that were there before the window opened get no
+   page; **Home**, in the side bar, lists them, live ones first.
+2. **Read the cards.** One for each request you made; under a request, the tasks on the agent's own list or the
+   subagents it started. A card at work says **working** and its last move; **needs you** only when the session's
+   file shows it waiting for your answer; otherwise **idle**, **done**, **interrupted** or **failed**.
+3. **Click a card.** The terminal it runs in comes forward. A session running outside the editor, and a subagent,
+   open as a view of what they write. **Resume in terminal** picks up one that is idle or finished, with the
+   agent's own command (`claude --resume`, `codex resume`), and never one that is still writing.
+4. **Read the receipt.** At a card's foot, the tests it ran: **passed** (ticked, only for a pass that was seen),
+   **failed**, **ran no tests**, or **ran, result not seen**. In its pane: each file it changed, opening its diff;
+   each test and check with what decided it; what is worth a second look (a push or pull request, a delete, a
+   forced git command, a hard reset, a test edited after it failed, a file two sessions wrote, a write outside the
+   folder), each with the line that shows it; and what git says changed with no tool call of the session's.
+5. **Put sessions together.** **Add to page…** puts another session on this page as a band; the × on a band takes
+   it off again. Pages come back when the window reloads.
+
+No session yet? The empty page replays a recorded one. `graphene.graph.openOnStart`, off, keeps pages from opening
+by themselves.
+
+## Strict mode
+
+Graphene as it was through 0.10, now opt-in, a folder at a time: your agent proposes a plan before it writes (Cursor's
+own Agent does not plan with Graphene yet), and Graphene draws it as a graph. Read it, change it, start it, and
+approve what the agents did. Each task runs in its own copy of your repository, held to the files it may change, and
+lands only when its check passes and, if you keep approval on, when you approve it.
 
 ![Graphene's graph in an editor tab. Across the top: the goal, then Plan, Run and Review. On the graph: four task cards under one sub-goal, three done and one working with its three attempts, each card with its files and, at its foot, its check, all leading into the goal. Beside them, the selected task's Scope pane: the files it may change, its check failing before the work and passing after it, what it may run, how a write outside its files is held, and the write it was stopped from making](media/graph.png)
 
 *The graph, replaying the bundled demo: a scripted stand-in, no model ran.*
 
-## Install
+It needs the CLI from PyPI (Python 3.12+ and [uv](https://docs.astral.sh/uv/)): `uv tool install graphene-map`
+(installed already: `uv tool upgrade graphene-map`), or `uv tool install .` from a clone. Then **Home → Strict
+mode…**, or **Graphene: Set Up This Folder** in the palette. A folder that already has a Graphene plan opens in strict
+mode as it always did.
 
-The CLI from PyPI (Python 3.12+ and [uv](https://docs.astral.sh/uv/)) and the extension from
-[the release](https://github.com/Alex-lop/Graphene/releases/latest), 0.10.0 each (it is not on the Marketplace or
-Open VSX):
-
-```sh
-uv tool install graphene-map   # installed already: uv tool upgrade graphene-map
-curl -LO https://github.com/Alex-lop/Graphene/releases/download/v0.10.0/graphene-0.10.0.vsix
-code --install-extension graphene-0.10.0.vsix
-```
-
-In Cursor: `cursor --install-extension graphene-0.10.0.vsix`. From a clone instead: `uv tool install .`, then
-`npm ci && npm run package` in `editors/vscode` (Node 22+).
-
-## The first five minutes
+### The first five minutes
 
 1. **Click Graphene in the activity bar.** The graph opens full size in an editor tab. **Home**, in the side bar,
-   sets up a new folder in one click (Claude Code or Codex); leave approval on and nothing lands without you.
+   sets the folder up in one click (**Strict mode…**, then Claude Code or Codex); leave approval on and nothing
+   lands without you.
 2. **Ask Claude Code or Codex, in its own chat.** Graphene's hooks have it propose its plan (`graphene plan
    propose`) before it writes. Each task is a card: the files it may
    change and, at its foot, the check that proves it.
@@ -51,7 +88,7 @@ or opens a pull request (`git push`, `gh pr`) waits past the **leaves your machi
 
 **Graphene: Watch the Demo** plays a recorded run in a graph of its own: no key, no model, no network.
 
-## The words on screen
+### The words on screen
 
 | On screen | What it means | The CLI's word |
 | --- | --- | --- |
@@ -69,8 +106,9 @@ or opens a pull request (`git push`, `gh pr`) waits past the **leaves your machi
 
 ## Commands and settings
 
-Seven commands in the palette, under `Graphene:`: **Home**, **Open the Graph**, **Watch the Demo**, **Stop All Agents**,
-**Set Up This Folder**, **Install Graphene…** and **Set API Key…**. Everything else is a button on Home, on the
+Three commands in the palette, under `Graphene:`: **Home**, **Open the Graph** and **Set Up This Folder** (the way
+into strict mode). In strict mode four more: **Watch the Demo**, **Stop All Agents**, **Install Graphene…** and
+**Set API Key…**. Everything else is a button on Home, on the
 graph, or in a diff's title (**Keep This Attempt**, **Approve**).
 
 | Setting | Default | What it does |
@@ -78,11 +116,15 @@ graph, or in a diff's title (**Keep This Attempt**, **Approve**).
 | `graphene.path` | `graphene` | the command: a name on PATH or an absolute path, from your own settings only |
 | `graphene.pollMs` | `1500` | how often the plan is read again when the CLI has no `--watch` stream |
 | `graphene.advanced` | off | every command in the palette, and the Needs You, Agents, Plan and Rounds views |
-| `graphene.graph.openOnStart` | on | the graph opens as a tab by itself when work starts; off, only **Open the Graph** opens it |
+| `graphene.graph.openOnStart` | on | a page opens by itself when a session begins (in strict mode, when work starts), beside your file and without the keyboard; off, only **Open the Graph** opens it |
 
 ## Trust and privacy
 
-- **A thin client.** Everything it shows is `graphene state --json`, streamed with `--watch`, and everything it
+- **It reads, and sends nothing.** With no plan in the folder it reads the session files Claude Code and Codex
+  write on your machine (`~/.claude/projects`, `~/.codex/sessions`; `CLAUDE_CONFIG_DIR` and `CODEX_HOME` are
+  honoured), the processes of the editor's own terminals, and read-only `git` in the folder. It runs no `graphene`
+  command, writes nothing into your folder, and types into a terminal only the resume command you clicked.
+- **A thin client in strict mode.** Everything it shows there is `graphene state --json`, streamed with `--watch`, and everything it
   changes is one `graphene` command, run as you in the folder: the same ones the terminal cockpit runs.
 - **Off in Restricted Mode.** In a folder you have not trusted it does nothing: it would run commands there.
 - **Your settings only.** `graphene.path` is never read from a folder's settings: a cloned repository cannot
@@ -97,8 +139,14 @@ graph, or in a diff's title (**Keep This Attempt**, **Approve**).
 
 - VS Code 1.95 or later, or Cursor 3.25.6 or later (its agent layout hides the side bar: Home needs the classic
   layout).
-- It needs Graphene 0.10.0's CLI (with 0.9.0's every task's pane says **Not held** and no check's box is ticked),
-  and shows one plan per window: the first workspace folder with a store.
-- Nobody has used it on a real run yet: it was checked against a fixture and a scripted stand-in.
+- Sessions were walked on real Claude Code sessions started in a terminal, on macOS, in VS Code and in Cursor.
+  Codex sessions are read from their files and were not walked in an editor; Cursor's own agent is not read;
+  Windows and Linux are untested.
+- A receipt reads the session's file and git, nothing else: a file a shell command changed shows only as changed
+  with no tool call, a test whose output never reached the session is **ran, result not seen**, and a session
+  waiting on a permission prompt does not say **needs you** (the prompt is not in its file).
+- Strict mode needs Graphene 0.10.0's CLI (with 0.9.0's every task's pane says **Not held** and no check's box is
+  ticked), and shows one plan per window: the first workspace folder with a store. Nobody has used it on a real
+  run yet: it was checked against a fixture and a scripted stand-in.
 
 Source, issues and the CLI: [github.com/Alex-lop/Graphene](https://github.com/Alex-lop/Graphene). Licence Apache-2.0.
