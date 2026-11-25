@@ -32,7 +32,11 @@ test("a folder is noted when a session is first seen and compared later: what ch
     git("commit", "-qm", "first");
     writeFileSync(path.join(repo, "b.py"), "the person's own edit, before the session\n");
     writeFileSync(path.join(repo, "c.py"), "dirty before, and edited again during it\n");
-    const was = (await note(path.join(repo, "pkg")))!; // asked from a folder inside the repository
+    const was = (await note(repo))!;
+    // a session in a folder inside the repository: the same top, and only what is under its folder (the two dirty
+    // files beside it are not its folder's, and a repository that merely encloses a folder is never read whole)
+    const inside = (await note(path.join(repo, "pkg")))!;
+    assert.deepEqual([inside.top, inside.dir, [...inside.dirty.keys()]], [repo, "pkg", []]);
     assert.equal(was.top, repo);
     assert.equal(was.head.length, 40);
     assert.deepEqual([...was.dirty.keys()].sort(), ["b.py", "c.py"]);
@@ -48,6 +52,7 @@ test("a folder is noted when a session is first seen and compared later: what ch
     assert.equal(now.commits, 1);
     assert.deepEqual(now.changed, ["a.py", "c.py", "new.txt", "pkg/d.py"]); // b.py was dirty before and was left alone: not the session's
     assert.deepEqual(unexplained(now.changed, ["a.py"], was.top, repo), ["c.py", "new.txt", "pkg/d.py"]);
+    assert.deepEqual((await since(inside))!.changed, ["pkg/d.py"]); // from the folder inside: what changed under it, committed or not
     assert.equal(now.dropped, 0);
     unlinkSync(path.join(repo, "b.py")); // a deleted file cannot be hashed: its name is still noted
     const gone = (await note(repo))!;
